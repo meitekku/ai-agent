@@ -1,0 +1,17 @@
+# Environment variables (contains API keys)
+.env
+
+# Node.js
+node_modules/
+.next/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Data
+lightrag-service/data/
+
+# OS
+.DS_Store

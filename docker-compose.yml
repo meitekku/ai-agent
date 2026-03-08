@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpass
+      POSTGRES_DB: lightrag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d lightrag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8
+    volumes:
+      - valkeydata:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  lightrag:
+    build: ./lightrag-service
+    environment:
+      LLM_PROVIDER: gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: gemini-2.5-flash
+      EMBEDDING_PROVIDER: gemini
+      GEMINI_EMBEDDING_MODEL: text-embedding-004
+      EMBEDDING_DIM: "768"
+      OCR_PROVIDER: gemini
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: raguser
+      PG_PASSWORD: ragpass
+      PG_DATABASE: lightrag
+    volumes:
+      - lightrag-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rag-ui:
+    build: ./rag-ui
+    environment:
+      LIGHTRAG_URL: http://lightrag:8007
+      REDIS_URL: redis://valkey:6379
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_EMBEDDING_MODEL: text-embedding-004
+      EMBEDDING_PROVIDER: gemini
+      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+    ports:
+      - "4002:3000"
+    depends_on:
+      lightrag:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  valkeydata:
+  lightrag-data:
