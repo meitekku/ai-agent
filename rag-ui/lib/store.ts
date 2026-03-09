@@ -8,6 +8,8 @@ export interface MessageMeta {
   service: string;
 }
 
+export type SidebarSection = "history" | "documents" | "skills";
+
 // ---------------------------------------------------------------------------
 // Chat Settings Store
 // ---------------------------------------------------------------------------
@@ -22,6 +24,16 @@ interface ChatSettingsState {
   // Per-message metadata (service used for each assistant message)
   messageMeta: Record<string, MessageMeta>;
   recordMessageMeta: (messageId: string) => void;
+
+  // Sidebar
+  sidebarOpen: boolean;
+  sidebarPinned: boolean;
+  sidebarSection: SidebarSection;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+  setSidebarPinned: (pinned: boolean) => void;
+  toggleSidebarPinned: () => void;
+  setSidebarSection: (section: SidebarSection) => void;
 }
 
 export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
@@ -41,4 +53,25 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
       },
     });
   },
+
+  // Sidebar — initialize as false to avoid SSR hydration mismatch
+  sidebarOpen: false,
+  sidebarPinned: false,
+  sidebarSection: "documents",
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setSidebarPinned: (pinned) => {
+    set({ sidebarPinned: pinned });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar-pinned", JSON.stringify(pinned));
+    }
+  },
+  toggleSidebarPinned: () => {
+    const next = !get().sidebarPinned;
+    set({ sidebarPinned: next });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar-pinned", JSON.stringify(next));
+    }
+  },
+  setSidebarSection: (section) => set({ sidebarSection: section }),
 }));

@@ -64,10 +64,17 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限追加 |
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
-| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch tool（Tavily、LLM 語義判断で使用） |
+| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch tool + skills injection |
 | `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch ToolCallIndicator 追加 |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
-| `rag-ui/components/document-sidebar.tsx` | 同上 | 一致 | 複数ファイルアップロード対応 |
+| `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state 追加 |
+| `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
+| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | マルチセクションサイドバー（overlay/pinned） |
+| `rag-ui/components/documents-section.tsx` | 同上 | 一致 | ドキュメント管理（document-sidebar から抽出） |
+| `rag-ui/components/skills-section.tsx` | 同上 | 一致 | スキル CRUD UI |
+| `rag-ui/components/chat-header.tsx` | 同上 | 一致 | Zustand store 直接参照 |
+| `rag-ui/app/api/skills/route.ts` | 同上 | 一致 | GET/POST skills API |
+| `rag-ui/app/api/skills/[id]/route.ts` | 同上 | 一致 | PUT/DELETE skills API |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
 ### 同期コマンド
@@ -77,7 +84,13 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
 cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
-cp ~/Desktop/uiForAI/rag-ui/components/document-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/document-sidebar.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/app-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-sidebar.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/documents-section.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-section.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/skills-section.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-section.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/chat-header.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-header.tsx
+cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skills-db.ts
+cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
 
 # lightrag-service の変更を rag-deploy に反映（config.py は除外）
 cp ~/Desktop/ai/rag-system/lightrag-service/app/rag.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/rag.py
@@ -104,7 +117,7 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | rag-ui | `REDIS_URL` | redis://valkey:6379 | キャッシュ URL |
 | rag-ui | `EMBEDDING_PROVIDER` | gemini | 語義キャッシュ用 |
 | rag-ui | `TAVILY_API_KEY` | ${TAVILY_API_KEY:-} | ウェブ検索（オプション） |
-| rag-ui | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | スライド履歴用 |
+| rag-ui | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | スライド履歴+スキル用 |
 
 ### .env（ユーザー設定）
 
@@ -161,7 +174,7 @@ docker compose build --no-cache
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## 踩坑記録

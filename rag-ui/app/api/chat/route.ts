@@ -12,6 +12,7 @@ import { getChatModel, useGemini, backendName } from "@/lib/ollama-provider";
 import { searchOnly, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
 import { TAVILY_API_KEY } from "@/lib/constants";
+import { getEnabledSkills } from "@/lib/skills-db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -196,6 +197,19 @@ export async function POST(req: Request) {
 
     let systemPrompt = buildSystemPrompt(contexts, searchFailed);
     if (hasTavily) systemPrompt += WEB_SEARCH_PROMPT;
+
+    // Inject enabled skills into system prompt (non-fatal)
+    try {
+      const skills = await getEnabledSkills();
+      if (skills.length > 0) {
+        systemPrompt += "\n\n## スキル（追加指示）";
+        for (const skill of skills) {
+          systemPrompt += `\n\n### ${skill.name}\n${skill.content}`;
+        }
+      }
+    } catch (e) {
+      console.error("[chat] skills injection failed:", e);
+    }
 
     const chatModel = getChatModel();
 

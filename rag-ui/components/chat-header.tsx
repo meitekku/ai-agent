@@ -3,20 +3,18 @@
 import { Button } from "@/components/ui/button";
 import { PanelLeftIcon, BotIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useChatSettingsStore } from "@/lib/store";
 
-export function ChatHeader({
-  sidebarOpen,
-  onToggleSidebar,
-}: {
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
-}) {
+export function ChatHeader() {
+  const sidebarOpen = useChatSettingsStore((s) => s.sidebarOpen);
+  const toggleSidebar = useChatSettingsStore((s) => s.toggleSidebar);
+
   return (
     <header className="glass-header sticky top-0 z-30 flex h-13 shrink-0 items-center gap-3 px-4">
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={onToggleSidebar}
+        onClick={toggleSidebar}
         className="text-muted-foreground hover:text-foreground transition-colors"
         aria-label="サイドバーを開閉"
         aria-expanded={sidebarOpen}

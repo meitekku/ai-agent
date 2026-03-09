@@ -150,6 +150,15 @@
     border-bottom: 1px solid oklch(1 0 0 / 6%);
   }
 
+  /* Glass-morphism sidebar */
+  .glass-sidebar {
+    backdrop-filter: blur(12px) saturate(1.3);
+    background: oklch(0.985 0.002 248 / 85%);
+  }
+  .dark .glass-sidebar {
+    background: oklch(0.12 0.018 262 / 85%);
+  }
+
   /* Subtle background radial for empty state */
   .bg-radial-glow {
     background:

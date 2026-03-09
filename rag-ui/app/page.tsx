@@ -11,7 +11,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { ChatHeader } from "@/components/chat-header";
-import { DocumentSidebar } from "@/components/document-sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import { SlideViewer } from "@/components/slide-viewer";
 import { VisualSlideViewer } from "@/components/visual-slide-viewer";
 import { HtmlSlideViewer } from "@/components/html-slide-viewer";
@@ -37,8 +37,6 @@ const emptyStateIcon = (
 // ---------------------------------------------------------------------------
 
 export default function ChatPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   const service = useChatSettingsStore((s) => s.service);
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
 
@@ -48,8 +46,6 @@ export default function ChatPage() {
 
   const isLoading = status === "submitted" || status === "streaming";
   const submitTimeRef = useRef(0);
-
-  const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -187,10 +183,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
-      <DocumentSidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
+      <AppSidebar />
 
       <div className="relative flex flex-1 flex-col min-w-0 overflow-hidden">
-        <ChatHeader sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+        <ChatHeader />
 
         {/* Conversation — ChatInput is inside ConversationContent for shared scroll area */}
         <Conversation className="flex-1">

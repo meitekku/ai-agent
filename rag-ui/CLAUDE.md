@@ -107,7 +107,10 @@ rag-ui/
 │   ├── layout.tsx
 │   ├── page.tsx                       # 4種スライドビューア統合
 │   └── api/
-│       ├── chat/route.ts              # streamText + direct search + Valkey cache
+│       ├── chat/route.ts              # streamText + direct search + Valkey cache + skills injection
+│       ├── skills/
+│       │   ├── route.ts               # GET/POST スキル一覧/新規作成
+│       │   └── [id]/route.ts          # PUT/DELETE スキル更新/削除
 │       ├── documents/
 │       │   ├── route.ts               # GET 文档列表
 │       │   ├── upload/route.ts        # POST PDF 上传
@@ -143,7 +146,9 @@ rag-ui/
 │   ├── slide-studio.tsx       # スライドスタジオ（構造化編集、Mermaid、PPTX）
 │   ├── style-options-panel.tsx # スタイルオプション（産業/職種/年代/色/フォント）
 │   ├── template-manager.tsx   # テンプレート管理モーダル
-│   └── document-sidebar.tsx   # ドキュメント管理サイドバー
+│   ├── app-sidebar.tsx         # マルチセクションサイドバー（overlay/pinned）
+│   ├── documents-section.tsx  # ドキュメント管理セクション
+│   └── skills-section.tsx     # スキル CRUD セクション
 ├── lib/
 │   ├── utils.ts           # shadcn 自動生成
 │   ├── constants.ts       # 環境変数定義
@@ -154,6 +159,7 @@ rag-ui/
 │   ├── slide-provider.ts  # スライド LLM プロバイダー（Gemini/MLX 自動切替）
 │   ├── slide-prompts.ts   # スライド生成プロンプト + バリデーション
 │   ├── slide-store.ts     # 簡易スライド状態管理（Zustand）
+│   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg）
 │   ├── slide-db.ts        # PostgreSQL スライドCRUD（pg）
 │   ├── slide-types.ts     # スライド共有型定義
 │   └── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
@@ -172,6 +178,8 @@ rag-ui/
 | GET                  | /api/documents                | 文档列表                                                 |
 | POST                 | /api/documents/upload         | PDF 上传（→ LightRAG /ingest）                           |
 | DELETE               | /api/documents/[id]           | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）       |
+| GET/POST             | /api/skills                   | スキル一覧 / 新規作成                                    |
+| PUT/DELETE           | /api/skills/[id]              | スキル更新 / 削除                                        |
 | POST                 | /api/slides/plan              | 簡易スライド構成計画                                     |
 | POST                 | /api/slides/render            | 簡易スライド HTML 生成                                   |
 | POST                 | /api/slides/generate          | 構造化デッキ JSON 生成（generateObject + Zod）           |
@@ -199,7 +207,7 @@ bun run format:check # Prettier チェック
 
 ## 已安装 shadcn 组件
 
-button, badge, card, input, textarea, dropdown-menu, label, separator, select, alert-dialog, input-group, field, combobox, tooltip, hover-card, spinner, dialog, button-group, command
+button, badge, card, input, textarea, dropdown-menu, label, separator, select, alert-dialog, input-group, field, combobox, tooltip, hover-card, spinner, dialog, button-group, command, switch, scroll-area, tabs
 
 ## 性能优化记录
 
@@ -279,16 +287,17 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL スライドテーブル（3表）
+### PostgreSQL テーブル（4表）
 
 | テーブル          | 用途                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
 | `slide_decks`     | デッキメタデータ（title, question, answer, plan_md, style_options JSONB） |
 | `slide_pages`     | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）   |
 | `slide_templates` | テンプレート（name, position, html, UNIQUE(name, position)）              |
+| `skills`          | スキル（name, description, content, enabled）— システムプロンプト注入用   |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureSlideTables()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureSlideTables()` / `ensureSkillsTables()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート
