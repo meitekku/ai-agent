@@ -64,7 +64,9 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限追加 |
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
-| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch + readPage tools（リトライ付き）+ skills injection |
+| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | tool calling（searchKnowledgeBase + webSearch + readPage）+ skills injection |
+| `rag-ui/app/api/kb-config/route.ts` | 同上 | 一致 | GET/PUT ナレッジベース設定 |
+| `rag-ui/app/api/kb-config/generate/route.ts` | 同上 | 一致 | LLM で KB 設定自動生成 |
 | `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
 | `rag-ui/app/page.tsx` | 同上 | 一致 | / → /new リダイレクト |
 | `rag-ui/app/new/page.tsx` | 同上 | 一致 | ChatPage ラッパー |
@@ -87,6 +89,8 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
 | `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
+| `rag-ui/lib/kb-config-db.ts` | 同上 | 一致 | KB Config PostgreSQL CRUD（single-row） |
+| `rag-ui/lib/semantic-cache.ts` | 同上 | 一致 | Valkey 語義キャッシュ（v2 prefix） |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
@@ -103,6 +107,7 @@ cp ~/Desktop/uiForAI/rag-ui/app/documents/page.tsx ~/Desktop/uiForAI/rag-deploy/
 cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/skills/page.tsx
 # API
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
+cp -r ~/Desktop/uiForAI/rag-ui/app/api/kb-config ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/kb-config
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/history/chats
 # コンポーネント
@@ -118,6 +123,8 @@ cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-db.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-tree.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-tree.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skills-db.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/kb-config-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/kb-config-db.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/semantic-cache.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/semantic-cache.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
 
 # lightrag-service の変更を rag-deploy に反映（config.py は除外）

@@ -45,7 +45,7 @@ export function ChatInput({
         <PromptInputTextarea
           value={input}
           onChange={handleChange}
-          placeholder="ナレッジベースに質問する..."
+          placeholder="メッセージを入力..."
           disabled={isLoading}
         />
         <PromptInputFooter>

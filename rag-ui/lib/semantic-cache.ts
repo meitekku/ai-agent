@@ -2,9 +2,9 @@ import { createClient, type RedisClientType } from "redis";
 import { REDIS_URL } from "./constants";
 import { generateEmbedding, cosineSimilarity } from "./embedding-client";
 
-const ENTRY_PREFIX = "rag:cache:entry:";
-const EXACT_PREFIX = "rag:cache:exact:";
-const INDEX_KEY = "rag:cache:index";
+const ENTRY_PREFIX = "rag:cache:v2:entry:";
+const EXACT_PREFIX = "rag:cache:v2:exact:";
+const INDEX_KEY = "rag:cache:v2:index";
 const CACHE_TTL = 3600; // 1 hour
 const SIMILARITY_THRESHOLD = 0.85;
 

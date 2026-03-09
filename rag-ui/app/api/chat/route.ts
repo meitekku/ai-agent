@@ -13,21 +13,25 @@ import { searchOnly, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
 import { TAVILY_API_KEY } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
+import { getKbConfig } from "@/lib/kb-config-db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const hasTavily = !!TAVILY_API_KEY;
 
-const BASE_SYSTEM_PROMPT = `あなたはナレッジベースアシスタントです。ユーザーの質問に対して、提供されたドキュメントの情報に基づいて正確に回答してください。
+function buildSystemPrompt(): string {
+  let prompt = `あなたは多機能 AI アシスタントです。ユーザーの質問に正確かつ簡潔に回答してください。
 
 重要なルール:
-- 以下の「検索結果」セクションに含まれるドキュメント情報に基づいて回答してください
-- 情報が見つからない場合は「関連する情報が見つかりませんでした」と伝えてください
-- 回答にはソースのドキュメント名を含めてください
+- 利用可能なツールを適切に使い分けてください
+- ナレッジベースに関連する質問には searchKnowledgeBase ツールを使用してください
+- 一般的な挨拶や雑談にはツールを使わず直接回答してください
+- ナレッジベースの検索結果を使用した場合は、ソースのドキュメント名を含めてください
 - 日本語で回答してください（ユーザーが別の言語で質問した場合はその言語で回答）`;
 
-const WEB_SEARCH_PROMPT = `
+  if (hasTavily) {
+    prompt += `
 
 ## ウェブ検索
 
@@ -39,25 +43,6 @@ webSearch ツールが利用可能です。以下の場合に **自分で判断�
 
 ナレッジベースに十分な情報がある場合は、webSearch を使わずそのまま回答してください。
 ウェブ検索結果を使用した場合は、出典のURLを回答に含めてください。`;
-
-function buildSystemPrompt(
-  contexts: { document: string; section: string; content: string }[] | null,
-  searchFailed: boolean,
-): string {
-  let prompt = BASE_SYSTEM_PROMPT;
-
-  if (searchFailed) {
-    prompt += `\n\n## 検索結果\nナレッジベース検索に失敗しました。一般的な知識に基づいて回答してください。`;
-  } else if (!contexts || contexts.length === 0) {
-    prompt += `\n\n## 検索結果\n関連するドキュメントは見つかりませんでした。`;
-  } else {
-    prompt += `\n\n## 検索結果`;
-    for (let i = 0; i < contexts.length; i++) {
-      const c = contexts[i];
-      prompt += `\n\n### ソース ${i + 1}: ${c.document}`;
-      if (c.section) prompt += `\nセクション: ${c.section}`;
-      prompt += `\n${c.content}`;
-    }
   }
 
   return prompt;
@@ -80,9 +65,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "messages array is required" }, { status: 400 });
   }
 
-  const t = { start: Date.now(), cache: 0, search: 0, prompt: 0, stream: 0 };
+  const t = { start: Date.now(), cache: 0, prompt: 0, stream: 0 };
 
-  // Extract last user message text for search query
+  // Extract last user message text for cache key
   const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
   const queryText =
     lastUserMsg?.parts
@@ -109,175 +94,192 @@ export async function POST(req: Request) {
     }
   }
 
-  // Search knowledge base before streaming
-  let contexts: { document: string; section: string; content: string }[] | null = null;
-  let searchFailed = false;
-
-  if (queryText) {
-    try {
-      const t0 = Date.now();
-      const searchRes = await searchOnly(queryText, { topK: 3, service });
-      t.search = Date.now() - t0;
-      console.log(`[chat] 🔍 search: ${t.search}ms →`, searchRes.results?.length ?? 0, "results");
-      if (searchRes.results && searchRes.results.length > 0) {
-        contexts = searchRes.results.map((r: SearchResult) => ({
-          document: r.name ?? "unknown",
-          section: r.tree_context?.section_path?.join(" > ") ?? "",
-          content: r.tree_context?.context ?? "",
-        }));
-      } else {
-        contexts = [];
-      }
-    } catch (err) {
-      t.search = Date.now() - (t.start + t.cache);
-      console.error(`[chat] search failed (${t.search}ms):`, err);
-      searchFailed = true;
+  // Build KB tool description dynamically
+  let kbDescription = "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
+  try {
+    const kbConfig = await getKbConfig();
+    if (kbConfig?.title) {
+      kbDescription = `ナレッジベース「${kbConfig.title}」を検索: ${kbConfig.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
     }
+  } catch (e) {
+    console.error("[chat] kb-config fetch failed:", e);
   }
 
-  // Build tools map: always offer web search (LLM decides when to use it)
-  const tools = hasTavily
-    ? {
-        webSearch: tool({
-          description:
-            "Search the web and get a list of results with summaries. Use when the knowledge base results are insufficient or the user requests web search. Follow up with readPage to get full content of specific results.",
-          inputSchema: z.object({
-            query: z.string().describe("Optimized search query (use the best language for the topic)"),
-            topic: z
-              .enum(["general", "news", "finance"])
-              .optional()
-              .describe("'news' for recent events, 'finance' for financial data, 'general' for everything else"),
-            timeRange: z
-              .enum(["day", "week", "month", "year"])
-              .optional()
-              .describe("Filter results by recency, only set when freshness matters"),
-          }),
-          execute: async ({ query, topic, timeRange }) => {
-            console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} time=${timeRange ?? "any"}`);
-            const t0 = Date.now();
+  // Build tools map
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tools: Record<string, any> = {
+    searchKnowledgeBase: tool({
+      description: kbDescription,
+      inputSchema: z.object({
+        query: z.string().describe("Search query for the knowledge base"),
+      }),
+      execute: async ({ query }) => {
+        console.log(`[chat] 🔍 searchKnowledgeBase: "${query}"`);
+        const t0 = Date.now();
+        try {
+          const searchRes = await searchOnly(query, { topK: 3, service });
+          const elapsed = Date.now() - t0;
+          console.log(`[chat] 🔍 search: ${elapsed}ms →`, searchRes.results?.length ?? 0, "results");
 
-            const doSearch = async (depth: "basic" | "advanced", minScore: number) => {
-              const body: Record<string, unknown> = {
-                query,
-                max_results: 5,
-                search_depth: depth,
-                topic: topic ?? "general",
-                include_answer: true,
-              };
-              if (timeRange) body.time_range = timeRange;
-              const res = await fetch("https://api.tavily.com/search", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${TAVILY_API_KEY}`,
-                },
-                body: JSON.stringify(body),
-              });
-              if (!res.ok) {
-                const msg = await res.text().catch(() => "");
-                console.error(`[chat] ❌ webSearch failed: ${res.status} ${msg}`);
-                throw new Error(`Web search failed: ${res.status}`);
-              }
-              const data = await res.json();
-              const results =
-                data.results
-                  ?.filter((r: { score: number }) => r.score >= minScore)
-                  .map(
-                    (r: { title: string; url: string; content: string; score: number }) => ({
-                      title: r.title,
-                      url: r.url,
-                      summary: r.content,
-                      relevance: r.score,
-                    }),
-                  ) ?? [];
-              return { answer: data.answer as string | null, results, totalCount: data.results?.length ?? 0 };
-            };
+          if (!searchRes.results || searchRes.results.length === 0) {
+            return { found: false, message: "関連するドキュメントは見つかりませんでした。" };
+          }
 
-            // First attempt: basic search, score ≥ 0.4
-            let { answer, results, totalCount } = await doSearch("basic", 0.4);
-            console.log(
-              `[chat] 🌐 webSearch[1/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.4)`,
-            );
+          const contexts = searchRes.results.map((r: SearchResult, i: number) => ({
+            index: i + 1,
+            document: r.name ?? "unknown",
+            section: r.tree_context?.section_path?.join(" > ") ?? "",
+            content: r.tree_context?.context ?? "",
+          }));
 
-            // Retry with advanced search if no relevant results
-            if (results.length === 0) {
-              console.log(`[chat] 🌐 webSearch retry: no relevant results, trying advanced search...`);
-              ({ answer, results, totalCount } = await doSearch("advanced", 0.2));
-              console.log(
-                `[chat] 🌐 webSearch[2/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.2)`,
-              );
-            }
+          return { found: true, results: contexts };
+        } catch (err) {
+          console.error(`[chat] search failed (${Date.now() - t0}ms):`, err);
+          return { found: false, message: "ナレッジベース検索に失敗しました。" };
+        }
+      },
+    }),
+  };
 
-            return { answer, results };
+  if (hasTavily) {
+    tools.webSearch = tool({
+      description:
+        "Search the web and get a list of results with summaries. Use when the knowledge base results are insufficient or the user requests web search. Follow up with readPage to get full content of specific results.",
+      inputSchema: z.object({
+        query: z.string().describe("Optimized search query (use the best language for the topic)"),
+        topic: z
+          .enum(["general", "news", "finance"])
+          .optional()
+          .describe("'news' for recent events, 'finance' for financial data, 'general' for everything else"),
+        timeRange: z
+          .enum(["day", "week", "month", "year"])
+          .optional()
+          .describe("Filter results by recency, only set when freshness matters"),
+      }),
+      execute: async ({ query, topic, timeRange }) => {
+        console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} time=${timeRange ?? "any"}`);
+        const t0 = Date.now();
+
+        const doSearch = async (depth: "basic" | "advanced", minScore: number) => {
+          const body: Record<string, unknown> = {
+            query,
+            max_results: 5,
+            search_depth: depth,
+            topic: topic ?? "general",
+            include_answer: true,
+          };
+          if (timeRange) body.time_range = timeRange;
+          const res = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${TAVILY_API_KEY}`,
+            },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const msg = await res.text().catch(() => "");
+            console.error(`[chat] ❌ webSearch failed: ${res.status} ${msg}`);
+            throw new Error(`Web search failed: ${res.status}`);
+          }
+          const data = await res.json();
+          const results =
+            data.results
+              ?.filter((r: { score: number }) => r.score >= minScore)
+              .map(
+                (r: { title: string; url: string; content: string; score: number }) => ({
+                  title: r.title,
+                  url: r.url,
+                  summary: r.content,
+                  relevance: r.score,
+                }),
+              ) ?? [];
+          return { answer: data.answer as string | null, results, totalCount: data.results?.length ?? 0 };
+        };
+
+        // First attempt: basic search, score ≥ 0.4
+        let { answer, results, totalCount } = await doSearch("basic", 0.4);
+        console.log(
+          `[chat] 🌐 webSearch[1/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.4)`,
+        );
+
+        // Retry with advanced search if no relevant results
+        if (results.length === 0) {
+          console.log(`[chat] 🌐 webSearch retry: no relevant results, trying advanced search...`);
+          ({ answer, results, totalCount } = await doSearch("advanced", 0.2));
+          console.log(
+            `[chat] 🌐 webSearch[2/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.2)`,
+          );
+        }
+
+        return { answer, results };
+      },
+    });
+
+    tools.readPage = tool({
+      description:
+        "Extract full content from specific URLs. Use after webSearch to read pages that look most relevant from the search results. Can read up to 3 URLs at once.",
+      inputSchema: z.object({
+        urls: z
+          .array(z.string())
+          .describe("URLs to extract content from (max 3)"),
+        query: z
+          .string()
+          .optional()
+          .describe("The original question, used to rank content chunks by relevance"),
+      }),
+      execute: async ({ urls, query }) => {
+        const targetUrls = urls.slice(0, 3);
+        console.log(`[chat] 📄 readPage: ${targetUrls.length} URLs`);
+        const t0 = Date.now();
+        const res = await fetch("https://api.tavily.com/extract", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${TAVILY_API_KEY}`,
           },
-        }),
-
-        readPage: tool({
-          description:
-            "Extract full content from specific URLs. Use after webSearch to read pages that look most relevant from the search results. Can read up to 3 URLs at once.",
-          inputSchema: z.object({
-            urls: z
-              .array(z.string())
-              .describe("URLs to extract content from (max 3)"),
-            query: z
-              .string()
-              .optional()
-              .describe("The original question, used to rank content chunks by relevance"),
+          body: JSON.stringify({
+            urls: targetUrls,
+            query: query ?? undefined,
+            format: "markdown",
+            chunks_per_source: 3,
           }),
-          execute: async ({ urls, query }) => {
-            const targetUrls = urls.slice(0, 3);
-            console.log(`[chat] 📄 readPage: ${targetUrls.length} URLs`);
-            const t0 = Date.now();
-            const res = await fetch("https://api.tavily.com/extract", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${TAVILY_API_KEY}`,
-              },
-              body: JSON.stringify({
-                urls: targetUrls,
-                query: query ?? undefined,
-                format: "markdown",
-                chunks_per_source: 3,
+        });
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          console.error(`[chat] ❌ readPage failed: ${res.status} ${msg}`);
+          throw new Error(`Page extraction failed: ${res.status}`);
+        }
+        const data = await res.json();
+        console.log(
+          `[chat] 📄 readPage done: ${Date.now() - t0}ms, ${data.results?.length ?? 0} succeeded, ${data.failed_results?.length ?? 0} failed`,
+        );
+        return {
+          pages:
+            data.results?.map(
+              (r: { url: string; raw_content: string }) => ({
+                url: r.url,
+                content: r.raw_content?.slice(0, 5000) ?? "",
               }),
-            });
-            if (!res.ok) {
-              const msg = await res.text().catch(() => "");
-              console.error(`[chat] ❌ readPage failed: ${res.status} ${msg}`);
-              throw new Error(`Page extraction failed: ${res.status}`);
-            }
-            const data = await res.json();
-            console.log(
-              `[chat] 📄 readPage done: ${Date.now() - t0}ms, ${data.results?.length ?? 0} succeeded, ${data.failed_results?.length ?? 0} failed`,
-            );
-            return {
-              pages:
-                data.results?.map(
-                  (r: { url: string; raw_content: string }) => ({
-                    url: r.url,
-                    content: r.raw_content?.slice(0, 5000) ?? "",
-                  }),
-                ) ?? [],
-              failed:
-                data.failed_results?.map(
-                  (r: { url: string; error: string }) => ({
-                    url: r.url,
-                    error: r.error,
-                  }),
-                ) ?? [],
-            };
-          },
-        }),
-      }
-    : undefined;
+            ) ?? [],
+          failed:
+            data.failed_results?.map(
+              (r: { url: string; error: string }) => ({
+                url: r.url,
+                error: r.error,
+              }),
+            ) ?? [],
+        };
+      },
+    });
+  }
 
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
     let firstTokenTime = 0;
 
-    let systemPrompt = buildSystemPrompt(contexts, searchFailed);
-    if (hasTavily) systemPrompt += WEB_SEARCH_PROMPT;
+    let systemPrompt = buildSystemPrompt();
 
     // Inject enabled skills into system prompt (non-fatal)
     try {
@@ -299,7 +301,7 @@ export async function POST(req: Request) {
       system: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       messages: await convertToModelMessages(messages),
       tools,
-      stopWhen: hasTavily ? stepCountIs(4) : undefined,
+      stopWhen: stepCountIs(6),
       maxOutputTokens: 2048,
       onChunk() {
         if (!firstTokenTime) {
@@ -308,14 +310,17 @@ export async function POST(req: Request) {
           console.log(`[chat] 🚀 TTFT (${backendName} prefill): ${ttft}ms`);
         }
       },
-      async onFinish({ text, usage }) {
+      async onFinish({ text, usage, steps }) {
         t.stream = Date.now() - t.start;
         console.log(
-          `[chat] ✅ done: total=${t.stream}ms | cache=${t.cache}ms search=${t.search}ms prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
+          `[chat] ✅ done: total=${t.stream}ms | cache=${t.cache}ms prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
         );
-        // Cache the response for future identical queries
-        if (queryText && text) {
-          cacheResponse(queryText, text, contexts ?? []).catch(() => {});
+        // Only cache responses that used the knowledge base
+        const usedKB = steps?.some((step) =>
+          step.toolCalls?.some((tc) => tc.toolName === "searchKnowledgeBase"),
+        );
+        if (queryText && text && usedKB) {
+          cacheResponse(queryText, text, []).catch(() => {});
         }
       },
     });

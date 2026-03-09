@@ -20,12 +20,15 @@
 
 ```
 Browser useChat → /api/chat Route Handler → Valkey cache check
-                                          → LightRAG search-only 検索
-                                          → Gemini/MLX streamText 流式生成
+                                          → Gemini/MLX streamText + tool calling
+                                            → searchKnowledgeBase（LightRAG search-only）
+                                            → webSearch / readPage（Tavily）
                                           → Valkey cache write
 ```
 
-- Chat 使用直接検索方式（always-search）：每次查询先搜索再生成，单轮 LLM 调用
+- Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
+- `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入
+- 一般的な挨拶・雑談はツールを使わず直接回答（不要な RAG 検索をスキップ）
 - 文档上传（異步）: rag-ui → LightRAG /ingest → OCR 完了即応答 → 後台 LLM 実体抽出
 - 前端 5秒ポーリングで入庫状態更新（processing → processed / failed）
 - 文档管理 API 直接代理到 LightRAG 服务（/documents 含 status 字段）
@@ -111,7 +114,12 @@ rag-ui/
 │   ├── documents/page.tsx             # ドキュメント管理ページ
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # streamText + direct search + Valkey cache + skills injection
+│       ├── chat/route.ts              # streamText + tool calling + Valkey cache + skills injection
+│       ├── kb-config/
+│       │   ├── route.ts               # GET/PUT ナレッジベース設定
+│       │   └── generate/route.ts      # POST LLM で title+description 自動生成
+│       ├── ui-config/
+│       │   └── route.ts               # GET/PUT UI設定（サイドバー状態等）
 │       ├── skills/
 │       │   ├── route.ts               # GET/POST スキル一覧/新規作成
 │       │   └── [id]/route.ts          # PUT/DELETE スキル更新/削除
@@ -165,6 +173,8 @@ rag-ui/
 │   ├── store.ts           # Zustand store（sidebar 状態管理）
 │   ├── chat-db.ts         # PostgreSQL チャット会話CRUD（pg）
 │   ├── chat-tree.ts       # Zustand ツリー管理（ブランチ操作、パス計算）
+│   ├── kb-config-db.ts    # PostgreSQL ナレッジベース設定CRUD（single-row）
+│   ├── ui-config-db.ts    # PostgreSQL UI設定CRUD（single-row、JSONB preferences）
 │   ├── constants.ts       # 環境変数定義
 │   ├── rag-client.ts      # LightRAG/QueryService HTTP クライアント
 │   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替）
@@ -203,7 +213,10 @@ rag-ui/
 
 | メソッド             | パス                          | 説明                                                     |
 | -------------------- | ----------------------------- | -------------------------------------------------------- |
-| POST                 | /api/chat                     | AI チャット（streamText + direct search + Valkey cache） |
+| POST                 | /api/chat                     | AI チャット（streamText + tool calling + Valkey cache） |
+| GET/PUT              | /api/kb-config                | ナレッジベース設定（title + description）               |
+| POST                 | /api/kb-config/generate       | LLM で KB title+description を自動生成                  |
+| GET/PUT              | /api/ui-config                | UI設定（サイドバー状態等、JSONB preferences）           |
 | GET                  | /api/documents                | 文档列表                                                 |
 | POST                 | /api/documents/upload         | PDF 上传（→ LightRAG /ingest）                           |
 | DELETE               | /api/documents/[id]           | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）       |
@@ -248,7 +261,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | 优化项                       | 改动                                                        | 效果                          |
 | ---------------------------- | ----------------------------------------------------------- | ----------------------------- |
 | LightRAG `ll_keywords`       | search-only 传 `ll_keywords=[question]` 跳过 LLM 关键词提取 | 搜索 17s → 0.1s（最大优化点） |
-| 去掉 tool calling            | 直接 search → generate，单轮 LLM                            | 省掉一轮 LLM 调用             |
+| tool calling 復活             | LLM が searchKnowledgeBase の使用を判断、一般質問は検索スキップ | 一般質問 ~8-10s（検索なし）   |
 | `/no_think`                  | 系统提示末尾加 `/no_think`（MLX のみ）                      | 跳过 qwen3 思考 token         |
 | Valkey 缓存                  | 相同查询直接返回缓存                                        | 重复查询 ~14ms                |
 | 再生成时跳过缓存             | `regenerate({ body: { skipCache: true } })`                 | 再生成は常に LLM 再問い合わせ |
@@ -344,7 +357,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL テーブル（6表）
+### PostgreSQL テーブル（8表）
 
 | テーブル          | 用途                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
@@ -354,9 +367,11 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | `slide_pages`     | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）   |
 | `slide_templates` | テンプレート（name, position, html, UNIQUE(name, position)）              |
 | `skills`          | スキル（name, description, content, enabled）— システムプロンプト注入用   |
+| `kb_config`       | ナレッジベース設定（single-row、title + description）— ツール description 注入用 |
+| `ui_config`       | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化        |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート
@@ -388,4 +403,5 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - [x] LLM バックエンド自動切替（Gemini/MLX、UI セレクター廃止）
 - [x] チャット履歴永続化（PostgreSQL、サイドバー一覧、`/chat/[id]` ルート）
 - [x] メッセージ編集・ブランチ分岐（ツリー構造、ブランチセレクター）
+- [x] Tool calling 移行（always-search → LLM 判断、KB 設定動的注入）
 - [ ] Docker 部署设定

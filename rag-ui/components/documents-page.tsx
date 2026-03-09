@@ -14,12 +14,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   FileTextIcon,
   TrashIcon,
   UploadIcon,
   Loader2Icon,
   AlertCircleIcon,
+  SparklesIcon,
+  SaveIcon,
+  DatabaseIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -79,12 +84,81 @@ function StatusBadge({ status, errorMsg }: { status?: string; errorMsg?: string 
 // DocumentsPage
 // ---------------------------------------------------------------------------
 
+interface KbConfig {
+  title: string;
+  description: string;
+}
+
+async function fetchKbConfig(): Promise<KbConfig> {
+  const res = await fetch("/api/kb-config");
+  if (!res.ok) throw new Error("Failed to fetch KB config");
+  return res.json();
+}
+
 export const DocumentsPage = memo(function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // KB config state
+  const { data: kbConfig } = useQuery({
+    queryKey: ["kb-config"],
+    queryFn: fetchKbConfig,
+  });
+  const [kbTitle, setKbTitle] = useState("");
+  const [kbDescription, setKbDescription] = useState("");
+  const [kbDirty, setKbDirty] = useState(false);
+  const kbInitRef = useRef(false);
+
+  // Sync fetched config into local state
+  if (kbConfig && !kbInitRef.current) {
+    kbInitRef.current = true;
+    setKbTitle(kbConfig.title);
+    setKbDescription(kbConfig.description);
+  }
+
+  const kbSaveMutation = useMutation({
+    mutationFn: async ({ title, description }: KbConfig) => {
+      const res = await fetch("/api/kb-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+    },
+    onSuccess: () => {
+      setKbDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "保存に失敗しました"),
+  });
+
+  const kbGenerateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/kb-config/generate", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to generate");
+      return res.json() as Promise<KbConfig>;
+    },
+    onSuccess: (data) => {
+      setKbTitle(data.title);
+      setKbDescription(data.description);
+      setKbDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "自動生成に失敗しました"),
+  });
+
+  const handleKbTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setKbTitle(e.target.value);
+    setKbDirty(true);
+  }, []);
+
+  const handleKbDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setKbDescription(e.target.value);
+    setKbDirty(true);
+  }, []);
 
   const { data: documents = [], isPending: loading } = useQuery({
     queryKey: ["documents"],
@@ -106,7 +180,16 @@ export const DocumentsPage = memo(function DocumentsPage() {
         throw new Error(data.error || "Upload failed");
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      // Fire-and-forget KB config regeneration
+      fetch("/api/kb-config/generate", { method: "POST" })
+        .then(() => {
+          kbInitRef.current = false;
+          queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+        })
+        .catch(() => {});
+    },
     onError: (err) => setError(err instanceof Error ? err.message : "アップロードに失敗しました"),
   });
 
@@ -127,7 +210,16 @@ export const DocumentsPage = memo(function DocumentsPage() {
       const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      // Fire-and-forget KB config regeneration
+      fetch("/api/kb-config/generate", { method: "POST" })
+        .then(() => {
+          kbInitRef.current = false;
+          queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+        })
+        .catch(() => {});
+    },
     onError: (err) => setError(err instanceof Error ? err.message : "削除に失敗しました"),
     onSettled: () => setDeletingId(null),
   });
@@ -196,6 +288,56 @@ export const DocumentsPage = memo(function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* KB Config */}
+      <div className="shrink-0 border-b border-border px-6 py-4">
+        <div className="mx-auto max-w-3xl space-y-3">
+          <div className="flex items-center gap-2">
+            <DatabaseIcon className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">ナレッジベース設定</span>
+            <span className="text-xs text-muted-foreground">— AI がツール判断に使用</span>
+          </div>
+          <div className="grid gap-3">
+            <Input
+              placeholder="タイトル（例: 社内規定集）"
+              value={kbTitle}
+              onChange={handleKbTitleChange}
+              className="h-8 text-sm"
+            />
+            <Textarea
+              placeholder="概要（例: 社内規定、就業規則、各種手続きガイドラインを含むドキュメント集）"
+              value={kbDescription}
+              onChange={handleKbDescriptionChange}
+              className="min-h-[60px] resize-none text-sm"
+              rows={2}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {kbDirty && (
+              <Button
+                size="sm"
+                variant="default"
+                className="gap-1.5 h-7 text-xs"
+                onClick={() => kbSaveMutation.mutate({ title: kbTitle, description: kbDescription })}
+                disabled={kbSaveMutation.isPending}
+              >
+                {kbSaveMutation.isPending ? <Loader2Icon className="size-3 animate-spin" /> : <SaveIcon className="size-3" />}
+                保存
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-7 text-xs"
+              onClick={() => kbGenerateMutation.mutate()}
+              disabled={kbGenerateMutation.isPending}
+            >
+              {kbGenerateMutation.isPending ? <Loader2Icon className="size-3 animate-spin" /> : <SparklesIcon className="size-3" />}
+              AI で自動生成
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Document list */}
       <ScrollArea className="flex-1">

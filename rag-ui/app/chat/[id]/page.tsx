@@ -17,6 +17,9 @@ export default function ChatByIdPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
+    setData(null);
+    setError(null);
     fetch(`/api/history/chats/${id}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`Not found (${res.status})`);

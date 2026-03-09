@@ -405,10 +405,10 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
               {emptyStateIcon}
               <div className="space-y-1">
                 <h3 className="font-medium text-sm">
-                  RAG チャットへようこそ
+                  AI チャットへようこそ
                 </h3>
                 <p className="text-muted-foreground text-sm">
-                  ナレッジベースに質問してみましょう。サイドバーからドキュメントをアップロードできます。
+                  何でも質問してください。ナレッジベースやウェブ検索を自動的に活用して回答します。
                 </p>
               </div>
             </div>
@@ -445,8 +445,8 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
                   <MessageContent>
                     <StepIndicator
                       icon={ZapIcon}
-                      activeLabel="検索・生成中..."
-                      completedLabel="検索・生成完了"
+                      activeLabel="考え中..."
+                      completedLabel="処理完了"
                       active
                     />
                   </MessageContent>

@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useState, useRef, useEffect } from "react";
 import type { UIMessage } from "ai";
-import { isToolUIPart } from "ai";
+import { isToolUIPart, getToolName } from "ai";
 import { useChatSettingsStore } from "@/lib/store";
 import {
   Message,
@@ -111,7 +111,7 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 }) {
   const isComplete = state === "output-available";
 
-  if (toolName === "getInformation") {
+  if (toolName === "searchKnowledgeBase") {
     return (
       <StepIndicator
         icon={SearchIcon}
@@ -362,7 +362,7 @@ export const ChatMessage = memo(function ChatMessage({
                 return (
                   <ToolCallIndicator
                     key={key}
-                    toolName={part.type.replace(/^tool-/, "")}
+                    toolName={getToolName(part)}
                     state={part.state}
                   />
                 );

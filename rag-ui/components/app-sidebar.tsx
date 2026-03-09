@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChatSettingsStore } from "@/lib/store";
@@ -12,6 +13,16 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipTrigger,
@@ -104,47 +115,50 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
     (s) => s.toggleSidebarPinned,
   );
   const setSidebarOpen = useChatSettingsStore((s) => s.setSidebarOpen);
+  const incrementChatReset = useChatSettingsStore((s) => s.incrementChatReset);
 
   // Fetch chat history
   const { data: historyData } = useQuery({
     queryKey: ["chat-history"],
     queryFn: async () => {
       const res = await fetch("/api/history/chats?limit=50");
-      if (!res.ok) return { conversations: [] };
+      if (!res.ok) return { conversations: [] as ChatItem[] };
       return res.json() as Promise<{ conversations: ChatItem[] }>;
     },
-    refetchInterval: 30000, // Refresh every 30s
+    refetchInterval: 30000,
   });
 
   const conversations = historyData?.conversations ?? [];
   const groups = groupByDate(conversations);
 
-  const handleNav = useCallback(
-    (href: string) => {
-      router.push(href);
-      if (!sidebarPinned) {
-        setSidebarOpen(false);
-      }
-    },
-    [router, sidebarPinned, setSidebarOpen],
-  );
+  const handleTogglePin = useCallback(() => {
+    const next = !sidebarPinned;
+    toggleSidebarPinned();
+    document.cookie = `sidebar-pinned=${next}; path=/; max-age=31536000; SameSite=Lax`;
+    fetch("/api/ui-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sidebarPinned: next }),
+    }).catch(() => {});
+  }, [sidebarPinned, toggleSidebarPinned]);
 
-  const handleDelete = useCallback(
-    async (e: React.MouseEvent, chatId: string) => {
-      e.stopPropagation();
-      try {
-        await fetch(`/api/history/chats/${chatId}`, { method: "DELETE" });
-        queryClient.invalidateQueries({ queryKey: ["chat-history"] });
-        // If we're viewing the deleted chat, navigate to /new
-        if (pathname === `/chat/${chatId}`) {
-          router.push("/new");
-        }
-      } catch (err) {
-        console.error("Failed to delete chat:", err);
+  // Delete confirmation dialog state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const chatId = deleteTarget.id;
+    setDeleteTarget(null);
+    try {
+      await fetch(`/api/history/chats/${chatId}`, { method: "DELETE" });
+      queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+      if (pathname === `/chat/${chatId}`) {
+        router.push("/new");
       }
-    },
-    [queryClient, pathname, router],
-  );
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+    }
+  }, [deleteTarget, queryClient, pathname, router]);
 
   return (
     <div className="flex h-full flex-col">
@@ -175,9 +189,13 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
               ? pathname === "/new"
               : pathname.startsWith(item.href);
           return (
-            <button
+            <Link
               key={item.href}
-              onClick={() => handleNav(item.href)}
+              href={item.href}
+              onClick={() => {
+                if (item.href === "/new") incrementChatReset();
+                if (!sidebarPinned) setSidebarOpen(false);
+              }}
               className={`
                 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors
                 ${
@@ -191,7 +209,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                 className={`size-4 shrink-0 ${isActive ? "text-primary" : ""}`}
               />
               {item.label}
-            </button>
+            </Link>
           );
         })}
       </nav>
@@ -210,9 +228,10 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                   {group.items.map((chat) => {
                     const isActive = pathname === `/chat/${chat.id}`;
                     return (
-                      <button
+                      <Link
                         key={chat.id}
-                        onClick={() => handleNav(`/chat/${chat.id}`)}
+                        href={`/chat/${chat.id}`}
+                        onClick={() => { if (!sidebarPinned) setSidebarOpen(false); }}
                         className={`
                           group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors
                           ${
@@ -228,13 +247,13 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                         </span>
                         <span
                           role="button"
-                          onClick={(e) => handleDelete(e, chat.id)}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteTarget({ id: chat.id, title: chat.title }); }}
                           className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5"
                           aria-label="削除"
                         >
                           <Trash2Icon className="size-3" />
                         </span>
-                      </button>
+                      </Link>
                     );
                   })}
                 </div>
@@ -252,7 +271,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={toggleSidebarPinned}
+                  onClick={handleTogglePin}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                 >
                   {sidebarPinned ? (
@@ -270,6 +289,24 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
           </div>
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>チャットを削除</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{deleteTarget?.title}」を削除しますか？この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -278,36 +315,39 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
 // AppSidebar — dual-mode (overlay Sheet / pinned aside)
 // ---------------------------------------------------------------------------
 
-export function AppSidebar() {
+export function AppSidebar({ initialPinned }: { initialPinned: boolean }) {
   const isDesktop = useIsDesktop();
   const sidebarOpen = useChatSettingsStore((s) => s.sidebarOpen);
   const sidebarPinned = useChatSettingsStore((s) => s.sidebarPinned);
   const setSidebarOpen = useChatSettingsStore((s) => s.setSidebarOpen);
   const setSidebarPinned = useChatSettingsStore((s) => s.setSidebarPinned);
 
-  // Hydrate pinned state from localStorage
+  // Hydrate Zustand from server cookie value (once on mount)
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    const stored = localStorage.getItem("sidebar-pinned");
-    if (stored === "true") {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    if (initialPinned) {
       setSidebarPinned(true);
       setSidebarOpen(true);
     }
-  }, [setSidebarPinned, setSidebarOpen]);
+  }, [initialPinned, setSidebarPinned, setSidebarOpen]);
 
-  const showPinned = isDesktop && sidebarPinned && sidebarOpen;
+  // Before hydration use server value; after, use Zustand
+  const effectivePinned = hydratedRef.current ? sidebarPinned : initialPinned;
 
   return (
     <>
-      {/* Pinned: inline aside, pushes content */}
-      {showPinned && (
+      {/* Pinned: CSS hidden md:flex handles desktop visibility */}
+      {effectivePinned && (
         <aside className="hidden md:flex w-56 shrink-0 h-dvh flex-col glass-sidebar border-r border-border">
           <SidebarInner />
         </aside>
       )}
 
-      {/* Overlay: Sheet */}
+      {/* Overlay: on mobile or when not pinned */}
       <Sheet
-        open={showPinned ? false : sidebarOpen}
+        open={isDesktop && effectivePinned ? false : sidebarOpen}
         onOpenChange={setSidebarOpen}
       >
         <SheetContent
