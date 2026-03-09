@@ -189,6 +189,7 @@ export const ChatMessage = memo(function ChatMessage({
   isLoading,
   isActiveStreaming,
   submitTime,
+  createdAt,
   onCopy,
   onRegenerate,
   onGenerateSlides,
@@ -200,6 +201,7 @@ export const ChatMessage = memo(function ChatMessage({
   isLoading: boolean;
   isActiveStreaming?: boolean;
   submitTime?: number;
+  createdAt?: string;
   onCopy: (text: string) => void;
   onRegenerate: () => void;
   onGenerateSlides?: (
@@ -403,13 +405,21 @@ export const ChatMessage = memo(function ChatMessage({
         {showGenerating ? <GeneratingIndicator /> : null}
       </MessageContent>
 
-      {/* User message actions: edit + branch selector */}
-      {message.role === "user" && !isLoading ? (
-        <MessageActions>
-          {onEdit && (
+      {/* User message actions: edit + timestamp + branch selector — always rendered, visible on hover */}
+      {message.role === "user" ? (
+        <MessageActions className="opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-200">
+          {onEdit && !isLoading && (
             <MessageAction tooltip="編集" onClick={handleStartEdit}>
               <PencilIcon className="size-3.5" />
             </MessageAction>
+          )}
+          {createdAt && (
+            <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+              {new Date(createdAt).toLocaleTimeString("ja-JP", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
           )}
           {branchInfo && onSwitchBranch && (
             <BranchSelector

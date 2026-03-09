@@ -12,6 +12,7 @@ export interface TreeNode {
   role: string;
   parts: unknown[];
   childIds: string[];
+  createdAt?: string;
 }
 
 interface ChatTreeState {
@@ -110,6 +111,7 @@ export const useChatTreeStore = create<ChatTreeState>((set, get) => ({
         role: msg.role,
         parts: msg.parts as unknown[],
         childIds: [],
+        createdAt: msg.created_at,
       };
     }
 

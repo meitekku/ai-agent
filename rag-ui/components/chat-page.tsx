@@ -428,6 +428,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
                     isLoading={isLoading}
                     isActiveStreaming={isActive}
                     submitTime={isActive ? submitTimeRef.current : undefined}
+                    createdAt={treeStore.nodes[message.id]?.createdAt}
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
                     onGenerateSlides={handleGenerateSlides}
