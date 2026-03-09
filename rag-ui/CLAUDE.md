@@ -122,7 +122,8 @@ rag-ui/
 │       │   └── route.ts               # GET/PUT UI設定（サイドバー状態等）
 │       ├── skills/
 │       │   ├── route.ts               # GET/POST スキル一覧/新規作成
-│       │   └── [id]/route.ts          # PUT/DELETE スキル更新/削除
+│       │   ├── [id]/route.ts          # PUT/DELETE スキル更新/削除
+│       │   └── upload/route.ts        # POST ZIP スキルアップロード
 │       ├── history/chats/
 │       │   ├── route.ts               # GET/POST チャット履歴一覧/新規作成
 │       │   └── [id]/
@@ -167,7 +168,7 @@ rag-ui/
 │   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、チャット履歴）
 │   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ統合）
 │   ├── documents-page.tsx     # ドキュメント管理ページコンポーネント
-│   └── skills-page.tsx        # スキル CRUD ページコンポーネント
+│   └── skills-page.tsx        # スキル CRUD + ZIP アップロードページコンポーネント
 ├── lib/
 │   ├── utils.ts           # shadcn 自動生成
 │   ├── store.ts           # Zustand store（sidebar 状態管理）
@@ -183,7 +184,8 @@ rag-ui/
 │   ├── slide-provider.ts  # スライド LLM プロバイダー（Gemini/MLX 自動切替）
 │   ├── slide-prompts.ts   # スライド生成プロンプト + バリデーション
 │   ├── slide-store.ts     # 簡易スライド状態管理（Zustand）
-│   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg）
+│   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg、source_type 列対応）
+│   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
 │   ├── slide-db.ts        # PostgreSQL スライドCRUD（pg）
 │   ├── slide-types.ts     # スライド共有型定義
 │   └── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
@@ -222,6 +224,7 @@ rag-ui/
 | DELETE               | /api/documents/[id]           | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）       |
 | GET/POST             | /api/skills                   | スキル一覧 / 新規作成                                    |
 | PUT/DELETE           | /api/skills/[id]              | スキル更新 / 削除                                        |
+| POST                 | /api/skills/upload            | ZIP スキルアップロード（SKILL.md + references）          |
 | GET/POST             | /api/history/chats            | チャット履歴一覧 / 新規会話作成                          |
 | GET/PATCH/DELETE     | /api/history/chats/[id]       | 会話詳細 / 更新 / 削除                                   |
 | POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                  |
@@ -366,7 +369,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | `slide_decks`     | デッキメタデータ（title, question, answer, plan_md, style_options JSONB） |
 | `slide_pages`     | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）   |
 | `slide_templates` | テンプレート（name, position, html, UNIQUE(name, position)）              |
-| `skills`          | スキル（name, description, content, enabled）— システムプロンプト注入用   |
+| `skills`          | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
 | `kb_config`       | ナレッジベース設定（single-row、title + description）— ツール description 注入用 |
 | `ui_config`       | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化        |
 
