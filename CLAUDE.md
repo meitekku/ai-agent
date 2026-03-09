@@ -64,7 +64,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限追加 |
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
-| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch tool + skills injection |
+| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch + readPage tools（リトライ付き）+ skills injection |
 | `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
 | `rag-ui/app/page.tsx` | 同上 | 一致 | / → /new リダイレクト |
 | `rag-ui/app/new/page.tsx` | 同上 | 一致 | 新規チャットページ |
@@ -77,7 +77,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替 |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
-| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch ToolCallIndicator 追加 |
+| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch + readPage ToolCallIndicator 追加 |
 | `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state（Zustand） |
 | `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |

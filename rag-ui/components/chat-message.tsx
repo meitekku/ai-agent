@@ -86,6 +86,17 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "readPage") {
+    return (
+      <StepIndicator
+        icon={FileTextIcon}
+        activeLabel="ページを読み込み中..."
+        completedLabel="ページ読み込み完了"
+        active={!isComplete}
+      />
+    );
+  }
+
   return (
     <StepIndicator
       icon={SearchIcon}

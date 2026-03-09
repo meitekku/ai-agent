@@ -140,50 +140,131 @@ export async function POST(req: Request) {
     ? {
         webSearch: tool({
           description:
-            "Search the web for current information. Use when the knowledge base results are insufficient, irrelevant, or when the user requests web/internet search.",
+            "Search the web and get a list of results with summaries. Use when the knowledge base results are insufficient or the user requests web search. Follow up with readPage to get full content of specific results.",
           inputSchema: z.object({
             query: z.string().describe("Optimized search query (use the best language for the topic)"),
             topic: z
-              .enum(["general", "news"])
+              .enum(["general", "news", "finance"])
               .optional()
-              .describe("Search category: 'news' for recent events, 'general' for everything else"),
-            searchDepth: z
-              .enum(["basic", "advanced"])
+              .describe("'news' for recent events, 'finance' for financial data, 'general' for everything else"),
+            timeRange: z
+              .enum(["day", "week", "month", "year"])
               .optional()
-              .describe("'advanced' for complex/detailed queries, 'basic' for simple lookups"),
+              .describe("Filter results by recency, only set when freshness matters"),
           }),
-          execute: async ({ query, topic, searchDepth }) => {
-            console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} depth=${searchDepth ?? "basic"}`);
+          execute: async ({ query, topic, timeRange }) => {
+            console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} time=${timeRange ?? "any"}`);
             const t0 = Date.now();
-            const res = await fetch("https://api.tavily.com/search", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+
+            const doSearch = async (depth: "basic" | "advanced", minScore: number) => {
+              const body: Record<string, unknown> = {
                 query,
-                api_key: TAVILY_API_KEY,
                 max_results: 5,
-                search_depth: searchDepth ?? "basic",
+                search_depth: depth,
                 topic: topic ?? "general",
                 include_answer: true,
+              };
+              if (timeRange) body.time_range = timeRange;
+              const res = await fetch("https://api.tavily.com/search", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${TAVILY_API_KEY}`,
+                },
+                body: JSON.stringify(body),
+              });
+              if (!res.ok) {
+                const msg = await res.text().catch(() => "");
+                console.error(`[chat] ❌ webSearch failed: ${res.status} ${msg}`);
+                throw new Error(`Web search failed: ${res.status}`);
+              }
+              const data = await res.json();
+              const results =
+                data.results
+                  ?.filter((r: { score: number }) => r.score >= minScore)
+                  .map(
+                    (r: { title: string; url: string; content: string; score: number }) => ({
+                      title: r.title,
+                      url: r.url,
+                      summary: r.content,
+                      relevance: r.score,
+                    }),
+                  ) ?? [];
+              return { answer: data.answer as string | null, results, totalCount: data.results?.length ?? 0 };
+            };
+
+            // First attempt: basic search, score ≥ 0.4
+            let { answer, results, totalCount } = await doSearch("basic", 0.4);
+            console.log(
+              `[chat] 🌐 webSearch[1/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.4)`,
+            );
+
+            // Retry with advanced search if no relevant results
+            if (results.length === 0) {
+              console.log(`[chat] 🌐 webSearch retry: no relevant results, trying advanced search...`);
+              ({ answer, results, totalCount } = await doSearch("advanced", 0.2));
+              console.log(
+                `[chat] 🌐 webSearch[2/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.2)`,
+              );
+            }
+
+            return { answer, results };
+          },
+        }),
+
+        readPage: tool({
+          description:
+            "Extract full content from specific URLs. Use after webSearch to read pages that look most relevant from the search results. Can read up to 3 URLs at once.",
+          inputSchema: z.object({
+            urls: z
+              .array(z.string())
+              .describe("URLs to extract content from (max 3)"),
+            query: z
+              .string()
+              .optional()
+              .describe("The original question, used to rank content chunks by relevance"),
+          }),
+          execute: async ({ urls, query }) => {
+            const targetUrls = urls.slice(0, 3);
+            console.log(`[chat] 📄 readPage: ${targetUrls.length} URLs`);
+            const t0 = Date.now();
+            const res = await fetch("https://api.tavily.com/extract", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${TAVILY_API_KEY}`,
+              },
+              body: JSON.stringify({
+                urls: targetUrls,
+                query: query ?? undefined,
+                format: "markdown",
+                chunks_per_source: 3,
               }),
             });
             if (!res.ok) {
               const msg = await res.text().catch(() => "");
-              console.error(`[chat] ❌ webSearch failed: ${res.status} ${msg}`);
-              throw new Error(`Web search failed: ${res.status}`);
+              console.error(`[chat] ❌ readPage failed: ${res.status} ${msg}`);
+              throw new Error(`Page extraction failed: ${res.status}`);
             }
             const data = await res.json();
             console.log(
-              `[chat] 🌐 webSearch done: ${Date.now() - t0}ms, ${data.results?.length ?? 0} results`,
+              `[chat] 📄 readPage done: ${Date.now() - t0}ms, ${data.results?.length ?? 0} succeeded, ${data.failed_results?.length ?? 0} failed`,
             );
             return {
-              answer: data.answer ?? null,
-              results:
-                data.results?.map((r: { title: string; url: string; content: string }) => ({
-                  title: r.title,
-                  url: r.url,
-                  content: r.content,
-                })) ?? [],
+              pages:
+                data.results?.map(
+                  (r: { url: string; raw_content: string }) => ({
+                    url: r.url,
+                    content: r.raw_content?.slice(0, 5000) ?? "",
+                  }),
+                ) ?? [],
+              failed:
+                data.failed_results?.map(
+                  (r: { url: string; error: string }) => ({
+                    url: r.url,
+                    error: r.error,
+                  }),
+                ) ?? [],
             };
           },
         }),
@@ -218,7 +299,7 @@ export async function POST(req: Request) {
       system: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       messages: await convertToModelMessages(messages),
       tools,
-      stopWhen: hasTavily ? stepCountIs(3) : undefined,
+      stopWhen: hasTavily ? stepCountIs(4) : undefined,
       maxOutputTokens: 2048,
       onChunk() {
         if (!firstTokenTime) {
