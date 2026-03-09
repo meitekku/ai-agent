@@ -7,7 +7,9 @@ import { LIGHTRAG_URL, QUERY_SERVICE_URL } from "./constants";
 export interface SearchResult {
   doc_id: string | null;
   name: string;
-  tree_context: {
+  content: string;
+  // Legacy fields (kept for backward compatibility)
+  tree_context?: {
     section_path: string[];
     context: string;
     node_ids: string[];
@@ -17,6 +19,8 @@ export interface SearchResult {
 export interface SearchResponse {
   question: string;
   results: SearchResult[];
+  knowledge_graph?: string;
+  source_documents?: string[];
 }
 
 export interface IngestResponse {
@@ -112,4 +116,12 @@ export async function deleteDocument(docId: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw buildError("Delete failed", res.status, await res.text());
+}
+
+export async function deleteAllDocuments(): Promise<{ deleted: number }> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/documents`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw buildError("Delete all failed", res.status, await res.text());
+  return res.json();
 }

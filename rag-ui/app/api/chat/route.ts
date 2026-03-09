@@ -8,7 +8,12 @@ import {
   UIMessage,
 } from "ai";
 import { z } from "zod";
-import { getChatModel, useGemini, backendName } from "@/lib/ollama-provider";
+import {
+  getChatModel,
+  useGemini,
+  backendName,
+  geminiGoogleSearch,
+} from "@/lib/ollama-provider";
 import { searchOnly, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
 import { TAVILY_API_KEY } from "@/lib/constants";
@@ -19,30 +24,29 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const hasTavily = !!TAVILY_API_KEY;
+const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 
 function buildSystemPrompt(): string {
-  let prompt = `あなたは多機能 AI アシスタントです。ユーザーの質問に正確かつ簡潔に回答してください。
+  let prompt = `あなたはナレッジベースを活用する AI アシスタントです。ユーザーの質問に対し、内部ドキュメントとウェブの情報を組み合わせて正確に回答します。
 
-重要なルール:
-- 利用可能なツールを適切に使い分けてください
-- ナレッジベースに関連する質問には searchKnowledgeBase ツールを使用してください
-- 一般的な挨拶や雑談にはツールを使わず直接回答してください
-- ナレッジベースの検索結果を使用した場合は、ソースのドキュメント名を含めてください
-- 日本語で回答してください（ユーザーが別の言語で質問した場合はその言語で回答）`;
+## 回答ガイドライン
+- 回答言語: ユーザーの質問と同じ言語で回答してください。デフォルトは日本語です。
+- 出典の記載: ナレッジベースの検索結果を使用した場合は、回答の末尾に出典を記載してください。形式:「（出典: ドキュメント名, セクション名）」。複数のドキュメントを参照した場合は全て列挙してください。
+- 回答スタイル: 簡潔で読みやすい文章で回答してください。箇条書きは本当に必要な場合のみ使用し、基本は流れのある文章で回答してください。
 
-  if (hasTavily) {
+## ツール使用
+ナレッジベースのトピックに関連する質問には searchKnowledgeBase を使用してください。挨拶や雑談など明らかに関係ない場合は直接回答してください。`;
+
+  const webSearchToolName = hasTavily ? "webSearch" : "google_search";
+  if (hasTavily || hasGoogleSearch) {
     prompt += `
 
 ## ウェブ検索
-
-webSearch ツールが利用可能です。以下の場合に **自分で判断して** 使用してください：
-- ナレッジベースの検索結果が質問に対して不十分・無関係な場合
+${webSearchToolName} ツールが利用可能です。以下の場合に使用してください：
+- ナレッジベースの検索結果が質問に対して不十分な場合
 - 最新のニュース、時事問題、リアルタイム情報が必要な場合
-- ユーザーが「検索して」「調べて」「ネットで」「最新の」などウェブ検索を意図している場合
-- 特定の製品、サービス、技術の最新情報が必要な場合
-
-ナレッジベースに十分な情報がある場合は、webSearch を使わずそのまま回答してください。
-ウェブ検索結果を使用した場合は、出典のURLを回答に含めてください。`;
+- ユーザーが「検索して」「調べて」「最新の」などウェブ検索を意図している場合
+ナレッジベースに十分な情報がある場合はそのまま回答してください。ウェブ検索結果を使用した場合は出典URLを含めてください。`;
   }
 
   return prompt;
@@ -62,7 +66,10 @@ export async function POST(req: Request) {
   }
 
   if (!Array.isArray(messages) || messages.length === 0) {
-    return Response.json({ error: "messages array is required" }, { status: 400 });
+    return Response.json(
+      { error: "messages array is required" },
+      { status: 400 },
+    );
   }
 
   const t = { start: Date.now(), cache: 0, prompt: 0, stream: 0 };
@@ -80,13 +87,20 @@ export async function POST(req: Request) {
     const cached = await getCachedResponse(queryText);
     t.cache = Date.now() - t.start;
     if (cached.hit) {
-      console.log(`[chat] ⚡ cache hit (${t.cache}ms):`, queryText.slice(0, 50));
+      console.log(
+        `[chat] ⚡ cache hit (${t.cache}ms):`,
+        queryText.slice(0, 50),
+      );
       const partId = crypto.randomUUID();
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           async execute({ writer }) {
             writer.write({ type: "text-start", id: partId });
-            writer.write({ type: "text-delta", id: partId, delta: cached.response });
+            writer.write({
+              type: "text-delta",
+              id: partId,
+              delta: cached.response,
+            });
             writer.write({ type: "text-end", id: partId });
           },
         }),
@@ -95,7 +109,8 @@ export async function POST(req: Request) {
   }
 
   // Build KB tool description dynamically
-  let kbDescription = "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
+  let kbDescription =
+    "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
   try {
     const kbConfig = await getKbConfig();
     if (kbConfig?.title) {
@@ -119,23 +134,39 @@ export async function POST(req: Request) {
         try {
           const searchRes = await searchOnly(query, { topK: 3, service });
           const elapsed = Date.now() - t0;
-          console.log(`[chat] 🔍 search: ${elapsed}ms →`, searchRes.results?.length ?? 0, "results");
+          console.log(
+            `[chat] 🔍 search: ${elapsed}ms →`,
+            searchRes.results?.length ?? 0,
+            "results",
+          );
 
           if (!searchRes.results || searchRes.results.length === 0) {
-            return { found: false, message: "関連するドキュメントは見つかりませんでした。" };
+            return {
+              found: false,
+              message: "関連するドキュメントは見つかりませんでした。",
+            };
           }
 
-          const contexts = searchRes.results.map((r: SearchResult, i: number) => ({
-            index: i + 1,
-            document: r.name ?? "unknown",
-            section: r.tree_context?.section_path?.join(" > ") ?? "",
-            content: r.tree_context?.context ?? "",
-          }));
+          const contexts = searchRes.results.map(
+            (r: SearchResult, i: number) => ({
+              index: i + 1,
+              document: r.name ?? "unknown",
+              content: r.content ?? r.tree_context?.context ?? "",
+            }),
+          );
 
-          return { found: true, results: contexts };
+          return {
+            found: true,
+            results: contexts,
+            knowledge_graph: searchRes.knowledge_graph ?? "",
+            source_documents: searchRes.source_documents ?? [],
+          };
         } catch (err) {
           console.error(`[chat] search failed (${Date.now() - t0}ms):`, err);
-          return { found: false, message: "ナレッジベース検索に失敗しました。" };
+          return {
+            found: false,
+            message: "ナレッジベース検索に失敗しました。",
+          };
         }
       },
     }),
@@ -146,21 +177,34 @@ export async function POST(req: Request) {
       description:
         "Search the web and get a list of results with summaries. Use when the knowledge base results are insufficient or the user requests web search. Follow up with readPage to get full content of specific results.",
       inputSchema: z.object({
-        query: z.string().describe("Optimized search query (use the best language for the topic)"),
+        query: z
+          .string()
+          .describe(
+            "Optimized search query (use the best language for the topic)",
+          ),
         topic: z
           .enum(["general", "news", "finance"])
           .optional()
-          .describe("'news' for recent events, 'finance' for financial data, 'general' for everything else"),
+          .describe(
+            "'news' for recent events, 'finance' for financial data, 'general' for everything else",
+          ),
         timeRange: z
           .enum(["day", "week", "month", "year"])
           .optional()
-          .describe("Filter results by recency, only set when freshness matters"),
+          .describe(
+            "Filter results by recency, only set when freshness matters",
+          ),
       }),
       execute: async ({ query, topic, timeRange }) => {
-        console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} time=${timeRange ?? "any"}`);
+        console.log(
+          `[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} time=${timeRange ?? "any"}`,
+        );
         const t0 = Date.now();
 
-        const doSearch = async (depth: "basic" | "advanced", minScore: number) => {
+        const doSearch = async (
+          depth: "basic" | "advanced",
+          minScore: number,
+        ) => {
           const body: Record<string, unknown> = {
             query,
             max_results: 5,
@@ -187,14 +231,23 @@ export async function POST(req: Request) {
             data.results
               ?.filter((r: { score: number }) => r.score >= minScore)
               .map(
-                (r: { title: string; url: string; content: string; score: number }) => ({
+                (r: {
+                  title: string;
+                  url: string;
+                  content: string;
+                  score: number;
+                }) => ({
                   title: r.title,
                   url: r.url,
                   summary: r.content,
                   relevance: r.score,
                 }),
               ) ?? [];
-          return { answer: data.answer as string | null, results, totalCount: data.results?.length ?? 0 };
+          return {
+            answer: data.answer as string | null,
+            results,
+            totalCount: data.results?.length ?? 0,
+          };
         };
 
         // First attempt: basic search, score ≥ 0.4
@@ -205,7 +258,9 @@ export async function POST(req: Request) {
 
         // Retry with advanced search if no relevant results
         if (results.length === 0) {
-          console.log(`[chat] 🌐 webSearch retry: no relevant results, trying advanced search...`);
+          console.log(
+            `[chat] 🌐 webSearch retry: no relevant results, trying advanced search...`,
+          );
           ({ answer, results, totalCount } = await doSearch("advanced", 0.2));
           console.log(
             `[chat] 🌐 webSearch[2/2]: ${Date.now() - t0}ms, ${totalCount} total → ${results.length} relevant (≥0.2)`,
@@ -226,7 +281,9 @@ export async function POST(req: Request) {
         query: z
           .string()
           .optional()
-          .describe("The original question, used to rank content chunks by relevance"),
+          .describe(
+            "The original question, used to rank content chunks by relevance",
+          ),
       }),
       execute: async ({ urls, query }) => {
         const targetUrls = urls.slice(0, 3);
@@ -256,22 +313,24 @@ export async function POST(req: Request) {
         );
         return {
           pages:
-            data.results?.map(
-              (r: { url: string; raw_content: string }) => ({
-                url: r.url,
-                content: r.raw_content?.slice(0, 5000) ?? "",
-              }),
-            ) ?? [],
+            data.results?.map((r: { url: string; raw_content: string }) => ({
+              url: r.url,
+              content: r.raw_content?.slice(0, 5000) ?? "",
+            })) ?? [],
           failed:
-            data.failed_results?.map(
-              (r: { url: string; error: string }) => ({
-                url: r.url,
-                error: r.error,
-              }),
-            ) ?? [],
+            data.failed_results?.map((r: { url: string; error: string }) => ({
+              url: r.url,
+              error: r.error,
+            })) ?? [],
         };
       },
     });
+  } else if (hasGoogleSearch) {
+    // Gemini built-in Google Search grounding as fallback
+    tools.google_search = geminiGoogleSearch;
+    console.log(
+      "[chat] 🌐 Using Gemini Google Search grounding (Tavily not configured)",
+    );
   }
 
   try {
@@ -302,7 +361,7 @@ export async function POST(req: Request) {
       messages: await convertToModelMessages(messages),
       tools,
       stopWhen: stepCountIs(6),
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
       onChunk() {
         if (!firstTokenTime) {
           firstTokenTime = Date.now();
@@ -328,6 +387,9 @@ export async function POST(req: Request) {
     return result.toUIMessageStreamResponse();
   } catch (err) {
     console.error("[chat] streaming failed:", err);
-    return Response.json({ error: "Chat service unavailable" }, { status: 502 });
+    return Response.json(
+      { error: "Chat service unavailable" },
+      { status: 502 },
+    );
   }
 }

@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   FileTextIcon,
   TrashIcon,
+  Trash2Icon,
   UploadIcon,
   Loader2Icon,
   AlertCircleIcon,
@@ -99,6 +100,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -236,6 +238,19 @@ export const DocumentsPage = memo(function DocumentsPage() {
     onSettled: () => setDeletingId(null),
   });
 
+  const deleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/documents", { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete all failed");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      kbInitRef.current = false;
+      queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "全削除に失敗しました"),
+  });
+
   const confirmDelete = useCallback(
     (doc: DocumentInfo) => {
       setDeleteTarget(null);
@@ -263,7 +278,23 @@ export const DocumentsPage = memo(function DocumentsPage() {
               )}
             </p>
           </div>
-          <div>
+          <div className="flex items-center gap-2">
+            {optimisticDocs.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setShowDeleteAll(true)}
+                disabled={deleteAllMutation.isPending}
+              >
+                {deleteAllMutation.isPending ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-3.5" />
+                )}
+                全削除
+              </Button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -435,6 +466,31 @@ export const DocumentsPage = memo(function DocumentsPage() {
               onClick={() => deleteTarget && confirmDelete(deleteTarget)}
             >
               削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete all confirmation */}
+      <AlertDialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>全ドキュメントを削除</AlertDialogTitle>
+            <AlertDialogDescription>
+              {optimisticDocs.length} 件のドキュメントを全て削除しますか？ナレッジグラフとベクトルデータも完全に削除されます。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setShowDeleteAll(false);
+                setError(null);
+                deleteAllMutation.mutate();
+              }}
+            >
+              全て削除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
