@@ -25,7 +25,7 @@ import { calcMaxSlides } from "@/lib/slide-prompts";
 const SLIDE_CDN_HEAD = `<meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com/4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>body { font-family: 'Noto Sans JP', 'Inter', sans-serif; margin: 0; }</style>`;
 

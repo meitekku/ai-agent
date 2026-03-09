@@ -116,6 +116,89 @@ const DRAG_CSS = `
   outline-offset:1px !important;
 }`;
 
+// ---------------------------------------------------------------------------
+// CDN resources for slide rendering (Tailwind CSS + Fonts + Lucide Icons)
+// ---------------------------------------------------------------------------
+
+const SLIDE_CDN_HEAD = `<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+<script src="https://unpkg.com/lucide@latest"><\/script>
+<style>body { font-family: 'Noto Sans JP', 'Inter', sans-serif; margin: 0; }</style>`;
+
+/** Build a self-contained HTML document for rendering a slide in an iframe */
+function slideSrcDoc(html: string) {
+  return `<!DOCTYPE html>
+<html><head>${SLIDE_CDN_HEAD}</head>
+<body style="margin:0;padding:0;overflow:hidden;">
+${html}
+<script>lucide.createIcons();<\/script>
+</body></html>`;
+}
+
+/** Style properties to copy when baking computed styles into inline */
+const BAKE_STYLE_PROPS = [
+  "display", "position", "top", "right", "bottom", "left",
+  "width", "height", "min-width", "min-height", "max-width", "max-height",
+  "margin", "padding", "border", "border-radius",
+  "background", "background-color", "background-image",
+  "color", "font-size", "font-weight", "font-family", "line-height",
+  "text-align", "text-decoration", "text-transform", "letter-spacing",
+  "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
+  "align-items", "justify-content", "gap",
+  "grid-template-columns", "grid-template-rows", "grid-column", "grid-row",
+  "overflow", "opacity", "z-index", "box-shadow",
+  "transform", "transform-origin", "white-space", "word-break", "vertical-align",
+];
+
+/**
+ * Render slide HTML in a hidden iframe with Tailwind CDN, then extract
+ * the DOM with computed styles inlined — so it can be displayed/edited
+ * without Tailwind.
+ */
+async function bakeSlideHtml(html: string): Promise<string> {
+  const container = document.createElement("div");
+  container.style.cssText =
+    "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
+  document.body.appendChild(container);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "width:1280px;height:720px;border:none;";
+  container.appendChild(iframe);
+  iframe.srcdoc = slideSrcDoc(html);
+
+  await new Promise<void>((resolve) => {
+    iframe.onload = () => resolve();
+  });
+  // Wait for Tailwind CDN to JIT-compile classes + fonts + icons
+  await new Promise((r) => setTimeout(r, 2000));
+
+  const iframeDoc = iframe.contentDocument!;
+  const iframeWin = iframe.contentWindow!;
+  const sourceBody = iframeDoc.body;
+
+  // Clone the body HTML and inline computed styles
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = sourceBody.innerHTML;
+
+  const sourceEls = sourceBody.querySelectorAll("*");
+  const cloneEls = tempDiv.querySelectorAll("*");
+
+  for (let j = 0; j < sourceEls.length; j++) {
+    const computed = iframeWin.getComputedStyle(sourceEls[j]);
+    const el = cloneEls[j] as HTMLElement;
+    if (!el?.style) continue;
+    for (const prop of BAKE_STYLE_PROPS) {
+      const val = computed.getPropertyValue(prop);
+      if (val) el.style.setProperty(prop, val);
+    }
+  }
+
+  document.body.removeChild(container);
+  return tempDiv.innerHTML;
+}
+
 const GRIP_SVG = `<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="4" cy="3" r="1.5" fill="#9CA3AF"/><circle cx="10" cy="3" r="1.5" fill="#9CA3AF"/><circle cx="4" cy="7" r="1.5" fill="#9CA3AF"/><circle cx="10" cy="7" r="1.5" fill="#9CA3AF"/><circle cx="4" cy="11" r="1.5" fill="#9CA3AF"/><circle cx="10" cy="11" r="1.5" fill="#9CA3AF"/></svg>`;
 const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const TRASH_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
@@ -1037,9 +1120,23 @@ export function HtmlSlideViewer({
     };
   }, [editing, activeSlideIndex, phase]);
 
-  const enableEditing = useCallback(() => {
-    setEditing(true);
-  }, []);
+  const [bakingForEdit, setBakingForEdit] = useState(false);
+
+  const enableEditing = useCallback(async () => {
+    setBakingForEdit(true);
+    try {
+      // Bake Tailwind classes into inline styles so the div-based editor works
+      const slide = generatedSlides[activeSlideIndex];
+      if (!slide) return;
+      const bakedHtml = await bakeSlideHtml(slide.html);
+      setGeneratedSlides((prev) =>
+        prev.map((s, i) => (i === activeSlideIndex ? { ...s, html: bakedHtml } : s)),
+      );
+      setEditing(true);
+    } finally {
+      setBakingForEdit(false);
+    }
+  }, [generatedSlides, activeSlideIndex]);
 
   const persistCurrentSlide = useCallback(() => {
     const container = slideContainerRef.current;
@@ -1223,25 +1320,83 @@ export function HtmlSlideViewer({
   const [exportProgress, setExportProgress] = useState("");
 
   const renderSlideToPng = useCallback(async (html: string): Promise<string> => {
+    // Use iframe with Tailwind CDN for reliable rendering
     const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.left = "-99999px";
-    container.style.top = "0";
-    container.style.width = `${SLIDE_W}px`;
-    container.style.height = `${SLIDE_H}px`;
-    container.style.overflow = "hidden";
-    container.innerHTML = html;
+    container.style.cssText =
+      "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
     document.body.appendChild(container);
 
+    const fullHtml = `<!DOCTYPE html>
+<html><head>${SLIDE_CDN_HEAD}</head>
+<body style="margin:0;padding:0;width:1280px;height:720px;overflow:hidden;">
+${html}
+<script>lucide.createIcons();<\/script>
+</body></html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "width:1280px;height:720px;border:none;";
+    container.appendChild(iframe);
+
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+      iframe.srcdoc = fullHtml;
+    });
+
+    // Wait for Tailwind CDN + fonts + icons to process
+    await new Promise((r) => setTimeout(r, 2000));
+
     try {
-      const canvas = await html2canvas(container, {
+      // Clone iframe content with inlined computed styles for html2canvas
+      const iframeDoc = iframe.contentDocument!;
+      const iframeWin = iframe.contentWindow!;
+      const sourceBody = iframeDoc.body;
+
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText =
+        "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
+
+      const bodyComputed = iframeWin.getComputedStyle(sourceBody);
+      wrapper.style.background = bodyComputed.background;
+      wrapper.style.fontFamily = bodyComputed.fontFamily;
+      wrapper.innerHTML = sourceBody.innerHTML;
+      document.body.appendChild(wrapper);
+
+      // Inline computed styles for every element
+      const sourceEls = sourceBody.querySelectorAll("*");
+      const cloneEls = wrapper.querySelectorAll("*");
+      const styleProps = [
+        "display", "position", "top", "right", "bottom", "left",
+        "width", "height", "min-width", "min-height", "max-width", "max-height",
+        "margin", "padding", "border", "border-radius",
+        "background", "background-color", "background-image",
+        "color", "font-size", "font-weight", "font-family", "line-height",
+        "text-align", "text-decoration", "text-transform", "letter-spacing",
+        "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
+        "align-items", "justify-content", "gap",
+        "grid-template-columns", "grid-template-rows", "grid-column", "grid-row",
+        "overflow", "opacity", "z-index", "box-shadow",
+        "transform", "transform-origin", "white-space", "word-break", "vertical-align",
+      ];
+      for (let j = 0; j < sourceEls.length; j++) {
+        const computed = iframeWin.getComputedStyle(sourceEls[j]);
+        const el = cloneEls[j] as HTMLElement;
+        if (!el?.style) continue;
+        for (const prop of styleProps) {
+          const val = computed.getPropertyValue(prop);
+          if (val) el.style.setProperty(prop, val);
+        }
+      }
+
+      const canvas = await html2canvas(wrapper, {
         width: SLIDE_W,
         height: SLIDE_H,
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
       });
-      return canvas.toDataURL("image/png");
+      const dataUrl = canvas.toDataURL("image/png");
+      document.body.removeChild(wrapper);
+      return dataUrl;
     } finally {
       document.body.removeChild(container);
     }
@@ -1439,10 +1594,15 @@ export function HtmlSlideViewer({
                 </button>
                 <button
                   onClick={enableEditing}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                  disabled={bakingForEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  編集
+                  {bakingForEdit ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Edit3 className="w-3.5 h-3.5" />
+                  )}
+                  {bakingForEdit ? "準備中..." : "編集"}
                 </button>
               </>
             )}
@@ -1971,16 +2131,17 @@ export function HtmlSlideViewer({
                           className="w-full h-full animate-fade-in"
                           style={{ position: "relative" }}
                         >
-                          <div
+                          <iframe
+                            srcDoc={slideSrcDoc(generated.html)}
                             style={{
                               transform: `scale(${thumbScale})`,
                               transformOrigin: "top left",
                               width: SLIDE_W,
                               height: SLIDE_H,
-                              overflow: "hidden",
+                              border: "none",
+                              display: "block",
                               pointerEvents: "none",
                             }}
-                            dangerouslySetInnerHTML={{ __html: generated.html }}
                           />
                         </div>
                       ) : (
@@ -2028,17 +2189,31 @@ export function HtmlSlideViewer({
                       height: SLIDE_H * scale,
                     }}
                   >
-                    <div
-                      ref={slideContainerRef}
-                      style={{
-                        width: SLIDE_W,
-                        height: SLIDE_H,
-                        overflow: "hidden",
-                        transform: `scale(${scale})`,
-                        transformOrigin: "top left",
-                      }}
-                      dangerouslySetInnerHTML={{ __html: activeSlide.html }}
-                    />
+                    {editing ? (
+                      <div
+                        ref={slideContainerRef}
+                        style={{
+                          width: SLIDE_W,
+                          height: SLIDE_H,
+                          overflow: "hidden",
+                          transform: `scale(${scale})`,
+                          transformOrigin: "top left",
+                        }}
+                        dangerouslySetInnerHTML={{ __html: activeSlide.html }}
+                      />
+                    ) : (
+                      <iframe
+                        srcDoc={slideSrcDoc(activeSlide.html)}
+                        style={{
+                          width: SLIDE_W,
+                          height: SLIDE_H,
+                          border: "none",
+                          display: "block",
+                          transform: `scale(${scale})`,
+                          transformOrigin: "top left",
+                        }}
+                      />
+                    )}
                   </div>
                 )}
 
@@ -2086,16 +2261,17 @@ export function HtmlSlideViewer({
                         : "border-border hover:border-teal-300",
                     )}
                   >
-                    <div
+                    <iframe
+                      srcDoc={slideSrcDoc(slide.html)}
                       style={{
                         transform: `scale(${112 / SLIDE_W})`,
                         transformOrigin: "top left",
                         width: SLIDE_W,
                         height: SLIDE_H,
-                        overflow: "hidden",
+                        border: "none",
+                        display: "block",
                         pointerEvents: "none",
                       }}
-                      dangerouslySetInnerHTML={{ __html: slide.html }}
                     />
                   </button>
                 ))}
