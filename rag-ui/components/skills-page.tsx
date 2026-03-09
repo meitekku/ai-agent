@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -47,10 +48,6 @@ interface Skill {
   updated_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// API helpers
-// ---------------------------------------------------------------------------
-
 async function fetchSkills(): Promise<Skill[]> {
   const res = await fetch("/api/skills");
   if (!res.ok) throw new Error("Failed to fetch skills");
@@ -59,10 +56,10 @@ async function fetchSkills(): Promise<Skill[]> {
 }
 
 // ---------------------------------------------------------------------------
-// SkillsSection
+// SkillsPage
 // ---------------------------------------------------------------------------
 
-export const SkillsSection = memo(function SkillsSection() {
+export const SkillsPage = memo(function SkillsPage() {
   const queryClient = useQueryClient();
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -80,8 +77,6 @@ export const SkillsSection = memo(function SkillsSection() {
 
   const enabledCount = skills.filter((s) => s.enabled).length;
 
-  // -- Create ---------------------------------------------------------------
-
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; content: string }) => {
       const res = await fetch("/api/skills", {
@@ -96,8 +91,6 @@ export const SkillsSection = memo(function SkillsSection() {
       closeForm();
     },
   });
-
-  // -- Update ---------------------------------------------------------------
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number; name?: string; description?: string; content?: string; enabled?: boolean }) => {
@@ -114,39 +107,26 @@ export const SkillsSection = memo(function SkillsSection() {
     },
   });
 
-  // -- Delete ---------------------------------------------------------------
-
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/skills/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["skills"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["skills"] }),
   });
-
-  // -- Toggle enabled -------------------------------------------------------
 
   const handleToggle = useCallback(
     (skill: Skill) => {
-      // Optimistic update
       queryClient.setQueryData<Skill[]>(["skills"], (old) =>
         old?.map((s) => (s.id === skill.id ? { ...s, enabled: !s.enabled } : s)),
       );
       updateMutation.mutate(
         { id: skill.id, enabled: !skill.enabled },
-        {
-          onError: () => {
-            queryClient.invalidateQueries({ queryKey: ["skills"] });
-          },
-        },
+        { onError: () => queryClient.invalidateQueries({ queryKey: ["skills"] }) },
       );
     },
     [queryClient, updateMutation],
   );
-
-  // -- Form helpers ---------------------------------------------------------
 
   const openCreate = useCallback(() => {
     setFormName("");
@@ -197,85 +177,107 @@ export const SkillsSection = memo(function SkillsSection() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // -- Render ---------------------------------------------------------------
-
   return (
-    <>
-      {/* Create button + counter */}
-      <div className="flex items-center justify-between p-3">
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={openCreate}>
-          <PlusIcon className="size-3.5" />
-          新規スキル
-        </Button>
-        {skills.length > 0 && (
-          <Badge variant="secondary" className="text-xs font-normal">
-            {enabledCount} / {skills.length} 有効
-          </Badge>
-        )}
+    <div className="flex flex-1 flex-col min-h-0">
+      {/* Page header */}
+      <div className="shrink-0 border-b border-border px-6 py-5">
+        <div className="mx-auto max-w-3xl flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">スキル</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              システムプロンプトに注入されるドメイン知識・ワークフロー指示
+              {skills.length > 0 && (
+                <span className="ml-2">
+                  <Badge variant="secondary" className="text-xs font-normal">
+                    {enabledCount} / {skills.length} 有効
+                  </Badge>
+                </span>
+              )}
+            </p>
+          </div>
+          <Button className="gap-2" onClick={openCreate}>
+            <PlusIcon className="size-4" />
+            新規スキル
+          </Button>
+        </div>
       </div>
 
       {/* Skill list */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : skills.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
-            <SparklesIcon className="size-8 opacity-40" />
-            <p>スキルがありません</p>
-            <p className="text-xs">ドメイン知識やワークフロー指示を追加しましょう</p>
-          </div>
-        ) : (
-          <ul className="space-y-1">
-            {skills.map((skill) => (
-              <li
-                key={skill.id}
-                className="group rounded-md px-2 py-2 transition-colors hover:bg-muted/50"
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`size-1.5 rounded-full shrink-0 ${skill.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
-                  />
-                  <span className="flex-1 truncate text-sm font-medium">{skill.name}</span>
-                  <Switch
-                    checked={skill.enabled}
-                    onCheckedChange={() => handleToggle(skill)}
-                    className="scale-75"
-                  />
-                </div>
-                {skill.description && (
-                  <p className="mt-0.5 truncate pl-3.5 text-xs text-muted-foreground">
-                    {skill.description}
+      <ScrollArea className="flex-1">
+        <div className="mx-auto max-w-3xl px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : skills.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
+                <SparklesIcon className="size-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">スキルがありません</p>
+                <p className="text-sm text-muted-foreground">
+                  ドメイン知識やワークフロー指示を追加して、AI の回答をカスタマイズしましょう
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {skills.map((skill) => (
+                <div
+                  key={skill.id}
+                  className="group rounded-lg border border-border/50 px-4 py-3 transition-colors hover:bg-muted/30"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`size-2 rounded-full shrink-0 transition-colors ${
+                        skill.enabled ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
+                    />
+                    <span className="flex-1 text-sm font-medium">{skill.name}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEdit(skill)}
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteTarget(skill)}
+                        >
+                          <TrashIcon className="size-3.5" />
+                        </Button>
+                      </div>
+                      <Switch
+                        checked={skill.enabled}
+                        onCheckedChange={() => handleToggle(skill)}
+                      />
+                    </div>
+                  </div>
+                  {skill.description && (
+                    <p className="mt-1.5 pl-5 text-sm text-muted-foreground">
+                      {skill.description}
+                    </p>
+                  )}
+                  <p className="mt-1 pl-5 text-xs text-muted-foreground/60 line-clamp-2 font-mono">
+                    {skill.content}
                   </p>
-                )}
-                <div className="mt-1 flex gap-1 pl-3.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-6 text-muted-foreground hover:text-foreground"
-                    onClick={() => openEdit(skill)}
-                  >
-                    <PencilIcon className="size-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-6 text-muted-foreground hover:text-destructive"
-                    onClick={() => setDeleteTarget(skill)}
-                  >
-                    <TrashIcon className="size-3" />
-                  </Button>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
 
       {/* Create/Edit dialog */}
       <Dialog open={isCreating} onOpenChange={(o) => !o && closeForm()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingSkill ? "スキルを編集" : "新規スキル"}</DialogTitle>
           </DialogHeader>
@@ -305,7 +307,8 @@ export const SkillsSection = memo(function SkillsSection() {
                 value={formContent}
                 onChange={(e) => setFormContent(e.target.value)}
                 placeholder="システムプロンプトに注入される指示内容..."
-                rows={6}
+                rows={8}
+                className="font-mono text-sm"
               />
             </div>
           </div>
@@ -344,6 +347,6 @@ export const SkillsSection = memo(function SkillsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 });

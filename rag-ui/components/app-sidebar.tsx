@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useChatSettingsStore, type SidebarSection } from "@/lib/store";
+import { useEffect, useState, useCallback } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useChatSettingsStore } from "@/lib/store";
 import {
   Sheet,
   SheetContent,
@@ -9,21 +10,17 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
-  MessagesSquareIcon,
+  MessageSquareIcon,
   FileTextIcon,
   SparklesIcon,
   PinIcon,
   PinOffIcon,
   BotIcon,
+  XIcon,
 } from "lucide-react";
-import { DocumentsSection } from "@/components/documents-section";
-import { SkillsSection } from "@/components/skills-section";
 
 // ---------------------------------------------------------------------------
 // useIsDesktop hook
@@ -42,24 +39,37 @@ function useIsDesktop() {
 }
 
 // ---------------------------------------------------------------------------
-// Tab config
+// Nav items
 // ---------------------------------------------------------------------------
 
-const TABS: { value: SidebarSection; icon: typeof FileTextIcon; label: string }[] = [
-  { value: "history", icon: MessagesSquareIcon, label: "履歴" },
-  { value: "documents", icon: FileTextIcon, label: "ドキュメント" },
-  { value: "skills", icon: SparklesIcon, label: "スキル" },
-];
+const NAV_ITEMS = [
+  { href: "/new", icon: MessageSquareIcon, label: "新規チャット" },
+  { href: "/documents", icon: FileTextIcon, label: "ドキュメント" },
+  { href: "/skills", icon: SparklesIcon, label: "スキル" },
+] as const;
 
 // ---------------------------------------------------------------------------
-// SidebarInner — shared content for both modes
+// SidebarInner — shared navigation for both modes
 // ---------------------------------------------------------------------------
 
-function SidebarInner({ showPinToggle }: { showPinToggle: boolean }) {
+function SidebarInner({ onClose }: { onClose?: () => void }) {
+  const isDesktop = useIsDesktop();
+  const pathname = usePathname();
+  const router = useRouter();
   const sidebarPinned = useChatSettingsStore((s) => s.sidebarPinned);
   const toggleSidebarPinned = useChatSettingsStore((s) => s.toggleSidebarPinned);
-  const sidebarSection = useChatSettingsStore((s) => s.sidebarSection);
-  const setSidebarSection = useChatSettingsStore((s) => s.setSidebarSection);
+  const setSidebarOpen = useChatSettingsStore((s) => s.setSidebarOpen);
+
+  const handleNav = useCallback(
+    (href: string) => {
+      router.push(href);
+      // Overlay mode: close after navigation. Pinned mode: stay open.
+      if (!sidebarPinned) {
+        setSidebarOpen(false);
+      }
+    },
+    [router, sidebarPinned, setSidebarOpen],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -69,69 +79,68 @@ function SidebarInner({ showPinToggle }: { showPinToggle: boolean }) {
           <BotIcon className="size-3.5 text-primary" />
         </div>
         <h2 className="text-sm font-semibold tracking-tight">RAG Chat</h2>
-        {showPinToggle && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="ml-auto text-muted-foreground hover:text-foreground"
-                onClick={toggleSidebarPinned}
-                aria-label={sidebarPinned ? "サイドバーを解除" : "サイドバーを固定"}
-              >
-                {sidebarPinned ? (
-                  <PinOffIcon className="size-3.5" />
-                ) : (
-                  <PinIcon className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              {sidebarPinned ? "固定解除" : "サイドバーを固定"}
-            </TooltipContent>
-          </Tooltip>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            aria-label="サイドバーを閉じる"
+          >
+            <XIcon className="size-3.5" />
+          </button>
         )}
       </div>
 
       <Separator />
 
-      {/* Tabs */}
-      <div className="px-2 pt-2">
-        <Tabs
-          value={sidebarSection}
-          onValueChange={(v) => setSidebarSection(v as SidebarSection)}
-        >
-          <TabsList className="w-full">
-            {TABS.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="flex-1 gap-1.5 text-xs"
-              >
-                <tab.icon className="size-3.5" />
-                <span className="hidden sm:inline">{tab.label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+      {/* Navigation */}
+      <nav className="flex-1 px-2 py-2 space-y-0.5">
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname.startsWith(item.href);
+          return (
+            <button
+              key={item.href}
+              onClick={() => handleNav(item.href)}
+              className={`
+                flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors
+                ${isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }
+              `}
+            >
+              <item.icon className={`size-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
 
-      <Separator className="mt-2" />
-
-      {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col min-h-0">
-          {sidebarSection === "history" && (
-            <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
-              <MessagesSquareIcon className="size-8 opacity-40" />
-              <p>チャット履歴</p>
-              <p className="text-xs">今後実装予定</p>
-            </div>
-          )}
-          {sidebarSection === "documents" && <DocumentsSection />}
-          {sidebarSection === "skills" && <SkillsSection />}
-        </div>
-      </ScrollArea>
+      {/* Footer — pin toggle (desktop only) */}
+      {isDesktop && (
+        <>
+          <Separator />
+          <div className="px-2 py-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleSidebarPinned}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  {sidebarPinned ? (
+                    <PinOffIcon className="size-4 shrink-0" />
+                  ) : (
+                    <PinIcon className="size-4 shrink-0" />
+                  )}
+                  {sidebarPinned ? "固定解除" : "サイドバーを固定"}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {sidebarPinned ? "固定解除" : "サイドバーを固定"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -162,19 +171,23 @@ export function AppSidebar() {
     <>
       {/* Pinned: inline aside, pushes content */}
       {showPinned && (
-        <aside className="hidden md:flex w-72 shrink-0 h-dvh flex-col glass-sidebar border-r border-border">
-          <SidebarInner showPinToggle />
+        <aside className="hidden md:flex w-56 shrink-0 h-dvh flex-col glass-sidebar border-r border-border">
+          <SidebarInner />
         </aside>
       )}
 
-      {/* Overlay: Sheet */}
+      {/* Overlay: Sheet (hide default close button, we handle it ourselves) */}
       <Sheet open={showPinned ? false : sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-72 sm:max-w-72 p-0 flex flex-col">
+        <SheetContent
+          side="left"
+          className="w-56 sm:max-w-56 p-0 flex flex-col"
+          showCloseButton={false}
+        >
           <SheetHeader className="sr-only">
-            <SheetTitle>サイドバー</SheetTitle>
-            <SheetDescription>ナビゲーション</SheetDescription>
+            <SheetTitle>ナビゲーション</SheetTitle>
+            <SheetDescription>ページ切替</SheetDescription>
           </SheetHeader>
-          <SidebarInner showPinToggle={isDesktop} />
+          <SidebarInner onClose={() => setSidebarOpen(false)} />
         </SheetContent>
       </Sheet>
     </>

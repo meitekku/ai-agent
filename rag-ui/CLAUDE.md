@@ -104,8 +104,11 @@ pm2 delete lightrag-service && pm2 start ~/Desktop/ai/ecosystem.config.js --only
 ```
 rag-ui/
 ├── app/
-│   ├── layout.tsx
-│   ├── page.tsx                       # 4種スライドビューア統合
+│   ├── layout.tsx                     # Root layout（providers + AppShell）
+│   ├── page.tsx                       # / → /new リダイレクト
+│   ├── new/page.tsx                   # 新規チャット（4種スライドビューア統合）
+│   ├── documents/page.tsx             # ドキュメント管理ページ
+│   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
 │       ├── chat/route.ts              # streamText + direct search + Valkey cache + skills injection
 │       ├── skills/
@@ -146,11 +149,13 @@ rag-ui/
 │   ├── slide-studio.tsx       # スライドスタジオ（構造化編集、Mermaid、PPTX）
 │   ├── style-options-panel.tsx # スタイルオプション（産業/職種/年代/色/フォント）
 │   ├── template-manager.tsx   # テンプレート管理モーダル
-│   ├── app-sidebar.tsx         # マルチセクションサイドバー（overlay/pinned）
-│   ├── documents-section.tsx  # ドキュメント管理セクション
-│   └── skills-section.tsx     # スキル CRUD セクション
+│   ├── app-shell.tsx           # AppShell（sidebar + header ラッパー、layout から使用）
+│   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、usePathname）
+│   ├── documents-page.tsx     # ドキュメント管理ページコンポーネント
+│   └── skills-page.tsx        # スキル CRUD ページコンポーネント
 ├── lib/
 │   ├── utils.ts           # shadcn 自動生成
+│   ├── store.ts           # Zustand store（sidebar 状態管理）
 │   ├── constants.ts       # 環境変数定義
 │   ├── rag-client.ts      # LightRAG/QueryService HTTP クライアント
 │   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替）
@@ -169,6 +174,19 @@ rag-ui/
 ```
 
 **注意**: 本项目未使用 `src/` 目录，app/components/lib 直接在根目录下。
+
+## ページルーティング
+
+| パス | 説明 |
+|------|------|
+| `/` | `/new` にリダイレクト |
+| `/new` | 新規チャット（将来: `/chat/[id]` で履歴チャット） |
+| `/documents` | ドキュメント管理（PDF アップロード/一覧/削除） |
+| `/skills` | スキル管理（CRUD + 有効/無効切替） |
+
+- `AppShell`（sidebar + header）は `layout.tsx` で全ページ共通
+- sidebar は `usePathname()` でアクティブなナビを判定
+- header は `usePathname()` でタイトル/アイコンを切替
 
 ## API Routes
 

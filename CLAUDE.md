@@ -65,32 +65,48 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
 | `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch tool + skills injection |
-| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch ToolCallIndicator 追加 |
-| `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
-| `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state 追加 |
-| `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
-| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | マルチセクションサイドバー（overlay/pinned） |
-| `rag-ui/components/documents-section.tsx` | 同上 | 一致 | ドキュメント管理（document-sidebar から抽出） |
-| `rag-ui/components/skills-section.tsx` | 同上 | 一致 | スキル CRUD UI |
-| `rag-ui/components/chat-header.tsx` | 同上 | 一致 | Zustand store 直接参照 |
+| `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
+| `rag-ui/app/page.tsx` | 同上 | 一致 | / → /new リダイレクト |
+| `rag-ui/app/new/page.tsx` | 同上 | 一致 | 新規チャットページ |
+| `rag-ui/app/documents/page.tsx` | 同上 | 一致 | ドキュメント管理ルート |
+| `rag-ui/app/skills/page.tsx` | 同上 | 一致 | スキル管理ルート |
 | `rag-ui/app/api/skills/route.ts` | 同上 | 一致 | GET/POST skills API |
 | `rag-ui/app/api/skills/[id]/route.ts` | 同上 | 一致 | PUT/DELETE skills API |
+| `rag-ui/components/app-shell.tsx` | 同上 | 一致 | sidebar + header ラッパー |
+| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー（usePathname） |
+| `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替 |
+| `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
+| `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
+| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch ToolCallIndicator 追加 |
+| `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state（Zustand） |
+| `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
+| `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
 ### 同期コマンド
 
 ```bash
 # rag-ui の変更を rag-deploy に反映
+# ページ・レイアウト
+cp ~/Desktop/uiForAI/rag-ui/app/layout.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/layout.tsx
+cp ~/Desktop/uiForAI/rag-ui/app/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/page.tsx
+cp ~/Desktop/uiForAI/rag-ui/app/new/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/new/page.tsx
+cp ~/Desktop/uiForAI/rag-ui/app/documents/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/documents/page.tsx
+cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/skills/page.tsx
+# API
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
-cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
-cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
+cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
+# コンポーネント
+cp ~/Desktop/uiForAI/rag-ui/components/app-shell.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-shell.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/app-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-sidebar.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/documents-section.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-section.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/skills-section.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-section.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-header.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-header.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/skills-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-page.tsx
+# ライブラリ
 cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skills-db.ts
-cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
+cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
 
 # lightrag-service の変更を rag-deploy に反映（config.py は除外）
 cp ~/Desktop/ai/rag-system/lightrag-service/app/rag.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/rag.py

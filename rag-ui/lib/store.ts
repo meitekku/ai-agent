@@ -8,8 +8,6 @@ export interface MessageMeta {
   service: string;
 }
 
-export type SidebarSection = "history" | "documents" | "skills";
-
 // ---------------------------------------------------------------------------
 // Chat Settings Store
 // ---------------------------------------------------------------------------
@@ -28,12 +26,10 @@ interface ChatSettingsState {
   // Sidebar
   sidebarOpen: boolean;
   sidebarPinned: boolean;
-  sidebarSection: SidebarSection;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarPinned: (pinned: boolean) => void;
   toggleSidebarPinned: () => void;
-  setSidebarSection: (section: SidebarSection) => void;
 }
 
 export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
@@ -57,7 +53,6 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   // Sidebar — initialize as false to avoid SSR hydration mismatch
   sidebarOpen: false,
   sidebarPinned: false,
-  sidebarSection: "documents",
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarPinned: (pinned) => {
@@ -73,5 +68,4 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
       localStorage.setItem("sidebar-pinned", JSON.stringify(next));
     }
   },
-  setSidebarSection: (section) => set({ sidebarSection: section }),
 }));
