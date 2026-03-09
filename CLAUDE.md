@@ -64,7 +64,8 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限追加 |
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
-| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | tool calling（searchKnowledgeBase + webSearch + readPage）+ skills injection |
+| `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | tool calling（searchKnowledgeBase + webSearch/readPage/google_search）+ skills injection |
+| `rag-ui/lib/ollama-provider.ts` | 同上 | 一致 | Gemini/MLX 自動切替 + `geminiGoogleSearch` エクスポート |
 | `rag-ui/app/api/kb-config/route.ts` | 同上 | 一致 | GET/PUT ナレッジベース設定 |
 | `rag-ui/app/api/kb-config/generate/route.ts` | 同上 | 一致 | LLM で KB 設定自動生成 |
 | `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
@@ -156,7 +157,7 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | rag-ui | `LIGHTRAG_URL` | http://lightrag:8007 | バックエンド URL |
 | rag-ui | `REDIS_URL` | redis://valkey:6379 | キャッシュ URL |
 | rag-ui | `EMBEDDING_PROVIDER` | gemini | 語義キャッシュ用 |
-| rag-ui | `TAVILY_API_KEY` | ${TAVILY_API_KEY:-} | ウェブ検索（オプション） |
+| rag-ui | `TAVILY_API_KEY` | ${TAVILY_API_KEY:-} | ウェブ検索（オプション、未設定→Gemini Google Search にフォールバック） |
 | rag-ui | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | スライド履歴+スキル用 |
 
 ### .env（ユーザー設定）
@@ -164,7 +165,7 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | 変数 | 説明 |
 |------|------|
 | `GEMINI_API_KEY` | Gemini API Key（必須） |
-| `TAVILY_API_KEY` | Tavily API Key（オプション、設定時→ウェブ検索ツール有効化） |
+| `TAVILY_API_KEY` | Tavily API Key（オプション、設定時→Tavily ウェブ検索、未設定→Gemini Google Search grounding にフォールバック） |
 
 ## コマンド
 

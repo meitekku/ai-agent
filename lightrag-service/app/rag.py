@@ -16,7 +16,7 @@ if config.LLM_PROVIDER == "gemini":
     _llm_func = gemini_model_complete
     _llm_name = config.GEMINI_MODEL
     _llm_kwargs = {}
-    _llm_max_async = 4
+    _llm_max_async = 8
 elif config.LLM_PROVIDER == "mlx":
     from lightrag.llm.openai import openai_complete
     _llm_func = openai_complete
@@ -50,7 +50,7 @@ async def _embed_ollama(texts: list[str]) -> np.ndarray:
     return np.array(resp["embeddings"], dtype=np.float32)
 
 
-_embed_semaphore = asyncio.Semaphore(10)
+_embed_semaphore = asyncio.Semaphore(30)
 
 
 async def _embed_gemini(texts: list[str]) -> np.ndarray:

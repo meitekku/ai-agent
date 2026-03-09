@@ -242,9 +242,18 @@ export const DocumentsPage = memo(function DocumentsPage() {
     mutationFn: async () => {
       const res = await fetch("/api/documents", { method: "DELETE" });
       if (!res.ok) throw new Error("Delete all failed");
+      // Clear KB config
+      await fetch("/api/kb-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "", description: "" }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      setKbTitle("");
+      setKbDescription("");
+      setKbDirty(false);
       kbInitRef.current = false;
       queryClient.invalidateQueries({ queryKey: ["kb-config"] });
     },

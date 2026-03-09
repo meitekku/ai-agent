@@ -22,7 +22,7 @@
 Browser useChat → /api/chat Route Handler → Valkey cache check
                                           → Gemini/MLX streamText + tool calling
                                             → searchKnowledgeBase（LightRAG search-only）
-                                            → webSearch / readPage（Tavily）
+                                            → webSearch / readPage（Tavily）or google_search（Gemini grounding）
                                           → Valkey cache write
 ```
 
@@ -31,6 +31,7 @@ Browser useChat → /api/chat Route Handler → Valkey cache check
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
 - `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入
 - 一般的な挨拶・雑談はツールを使わず直接回答（不要な RAG 検索をスキップ）
+- ウェブ検索自動フォールバック: `TAVILY_API_KEY` 設定時→Tavily（webSearch+readPage）、未設定時→Gemini Google Search grounding（`google_search`）、どちらもなし→KB 検索のみ
 - 文档上传（異步）: rag-ui → LightRAG /ingest → OCR 完了即応答 → 後台 LLM 実体抽出
 - 前端 5秒ポーリングで入庫状態更新（processing → processed / failed）
 - 文档管理 API 直接代理到 LightRAG 服务（/documents 含 status 字段）

@@ -27,14 +27,38 @@ async def _pipeline_processor():
     """
     from lightrag.base import DocStatus
 
+    PIPELINE_TIMEOUT = 600  # 10 min max per batch
+    POLL_INTERVAL = 5       # seconds between status checks
+    POLL_MAX_WAIT = 300     # 5 min max polling after timeout
+
     while True:
         doc_id, track_id = await _process_queue.get()
         try:
             rag = await get_rag()
             print(f"[ingest] Pipeline processing: {doc_id} ({track_id})")
-            await rag.apipeline_process_enqueue_documents()
 
-            # Check results
+            try:
+                await asyncio.wait_for(
+                    rag.apipeline_process_enqueue_documents(),
+                    timeout=PIPELINE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                print(f"[ingest] Pipeline call timed out after {PIPELINE_TIMEOUT}s, polling doc status...")
+
+            # Poll doc_status until terminal state (handles both normal return and timeout)
+            waited = 0
+            while waited < POLL_MAX_WAIT:
+                docs = await rag.aget_docs_by_track_id(track_id)
+                if not docs:
+                    break
+                statuses = {d.status for d in docs.values()}
+                # All terminal → done
+                if statuses <= {DocStatus.PROCESSED, DocStatus.FAILED}:
+                    break
+                await asyncio.sleep(POLL_INTERVAL)
+                waited += POLL_INTERVAL
+
+            # Check final results
             docs = await rag.aget_docs_by_track_id(track_id)
             failed = [d for d in docs.values() if d.status == DocStatus.FAILED]
             if failed:
@@ -88,7 +112,9 @@ async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, file
         await db.update_job_status(doc_id, "indexing")
         rag = await get_rag()
         print(f"[ingest] Enqueuing into LightRAG: {doc_name} ({doc_id})")
-        track_id = await rag.apipeline_enqueue_documents(markdown, track_id=doc_id)
+        track_id = await rag.apipeline_enqueue_documents(
+            markdown, file_paths=doc_name, track_id=doc_id
+        )
         print(f"[ingest] Enqueued: {doc_name}, track_id={track_id}")
 
         # 4. Update job with page_count and track_id
