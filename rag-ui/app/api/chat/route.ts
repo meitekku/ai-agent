@@ -2,15 +2,21 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  stepCountIs,
   streamText,
+  tool,
   UIMessage,
 } from "ai";
+import { z } from "zod";
 import { getChatModel, useGemini, backendName } from "@/lib/ollama-provider";
 import { searchOnly, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
+import { TAVILY_API_KEY } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+const hasTavily = !!TAVILY_API_KEY;
 
 const BASE_SYSTEM_PROMPT = `あなたはナレッジベースアシスタントです。ユーザーの質問に対して、提供されたドキュメントの情報に基づいて正確に回答してください。
 
@@ -19,6 +25,19 @@ const BASE_SYSTEM_PROMPT = `あなたはナレッジベースアシスタント�
 - 情報が見つからない場合は「関連する情報が見つかりませんでした」と伝えてください
 - 回答にはソースのドキュメント名を含めてください
 - 日本語で回答してください（ユーザーが別の言語で質問した場合はその言語で回答）`;
+
+const WEB_SEARCH_PROMPT = `
+
+## ウェブ検索
+
+webSearch ツールが利用可能です。以下の場合に **自分で判断して** 使用してください：
+- ナレッジベースの検索結果が質問に対して不十分・無関係な場合
+- 最新のニュース、時事問題、リアルタイム情報が必要な場合
+- ユーザーが「検索して」「調べて」「ネットで」「最新の」などウェブ検索を意図している場合
+- 特定の製品、サービス、技術の最新情報が必要な場合
+
+ナレッジベースに十分な情報がある場合は、webSearch を使わずそのまま回答してください。
+ウェブ検索結果を使用した場合は、出典のURLを回答に含めてください。`;
 
 function buildSystemPrompt(
   contexts: { document: string; section: string; content: string }[] | null,
@@ -115,12 +134,68 @@ export async function POST(req: Request) {
     }
   }
 
+  // Build tools map: always offer web search (LLM decides when to use it)
+  const tools = hasTavily
+    ? {
+        webSearch: tool({
+          description:
+            "Search the web for current information. Use when the knowledge base results are insufficient, irrelevant, or when the user requests web/internet search.",
+          inputSchema: z.object({
+            query: z.string().describe("Optimized search query (use the best language for the topic)"),
+            topic: z
+              .enum(["general", "news"])
+              .optional()
+              .describe("Search category: 'news' for recent events, 'general' for everything else"),
+            searchDepth: z
+              .enum(["basic", "advanced"])
+              .optional()
+              .describe("'advanced' for complex/detailed queries, 'basic' for simple lookups"),
+          }),
+          execute: async ({ query, topic, searchDepth }) => {
+            console.log(`[chat] 🌐 webSearch: "${query}" topic=${topic ?? "general"} depth=${searchDepth ?? "basic"}`);
+            const t0 = Date.now();
+            const res = await fetch("https://api.tavily.com/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query,
+                api_key: TAVILY_API_KEY,
+                max_results: 5,
+                search_depth: searchDepth ?? "basic",
+                topic: topic ?? "general",
+                include_answer: true,
+              }),
+            });
+            if (!res.ok) {
+              const msg = await res.text().catch(() => "");
+              console.error(`[chat] ❌ webSearch failed: ${res.status} ${msg}`);
+              throw new Error(`Web search failed: ${res.status}`);
+            }
+            const data = await res.json();
+            console.log(
+              `[chat] 🌐 webSearch done: ${Date.now() - t0}ms, ${data.results?.length ?? 0} results`,
+            );
+            return {
+              answer: data.answer ?? null,
+              results:
+                data.results?.map((r: { title: string; url: string; content: string }) => ({
+                  title: r.title,
+                  url: r.url,
+                  content: r.content,
+                })) ?? [],
+            };
+          },
+        }),
+      }
+    : undefined;
+
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
     let firstTokenTime = 0;
 
-    const systemPrompt = buildSystemPrompt(contexts, searchFailed);
+    let systemPrompt = buildSystemPrompt(contexts, searchFailed);
+    if (hasTavily) systemPrompt += WEB_SEARCH_PROMPT;
 
     const chatModel = getChatModel();
 
@@ -128,6 +203,8 @@ export async function POST(req: Request) {
       model: chatModel,
       system: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       messages: await convertToModelMessages(messages),
+      tools,
+      stopWhen: hasTavily ? stepCountIs(3) : undefined,
       maxOutputTokens: 2048,
       onChunk() {
         if (!firstTokenTime) {

@@ -142,6 +142,10 @@
   /* Glass-morphism header */
   .glass-header {
     backdrop-filter: blur(16px) saturate(1.4);
+    background: oklch(1 0 0 / 75%);
+    border-bottom: 1px solid oklch(0 0 0 / 8%);
+  }
+  .dark .glass-header {
     background: oklch(0.105 0.02 260 / 75%);
     border-bottom: 1px solid oklch(1 0 0 / 6%);
   }
@@ -183,4 +187,15 @@
   .animate-fade-in-up {
     animation: fade-in-up 0.3s ease-out both;
   }
+}
+
+/* View Transition for theme toggle */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
 }

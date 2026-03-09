@@ -6,46 +6,61 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from ..rag import get_rag
 from ..ocr import ocr_pdf
-from .. import db, config
+from .. import db
 
 router = APIRouter()
 
-# Ollama 单 GPU 需要排他锁；Gemini 云端可并行
-_processing_lock = asyncio.Lock() if config.LLM_PROVIDER != "gemini" else None
+# Global processing queue: serialize apipeline_process_enqueue_documents calls
+# LightRAG has internal busy-flag that causes concurrent callers to return immediately,
+# which leads to premature "processed" status. We serialize at our level instead.
+_process_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+_processor_started = False
 
 
-async def _process_background(doc_id: str, track_id: str):
-    """Background task: process enqueued documents and update job status."""
-    async def _do_process():
+async def _pipeline_processor():
+    """Single worker that processes enqueued documents one by one.
+
+    LightRAG's apipeline_process_enqueue_documents() processes ALL pending docs
+    in a single call (it pulls pending/failed/processing from doc_status storage).
+    We serialize calls so each doc gets properly processed and status-checked.
+    """
+    from lightrag.base import DocStatus
+
+    while True:
+        doc_id, track_id = await _process_queue.get()
         try:
             rag = await get_rag()
+            print(f"[ingest] Pipeline processing: {doc_id} ({track_id})")
             await rag.apipeline_process_enqueue_documents()
 
             # Check results
             docs = await rag.aget_docs_by_track_id(track_id)
-            from lightrag.base import DocStatus
             failed = [d for d in docs.values() if d.status == DocStatus.FAILED]
             if failed:
                 error_msgs = [d.error_msg or "unknown error" for d in failed]
                 await db.update_job_status(doc_id, "failed", "; ".join(error_msgs))
             else:
                 await db.update_job_status(doc_id, "processed")
-            print(f"[ingest] Background processing done: {doc_id} ({track_id})")
+            print(f"[ingest] Pipeline done: {doc_id} ({track_id})")
         except Exception as e:
-            print(f"[ingest] Background processing failed: {doc_id}: {e}")
+            print(f"[ingest] Pipeline failed: {doc_id}: {e}")
             await db.update_job_status(doc_id, "failed", str(e))
+        finally:
+            _process_queue.task_done()
 
-    if _processing_lock:
-        async with _processing_lock:
-            await _do_process()
-    else:
-        await _do_process()
+
+def _ensure_processor():
+    """Start the singleton pipeline processor task if not already running."""
+    global _processor_started
+    if not _processor_started:
+        asyncio.create_task(_pipeline_processor())
+        _processor_started = True
 
 
 async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, filename: str):
-    """Background task: OCR → enqueue → LLM processing."""
+    """Background task: OCR → enqueue → submit to processing queue."""
     try:
-        # 1. OCR
+        # 1. OCR (can run concurrently for multiple files)
         await db.update_job_status(doc_id, "ocr")
         print(f"[ingest] OCR processing: {filename}")
         pages = await ocr_pdf(file_bytes, filename)
@@ -68,7 +83,7 @@ async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, file
             for p in pages
         )
 
-        # 3. Enqueue into LightRAG
+        # 3. Enqueue into LightRAG (fast, just writes to doc_status storage)
         await db.update_job_status(doc_id, "indexing")
         rag = await get_rag()
         print(f"[ingest] Enqueuing into LightRAG: {doc_name} ({doc_id})")
@@ -78,9 +93,10 @@ async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, file
         # 4. Update job with page_count and track_id
         await db.update_job_after_ocr(doc_id, page_count, track_id)
 
-        # 5. LLM entity extraction
+        # 5. Submit to processing queue (serialized LLM entity extraction)
         await db.update_job_status(doc_id, "extracting")
-        await _process_background(doc_id, track_id)
+        _ensure_processor()
+        await _process_queue.put((doc_id, track_id))
 
     except Exception as e:
         print(f"[ingest] Ingest failed: {doc_id}: {e}")

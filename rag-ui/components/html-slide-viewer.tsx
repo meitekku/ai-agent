@@ -423,6 +423,8 @@ export function HtmlSlideViewer({
   const lastFocusedEditableRef = useRef<HTMLElement | null>(null);
   const scaleRef = useRef(0.5);
   const [scale, setScale] = useState(0.5);
+  const thumbGridRef = useRef<HTMLDivElement>(null);
+  const [thumbScale, setThumbScale] = useState(0.25);
 
   // ============================================================
   // Scale calculation
@@ -445,6 +447,24 @@ export function HtmlSlideViewer({
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
   }, [phase, updateScale]);
+
+  // Thumbnail grid scale calculation
+  useEffect(() => {
+    if (phase !== "generating") return;
+    const grid = thumbGridRef.current;
+    if (!grid) return;
+    const measure = () => {
+      const firstCell = grid.querySelector<HTMLElement>("[data-thumb-cell]");
+      if (firstCell) {
+        const cellW = firstCell.clientWidth;
+        if (cellW > 0) setThumbScale(cellW / SLIDE_W);
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, [phase]);
 
   // ============================================================
   // Phase 1: Generate plan
@@ -505,16 +525,16 @@ export function HtmlSlideViewer({
       }
 
       const data = await res.json();
-      const md = data.plan_md || "";
+      const md = data.planMd || data.plan_md || "";
       setPlanMd(md);
 
       // Capture diagnostics
       setPlanDiag({
-        source: data.plan_source,
+        source: data.source || data.plan_source,
         model: data.plan_model,
         error: data.plan_error,
         prompt_len: data.prompt_len,
-        time: data.generation_time_seconds,
+        time: data.generationTimeMs ? data.generationTimeMs / 1000 : data.generation_time_seconds,
       });
 
       const parsed = parsePlanMd(md);
@@ -1934,12 +1954,13 @@ export function HtmlSlideViewer({
               </div>
 
               {/* Grid of generated slides (thumbnail preview) */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div ref={thumbGridRef} className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {slideSections.map((section, idx) => {
                   const generated = generatedSlides.find((s) => s.index === idx);
                   return (
                     <div
                       key={idx}
+                      data-thumb-cell
                       className={cn(
                         "relative aspect-video rounded-lg border overflow-hidden",
                         generated ? "border-teal-300" : "border-border bg-secondary/30",
@@ -1952,7 +1973,7 @@ export function HtmlSlideViewer({
                         >
                           <div
                             style={{
-                              transform: "scale(0.15)",
+                              transform: `scale(${thumbScale})`,
                               transformOrigin: "top left",
                               width: SLIDE_W,
                               height: SLIDE_H,

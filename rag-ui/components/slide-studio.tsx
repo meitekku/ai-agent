@@ -8,8 +8,10 @@ import {
   Copy,
   Download,
   FileDown,
+  ImageIcon,
   Pencil,
   Plus,
+  RefreshCw,
   Sparkles,
   Trash2,
   Upload,
@@ -427,6 +429,7 @@ export function SlideStudio({
   const [exportDiagramSvg, setExportDiagramSvg] = useState<string>("");
   const [exporting, setExporting] = useState<null | "pptx" | "pdf">(null);
   const [exportIndex, setExportIndex] = useState<number>(0);
+  const [imageGenerating, setImageGenerating] = useState(false);
   const exportSlideRef = useRef<HTMLDivElement>(null);
   const exportPngCacheRef = useRef<{ fingerprint: string; pngs: string[] } | null>(null);
   const selectedSlide = useMemo(() => deck.slides[selectedIndex], [deck.slides, selectedIndex]);
@@ -509,6 +512,41 @@ export function SlideStudio({
       });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleGenerateImage = async () => {
+    if (!selectedSlide || imageGenerating) return;
+    const bullets = (selectedSlide.bullets || []).slice(0, 6).join("; ");
+    const base = `${selectedSlide.title || "Slide"}. ${bullets}`.trim();
+    const prompt = (
+      selectedSlide.image_prompt ||
+      `${base}. Abstract flat vector illustration, clean, minimal, soft colors, no text, no numbers, no logos.`
+    ).trim();
+    if (!prompt) return;
+    setImageGenerating(true);
+    try {
+      const res = await fetch("/api/slides/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const dataUrl = data?.data_url || "";
+      if (!dataUrl) throw new Error("No image returned");
+      updateSlide(selectedIndex, {
+        image_data_url: dataUrl,
+        image_url: "",
+        image_prompt: prompt,
+      });
+    } catch (err) {
+      console.error("[SlideStudio] Image generation failed", err);
+    } finally {
+      setImageGenerating(false);
+    }
   };
 
   const addSlide = () => {
@@ -1303,7 +1341,7 @@ export function SlideStudio({
                       </div>
                       <div>
                         <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Image (URL or Upload)
+                          Image (URL / Upload / AI生成)
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -1334,6 +1372,20 @@ export function SlideStudio({
                               onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
                             />
                           </label>
+                          <button
+                            type="button"
+                            onClick={handleGenerateImage}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs hover:bg-accent transition-colors"
+                            disabled={busy || exporting !== null || imageGenerating}
+                            title="AIで画像を自動生成（Gemini）"
+                          >
+                            {imageGenerating ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ImageIcon className="w-3.5 h-3.5" />
+                            )}
+                            {imageGenerating ? "生成中…" : "AI生成"}
+                          </button>
                           <button
                             type="button"
                             onClick={() =>

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { PanelLeftIcon, BotIcon } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function ChatHeader({
   sidebarOpen,
@@ -31,6 +32,9 @@ export function ChatHeader({
       <span className="text-[11px] text-muted-foreground/70 ml-1 hidden sm:inline">
         ナレッジベースに基づいて回答します
       </span>
+      <div className="ml-auto">
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

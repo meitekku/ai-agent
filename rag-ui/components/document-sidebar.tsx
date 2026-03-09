@@ -118,11 +118,13 @@ export const DocumentSidebar = memo(function DocumentSidebar({
 
   const handleUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const fileList = Array.from(e.target.files ?? []);
+      if (fileList.length === 0) return;
       if (fileInputRef.current) fileInputRef.current.value = "";
       setError(null);
-      uploadMutation.mutate(file);
+      for (const file of fileList) {
+        uploadMutation.mutate(file);
+      }
     },
     [uploadMutation],
   );
@@ -173,6 +175,7 @@ export const DocumentSidebar = memo(function DocumentSidebar({
             ref={fileInputRef}
             type="file"
             accept=".pdf"
+            multiple
             className="hidden"
             onChange={handleUpload}
           />

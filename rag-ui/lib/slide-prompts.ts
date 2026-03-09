@@ -176,6 +176,12 @@ export const SLIDE_HTML_SYSTEM_PROMPT = `あなたはプレゼンテーション
 - 適切な余白とタイポグラフィ階層
 - Tailwindのグラデーション、シャドウ、ボーダーで豊かな視覚表現
 
+【テキストコントラスト（必須）】
+- 白系・淡色背景: テキストは text-slate-800 以上の濃さ（text-gray-300/400/500 は禁止）
+- 暗い背景: テキストは text-white または text-slate-100 を使用
+- コントラスト比 4.5:1 以上を確保すること
+- 薄いグレー文字（text-gray-400, text-slate-400 等）は装飾的な小さいラベルにのみ限定使用可
+
 【コンテンツタイプ別ガイドライン】
 - 統計データ: Tailwindで棒グラフ(w-[70%] h-6 bg-indigo-500 rounded)、大きな数値(text-5xl font-bold)
 - 複数項目: grid grid-cols-2 gap-4 のカードレイアウト、各カードに rounded-xl shadow-md p-6

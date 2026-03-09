@@ -19,6 +19,7 @@ import {
   CheckIcon,
   RotateCcwIcon,
   SearchIcon,
+  GlobeIcon,
   BrainIcon,
   SparklesIcon,
   DatabaseIcon,
@@ -69,6 +70,17 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
         icon={SearchIcon}
         activeLabel="ナレッジベースを検索中..."
         completedLabel="ナレッジベースを検索しました"
+        active={!isComplete}
+      />
+    );
+  }
+
+  if (toolName === "webSearch") {
+    return (
+      <StepIndicator
+        icon={GlobeIcon}
+        activeLabel="ウェブを検索中..."
+        completedLabel="ウェブ検索完了"
         active={!isComplete}
       />
     );
