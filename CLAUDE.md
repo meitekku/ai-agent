@@ -83,10 +83,11 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/app-shell.tsx` | 同上 | 一致 | sidebar + header ラッパー |
 | `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー + チャット履歴 |
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
-| `rag-ui/components/chat-page.tsx` | 同上 | 一致 | チャット共有コンポーネント（履歴+ブランチ） |
+| `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
+| `rag-ui/components/chat-page.tsx` | 同上 | 一致 | チャット共有コンポーネント（履歴+ブランチ+ファイル添付） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
-| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | 編集+ブランチセレクター追加 |
+| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | マルチモーダル表示（画像・ファイル）+ 編集+ブランチ |
 | `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state（Zustand） |
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
@@ -117,6 +118,7 @@ cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deplo
 cp ~/Desktop/uiForAI/rag-ui/components/app-shell.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-shell.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/app-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-sidebar.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-header.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-header.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/chat-input.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-input.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx

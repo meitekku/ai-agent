@@ -7,7 +7,8 @@ services:
       POSTGRES_DB: lightrag
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./seed-data/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U raguser -d lightrag"]
       interval: 5s
@@ -43,6 +44,7 @@ services:
       PG_DATABASE: lightrag
     volumes:
       - lightrag-data:/app/data
+      - ./seed-data/graph_chunk_entity_relation.graphml:/app/seed/graph_chunk_entity_relation.graphml:ro
     depends_on:
       postgres:
         condition: service_healthy

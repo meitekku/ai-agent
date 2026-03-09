@@ -7,7 +7,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY app/ ./app/
-RUN mkdir -p /app/data
+COPY entrypoint.sh ./
+RUN mkdir -p /app/data /app/seed
 
 EXPOSE 8007
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8007"]
+ENTRYPOINT ["./entrypoint.sh"]

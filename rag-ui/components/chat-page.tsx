@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import type { FileUIPart } from "ai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { useQueryClient } from "@tanstack/react-query";
@@ -181,16 +182,20 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
   );
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, files?: FileUIPart[]) => {
       submitTimeRef.current = Date.now();
-      await ensureConversation(text);
+      await ensureConversation(text || "ファイル添付");
 
       // Track parent for the new user message
       const currentLeaf = treeStore.activeLeafId;
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
-      sendMessage({ text }, { body: { service } });
+      if (files && files.length > 0) {
+        sendMessage({ text, files }, { body: { service } });
+      } else {
+        sendMessage({ text }, { body: { service } });
+      }
     },
     [sendMessage, service, ensureConversation, treeStore.activeLeafId, messages.length],
   );

@@ -26,6 +26,8 @@ Browser useChat → /api/chat Route Handler → Valkey cache check
                                           → Valkey cache write
 ```
 
+- マルチモーダル対応：画像・テキストファイル・PDF を添付可能（data URL → `convertToModelMessages` → Gemini）
+- ファイルはドラッグ&ドロップ / クリップボード貼り付け / ボタン選択で添付
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
 - `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入
 - 一般的な挨拶・雑談はツールを使わず直接回答（不要な RAG 検索をスキップ）
@@ -157,7 +159,8 @@ rag-ui/
 ├── components/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
-│   ├── chat-message.tsx       # チャットメッセージ（4モードドロップダウン）
+│   ├── chat-input.tsx         # チャット入力（ファイル添付、プレビュー、D&D対応）
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、4モードドロップダウン）
 │   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
 │   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
 │   ├── html-slide-viewer.tsx  # HTML スライドビューア（DB保存、テンプレート、ドラッグ）
@@ -407,4 +410,5 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - [x] チャット履歴永続化（PostgreSQL、サイドバー一覧、`/chat/[id]` ルート）
 - [x] メッセージ編集・ブランチ分岐（ツリー構造、ブランチセレクター）
 - [x] Tool calling 移行（always-search → LLM 判断、KB 設定動的注入）
+- [x] マルチモーダルチャット（画像・テキスト・PDF 添付、D&D、Gemini 直接送信）
 - [ ] Docker 部署设定

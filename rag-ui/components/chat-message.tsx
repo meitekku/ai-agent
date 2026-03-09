@@ -357,6 +357,35 @@ export const ChatMessage = memo(function ChatMessage({
                     : part.text}
                 </MessageResponse>
               );
+            case "file": {
+              const mediaType = part.mediaType ?? "";
+              if (mediaType.startsWith("image/")) {
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={key}
+                    src={part.url}
+                    alt={("filename" in part ? (part as { filename?: string }).filename : undefined) ?? "image"}
+                    className="max-h-64 max-w-full rounded-lg border border-border object-contain"
+                  />
+                );
+              }
+              // PDF / text / other files — show as a badge
+              const filename = ("filename" in part ? (part as { filename?: string }).filename : undefined) ?? "file";
+              return (
+                <div
+                  key={key}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {mediaType === "application/pdf" ? (
+                    <FileTextIcon className="size-3.5 text-red-400" />
+                  ) : (
+                    <FileTextIcon className="size-3.5" />
+                  )}
+                  <span className="max-w-[200px] truncate">{filename}</span>
+                </div>
+              );
+            }
             default:
               if (isToolUIPart(part)) {
                 return (
