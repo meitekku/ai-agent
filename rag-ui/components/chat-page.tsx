@@ -77,29 +77,28 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
   // Track count of messages known before sending, to find new ones
   const knownCountRef = useRef(0);
 
-  // Load initial data into tree
+  const { messages, setMessages, sendMessage, status, stop, regenerate, error } =
+    useChat({
+      id: initialConvId ?? "new-chat",
+      experimental_throttle: 50,
+    });
+
+  // Load initial data into tree AND sync to useChat
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
     if (initialData && initialConvId) {
       treeStore.loadTree(initialConvId, initialData.messages);
-      // Restore active_leaf_id from conversation
       if (initialData.conversation.active_leaf_id) {
         treeStore.setActiveLeafId(initialData.conversation.active_leaf_id);
       }
+      const path = treeStore.getActivePath();
+      setMessages(path);
+      knownCountRef.current = path.length;
     } else {
       treeStore.clear();
     }
-  }, [initialConvId, initialData, treeStore]);
-
-  // Compute initial messages for useChat from tree
-  const computedInitialMessages = initialData ? treeStore.getActivePath() : undefined;
-
-  const { messages, setMessages, sendMessage, status, stop, regenerate, error } =
-    useChat({
-      experimental_throttle: 50,
-      messages: computedInitialMessages,
-    });
+  }, [initialConvId, initialData, treeStore, setMessages]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const submitTimeRef = useRef(0);
@@ -167,10 +166,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
       convIdRef.current = id;
       const title = generateTitle(firstText);
 
-      // Update URL without remount
-      window.history.replaceState(null, "", `/chat/${id}`);
-
-      // Create in DB
+      // Create in DB (URL stays at /new to avoid Next.js re-mount)
       fetch("/api/history/chats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

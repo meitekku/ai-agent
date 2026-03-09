@@ -75,6 +75,8 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/skills/page.tsx` | 同上 | 一致 | スキル管理ルート |
 | `rag-ui/app/api/skills/route.ts` | 同上 | 一致 | GET/POST skills API |
 | `rag-ui/app/api/skills/[id]/route.ts` | 同上 | 一致 | PUT/DELETE skills API |
+| `rag-ui/app/api/skills/upload/route.ts` | 同上 | 一致 | POST ZIP アップロード |
+| `rag-ui/lib/skill-zip-parser.ts` | 同上 | 一致 | ZIP 解析（SKILL.md frontmatter + references） |
 | `rag-ui/app/api/history/chats/route.ts` | 同上 | 一致 | GET/POST チャット履歴 |
 | `rag-ui/app/api/history/chats/[id]/route.ts` | 同上 | 一致 | GET/PATCH/DELETE 会話 |
 | `rag-ui/app/api/history/chats/[id]/messages/route.ts` | 同上 | 一致 | POST メッセージ保存 |
@@ -109,6 +111,7 @@ cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/kb-config ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/kb-config
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
+cp ~/Desktop/uiForAI/rag-ui/lib/skill-zip-parser.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skill-zip-parser.ts
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/history/chats
 # コンポーネント
 cp ~/Desktop/uiForAI/rag-ui/components/app-shell.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-shell.tsx

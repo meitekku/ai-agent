@@ -33,6 +33,9 @@ export async function ensureSkillsTables(): Promise<void> {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`
+      ALTER TABLE skills ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'manual'
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -49,6 +52,7 @@ export interface Skill {
   description: string;
   content: string;
   enabled: boolean;
+  source_type: "manual" | "zip";
   created_at: string;
   updated_at: string;
 }
@@ -86,13 +90,14 @@ export async function createSkill(data: {
   description?: string;
   content: string;
   enabled?: boolean;
+  source_type?: "manual" | "zip";
 }): Promise<number> {
   await ensureSkillsTables();
   const res = await getPool().query(
-    `INSERT INTO skills (name, description, content, enabled)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO skills (name, description, content, enabled, source_type)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
-    [data.name, data.description || "", data.content, data.enabled ?? true],
+    [data.name, data.description || "", data.content, data.enabled ?? true, data.source_type || "manual"],
   );
   return res.rows[0].id as number;
 }

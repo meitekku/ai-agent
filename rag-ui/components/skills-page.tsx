@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +32,7 @@ import {
   TrashIcon,
   Loader2Icon,
   SparklesIcon,
+  ArchiveIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ interface Skill {
   description: string;
   content: string;
   enabled: boolean;
+  source_type?: "manual" | "zip";
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +116,31 @@ export const SkillsPage = memo(function SkillsPage() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["skills"] }),
   });
+
+  const zipInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/skills/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["skills"] }),
+  });
+
+  const handleZipUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) uploadMutation.mutate(file);
+      e.target.value = "";
+    },
+    [uploadMutation],
+  );
 
   const handleToggle = useCallback(
     (skill: Skill) => {
@@ -195,10 +222,32 @@ export const SkillsPage = memo(function SkillsPage() {
               )}
             </p>
           </div>
-          <Button className="gap-2" onClick={openCreate}>
-            <PlusIcon className="size-4" />
-            新規スキル
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => zipInputRef.current?.click()}
+              disabled={uploadMutation.isPending}
+            >
+              {uploadMutation.isPending ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <ArchiveIcon className="size-4" />
+              )}
+              ZIP アップロード
+            </Button>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={handleZipUpload}
+            />
+            <Button className="gap-2" onClick={openCreate}>
+              <PlusIcon className="size-4" />
+              新規スキル
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -234,7 +283,14 @@ export const SkillsPage = memo(function SkillsPage() {
                         skill.enabled ? "bg-primary" : "bg-muted-foreground/30"
                       }`}
                     />
-                    <span className="flex-1 text-sm font-medium">{skill.name}</span>
+                    <span className="flex-1 text-sm font-medium">
+                      {skill.name}
+                      {skill.source_type === "zip" && (
+                        <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 font-normal">
+                          ZIP
+                        </Badge>
+                      )}
+                    </span>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button
