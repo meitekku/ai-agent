@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useChatSettingsStore } from "@/lib/store";
 
 const VIEW_CONFIG: Record<string, { icon: typeof BotIcon; title: string; subtitle: string }> = {
+  "/chat": { icon: MessageSquareIcon, title: "RAG Chat", subtitle: "ナレッジベースに基づいて回答します" },
   "/new": { icon: BotIcon, title: "RAG Chat", subtitle: "ナレッジベースに基づいて回答します" },
   "/documents": { icon: FileTextIcon, title: "ドキュメント", subtitle: "ナレッジベースの管理" },
   "/skills": { icon: SparklesIcon, title: "スキル", subtitle: "AI の回答をカスタマイズ" },

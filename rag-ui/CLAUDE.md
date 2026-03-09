@@ -106,7 +106,8 @@ rag-ui/
 ├── app/
 │   ├── layout.tsx                     # Root layout（providers + AppShell）
 │   ├── page.tsx                       # / → /new リダイレクト
-│   ├── new/page.tsx                   # 新規チャット（4種スライドビューア統合）
+│   ├── new/page.tsx                   # 新規チャット → ChatPage ラッパー
+│   ├── chat/[id]/page.tsx             # 既存チャット（DB ロード → ChatPage）
 │   ├── documents/page.tsx             # ドキュメント管理ページ
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
@@ -114,6 +115,11 @@ rag-ui/
 │       ├── skills/
 │       │   ├── route.ts               # GET/POST スキル一覧/新規作成
 │       │   └── [id]/route.ts          # PUT/DELETE スキル更新/削除
+│       ├── history/chats/
+│       │   ├── route.ts               # GET/POST チャット履歴一覧/新規作成
+│       │   └── [id]/
+│       │       ├── route.ts           # GET/PATCH/DELETE 会話詳細/更新/削除
+│       │       └── messages/route.ts  # POST メッセージ保存
 │       ├── documents/
 │       │   ├── route.ts               # GET 文档列表
 │       │   ├── upload/route.ts        # POST PDF 上传
@@ -150,12 +156,15 @@ rag-ui/
 │   ├── style-options-panel.tsx # スタイルオプション（産業/職種/年代/色/フォント）
 │   ├── template-manager.tsx   # テンプレート管理モーダル
 │   ├── app-shell.tsx           # AppShell（sidebar + header ラッパー、layout から使用）
-│   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、usePathname）
+│   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、チャット履歴）
+│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ統合）
 │   ├── documents-page.tsx     # ドキュメント管理ページコンポーネント
 │   └── skills-page.tsx        # スキル CRUD ページコンポーネント
 ├── lib/
 │   ├── utils.ts           # shadcn 自動生成
 │   ├── store.ts           # Zustand store（sidebar 状態管理）
+│   ├── chat-db.ts         # PostgreSQL チャット会話CRUD（pg）
+│   ├── chat-tree.ts       # Zustand ツリー管理（ブランチ操作、パス計算）
 │   ├── constants.ts       # 環境変数定義
 │   ├── rag-client.ts      # LightRAG/QueryService HTTP クライアント
 │   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替）
@@ -180,13 +189,15 @@ rag-ui/
 | パス | 説明 |
 |------|------|
 | `/` | `/new` にリダイレクト |
-| `/new` | 新規チャット（将来: `/chat/[id]` で履歴チャット） |
+| `/new` | 新規チャット |
+| `/chat/[id]` | 既存チャット（DB からロード、ブランチ対応） |
 | `/documents` | ドキュメント管理（PDF アップロード/一覧/削除） |
 | `/skills` | スキル管理（CRUD + 有効/無効切替） |
 
 - `AppShell`（sidebar + header）は `layout.tsx` で全ページ共通
-- sidebar は `usePathname()` でアクティブなナビを判定
+- sidebar は `usePathname()` でアクティブなナビを判定 + チャット履歴一覧表示
 - header は `usePathname()` でタイトル/アイコンを切替
+- `/new` で初回送信後、`replaceState` で `/chat/[id]` に URL 更新（リマウントなし）
 
 ## API Routes
 
@@ -198,6 +209,9 @@ rag-ui/
 | DELETE               | /api/documents/[id]           | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）       |
 | GET/POST             | /api/skills                   | スキル一覧 / 新規作成                                    |
 | PUT/DELETE           | /api/skills/[id]              | スキル更新 / 削除                                        |
+| GET/POST             | /api/history/chats            | チャット履歴一覧 / 新規会話作成                          |
+| GET/PATCH/DELETE     | /api/history/chats/[id]       | 会話詳細 / 更新 / 削除                                   |
+| POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                  |
 | POST                 | /api/slides/plan              | 簡易スライド構成計画                                     |
 | POST                 | /api/slides/render            | 簡易スライド HTML 生成                                   |
 | POST                 | /api/slides/generate          | 構造化デッキ JSON 生成（generateObject + Zod）           |
@@ -244,6 +258,31 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - LightRAG search-only 的 `only_need_context=True` 仍会调 LLM 做关键词提取，必须传 `ll_keywords` 跳过
 - Valkey 缓存的 key 标准化：小写 + trim + 合并空格（不能用 `\w` 正则，会丢日文字符）
 - LightRAG 查询模式用 `hybrid`（行业推荐，开销极小），不要改成 `local`
+
+## チャット履歴・ブランチ機能
+
+### アーキテクチャ
+
+- **永続化**: PostgreSQL に `chat_conversations` + `chat_messages` テーブル
+- **ツリー構造**: `chat_messages.parent_id` で親子関係、同じ parent_id を持つメッセージ = 兄弟（ブランチ）
+- **ブランチ管理**: `lib/chat-tree.ts`（Zustand ストア）でメッセージツリーを管理、`active_leaf_id` からパス逆算
+- **共有コンポーネント**: `components/chat-page.tsx` が `/new` と `/chat/[id]` 両方で使用
+
+### 操作フロー
+
+| 操作 | 動作 |
+|------|------|
+| 新規チャット（`/new`） | 初回送信時に会話作成 + `replaceState` で `/chat/[id]` に URL 更新 |
+| メッセージ送信 | `onFinish` で user + assistant メッセージを DB 保存 |
+| メッセージ編集 | 編集前メッセージの `parent_id` を引き継ぎ、新 user メッセージを兄弟として作成 |
+| 再生成 | 新 assistant メッセージを同じ parent の兄弟として作成 |
+| ブランチ切替 | `active_leaf_id` 更新 → ツリーからアクティブパス再計算 → `setMessages()` |
+| 履歴一覧 | サイドバーに日付グループ表示（React Query、30秒リフレッシュ） |
+
+### UI コンポーネント
+
+- **BranchSelector**: `< 1/2 >` 形式のインラインセレクター（user/assistant 両方に表示）
+- **編集モード**: ユーザーメッセージのペンアイコン → インライン textarea → 送信/キャンセル
 
 ## 注意事項
 
@@ -305,17 +344,19 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL テーブル（4表）
+### PostgreSQL テーブル（6表）
 
 | テーブル          | 用途                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
+| `chat_conversations` | チャット会話（id, title, active_leaf_id, timestamps）                 |
+| `chat_messages`   | チャットメッセージツリー（parent_id でブランチ、parts JSONB）             |
 | `slide_decks`     | デッキメタデータ（title, question, answer, plan_md, style_options JSONB） |
 | `slide_pages`     | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）   |
 | `slide_templates` | テンプレート（name, position, html, UNIQUE(name, position)）              |
 | `skills`          | スキル（name, description, content, enabled）— システムプロンプト注入用   |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureSlideTables()` / `ensureSkillsTables()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート
@@ -345,4 +386,6 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - [x] スライド生成 + PPTX エクスポート（完全自包含、AIAgent 依存なし）
 - [x] AIAgent スライド UI 移植（4モード: HTML/Visual/Studio/Simple + PostgreSQL 持久化）
 - [x] LLM バックエンド自動切替（Gemini/MLX、UI セレクター廃止）
+- [x] チャット履歴永続化（PostgreSQL、サイドバー一覧、`/chat/[id]` ルート）
+- [x] メッセージ編集・ブランチ分岐（ツリー構造、ブランチセレクター）
 - [ ] Docker 部署设定

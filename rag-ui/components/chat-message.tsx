@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useState, useRef, useEffect } from "react";
 import type { UIMessage } from "ai";
 import { isToolUIPart } from "ai";
 import { useChatSettingsStore } from "@/lib/store";
@@ -12,7 +12,10 @@ import {
   MessageAction,
 } from "@/components/ai-elements/message";
 import { StepIndicator } from "@/components/step-indicator";
-import { useResponseTimings, ResponseTimingBadge } from "@/components/response-timing";
+import {
+  useResponseTimings,
+  ResponseTimingBadge,
+} from "@/components/response-timing";
 import { Badge } from "@/components/ui/badge";
 import {
   CopyIcon,
@@ -28,6 +31,10 @@ import {
   ImageIcon,
   PencilIcon,
   FileTextIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  XIcon,
+  SendIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,6 +57,46 @@ function getMessageText(message: UIMessage): string {
     .map((p) => stripThinkTags(p.text))
     .join("");
 }
+
+// ---------------------------------------------------------------------------
+// BranchSelector
+// ---------------------------------------------------------------------------
+
+const BranchSelector = memo(function BranchSelector({
+  index,
+  total,
+  siblings,
+  onSwitch,
+}: {
+  index: number;
+  total: number;
+  siblings: string[];
+  onSwitch: (nodeId: string) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+      <button
+        onClick={() => index > 0 && onSwitch(siblings[index - 1])}
+        disabled={index === 0}
+        className="p-0.5 rounded hover:bg-muted/50 disabled:opacity-30 transition-colors"
+        aria-label="前のブランチ"
+      >
+        <ChevronLeftIcon className="size-3" />
+      </button>
+      <span className="tabular-nums min-w-[3ch] text-center">
+        {index + 1}/{total}
+      </span>
+      <button
+        onClick={() => index < total - 1 && onSwitch(siblings[index + 1])}
+        disabled={index === total - 1}
+        className="p-0.5 rounded hover:bg-muted/50 disabled:opacity-30 transition-colors"
+        aria-label="次のブランチ"
+      >
+        <ChevronRightIcon className="size-3" />
+      </button>
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // ToolCallIndicator — uses StepIndicator with elapsed time
@@ -145,6 +192,9 @@ export const ChatMessage = memo(function ChatMessage({
   onCopy,
   onRegenerate,
   onGenerateSlides,
+  onEdit,
+  branchInfo,
+  onSwitchBranch,
 }: {
   message: UIMessage;
   isLoading: boolean;
@@ -152,16 +202,72 @@ export const ChatMessage = memo(function ChatMessage({
   submitTime?: number;
   onCopy: (text: string) => void;
   onRegenerate: () => void;
-  onGenerateSlides?: (text: string, mode: "html" | "visual" | "studio" | "simple") => void;
+  onGenerateSlides?: (
+    text: string,
+    mode: "html" | "visual" | "studio" | "simple",
+  ) => void;
+  onEdit?: (messageId: string, newText: string) => void;
+  branchInfo?: {
+    index: number;
+    total: number;
+    siblings: string[];
+  } | null;
+  onSwitchBranch?: (nodeId: string) => void;
 }) {
   const meta = useChatSettingsStore((s) => s.messageMeta[message.id]);
   const serviceName = meta?.service;
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
   const handleCopy = useCallback(() => {
     onCopy(getMessageText(message));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [message, onCopy]);
+
+  const handleStartEdit = useCallback(() => {
+    const text = message.parts
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("");
+    setEditText(text);
+    setEditing(true);
+  }, [message]);
+
+  useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.setSelectionRange(
+        editRef.current.value.length,
+        editRef.current.value.length,
+      );
+    }
+  }, [editing]);
+
+  const handleSubmitEdit = useCallback(() => {
+    if (!editText.trim() || !onEdit) return;
+    setEditing(false);
+    onEdit(message.id, editText.trim());
+  }, [editText, onEdit, message.id]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditing(false);
+  }, []);
+
+  const handleEditKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmitEdit();
+      }
+      if (e.key === "Escape") {
+        handleCancelEdit();
+      }
+    },
+    [handleSubmitEdit, handleCancelEdit],
+  );
 
   // Track response timings for this message
   const timings = useResponseTimings(message, isActiveStreaming, submitTime);
@@ -172,7 +278,9 @@ export const ChatMessage = memo(function ChatMessage({
     (() => {
       const toolParts = message.parts.filter((p) => isToolUIPart(p));
       const strippedText = message.parts
-        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .filter(
+          (p): p is { type: "text"; text: string } => p.type === "text",
+        )
         .map((p) => stripThinkTags(p.text))
         .join("")
         .trim();
@@ -185,14 +293,55 @@ export const ChatMessage = memo(function ChatMessage({
       const toolParts = message.parts.filter((p) => isToolUIPart(p));
       const allToolsComplete =
         toolParts.length > 0 &&
-        toolParts.every((p) => isToolUIPart(p) && p.state === "output-available");
+        toolParts.every(
+          (p) => isToolUIPart(p) && p.state === "output-available",
+        );
       const strippedText = message.parts
-        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .filter(
+          (p): p is { type: "text"; text: string } => p.type === "text",
+        )
         .map((p) => stripThinkTags(p.text))
         .join("")
         .trim();
       return allToolsComplete && !strippedText;
     })();
+
+  // Render editing mode for user messages
+  if (editing && message.role === "user") {
+    return (
+      <Message from="user" className="animate-fade-in-up">
+        <MessageContent>
+          <div className="space-y-2">
+            <textarea
+              ref={editRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              className="w-full min-h-[80px] rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/50"
+              rows={3}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSubmitEdit}
+                disabled={!editText.trim()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                <SendIcon className="size-3" />
+                送信
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50"
+              >
+                <XIcon className="size-3" />
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </MessageContent>
+      </Message>
+    );
+  }
 
   return (
     <Message from={message.role} className="animate-fade-in-up">
@@ -203,7 +352,9 @@ export const ChatMessage = memo(function ChatMessage({
             case "text":
               return (
                 <MessageResponse key={key}>
-                  {message.role === "assistant" ? stripThinkTags(part.text) : part.text}
+                  {message.role === "assistant"
+                    ? stripThinkTags(part.text)
+                    : part.text}
                 </MessageResponse>
               );
             default:
@@ -222,9 +373,33 @@ export const ChatMessage = memo(function ChatMessage({
         {showThinking ? <ThinkingIndicator /> : null}
         {showGenerating ? <GeneratingIndicator /> : null}
       </MessageContent>
+
+      {/* User message actions: edit + branch selector */}
+      {message.role === "user" && !isLoading ? (
+        <MessageActions>
+          {onEdit && (
+            <MessageAction tooltip="編集" onClick={handleStartEdit}>
+              <PencilIcon className="size-3.5" />
+            </MessageAction>
+          )}
+          {branchInfo && onSwitchBranch && (
+            <BranchSelector
+              index={branchInfo.index}
+              total={branchInfo.total}
+              siblings={branchInfo.siblings}
+              onSwitch={onSwitchBranch}
+            />
+          )}
+        </MessageActions>
+      ) : null}
+
+      {/* Assistant message actions */}
       {message.role === "assistant" && !isActiveStreaming ? (
         <MessageActions>
-          <MessageAction tooltip={copied ? "コピー済み" : "コピー"} onClick={handleCopy}>
+          <MessageAction
+            tooltip={copied ? "コピー済み" : "コピー"}
+            onClick={handleCopy}
+          >
             {copied ? (
               <CheckIcon className="size-3.5 text-green-500" />
             ) : (
@@ -242,24 +417,34 @@ export const ChatMessage = memo(function ChatMessage({
                 </MessageAction>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-52">
-                <DropdownMenuItem onClick={() => onGenerateSlides(getMessageText(message), "html")}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    onGenerateSlides(getMessageText(message), "html")
+                  }
+                >
                   <LayoutIcon className="size-3.5 mr-2" />
                   HTML スライド
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => onGenerateSlides(getMessageText(message), "visual")}
+                  onClick={() =>
+                    onGenerateSlides(getMessageText(message), "visual")
+                  }
                 >
                   <ImageIcon className="size-3.5 mr-2" />
                   ビジュアルスライド
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => onGenerateSlides(getMessageText(message), "studio")}
+                  onClick={() =>
+                    onGenerateSlides(getMessageText(message), "studio")
+                  }
                 >
                   <PencilIcon className="size-3.5 mr-2" />
                   スライドスタジオ
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => onGenerateSlides(getMessageText(message), "simple")}
+                  onClick={() =>
+                    onGenerateSlides(getMessageText(message), "simple")
+                  }
                 >
                   <FileTextIcon className="size-3.5 mr-2" />
                   簡易スライド
@@ -267,6 +452,14 @@ export const ChatMessage = memo(function ChatMessage({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+          {branchInfo && onSwitchBranch && (
+            <BranchSelector
+              index={branchInfo.index}
+              total={branchInfo.total}
+              siblings={branchInfo.siblings}
+              onSwitch={onSwitchBranch}
+            />
+          )}
           {serviceName ? (
             <Badge
               variant="secondary"

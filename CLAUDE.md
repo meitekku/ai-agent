@@ -67,18 +67,25 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | webSearch + readPage tools（リトライ付き）+ skills injection |
 | `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
 | `rag-ui/app/page.tsx` | 同上 | 一致 | / → /new リダイレクト |
-| `rag-ui/app/new/page.tsx` | 同上 | 一致 | 新規チャットページ |
+| `rag-ui/app/new/page.tsx` | 同上 | 一致 | ChatPage ラッパー |
+| `rag-ui/app/chat/[id]/page.tsx` | 同上 | 一致 | 既存チャット（DB ロード → ChatPage） |
 | `rag-ui/app/documents/page.tsx` | 同上 | 一致 | ドキュメント管理ルート |
 | `rag-ui/app/skills/page.tsx` | 同上 | 一致 | スキル管理ルート |
 | `rag-ui/app/api/skills/route.ts` | 同上 | 一致 | GET/POST skills API |
 | `rag-ui/app/api/skills/[id]/route.ts` | 同上 | 一致 | PUT/DELETE skills API |
+| `rag-ui/app/api/history/chats/route.ts` | 同上 | 一致 | GET/POST チャット履歴 |
+| `rag-ui/app/api/history/chats/[id]/route.ts` | 同上 | 一致 | GET/PATCH/DELETE 会話 |
+| `rag-ui/app/api/history/chats/[id]/messages/route.ts` | 同上 | 一致 | POST メッセージ保存 |
 | `rag-ui/components/app-shell.tsx` | 同上 | 一致 | sidebar + header ラッパー |
-| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー（usePathname） |
-| `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替 |
+| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー + チャット履歴 |
+| `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
+| `rag-ui/components/chat-page.tsx` | 同上 | 一致 | チャット共有コンポーネント（履歴+ブランチ） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
-| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | webSearch + readPage ToolCallIndicator 追加 |
+| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | 編集+ブランチセレクター追加 |
 | `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state（Zustand） |
+| `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
+| `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
 | `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
@@ -91,20 +98,25 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 cp ~/Desktop/uiForAI/rag-ui/app/layout.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/layout.tsx
 cp ~/Desktop/uiForAI/rag-ui/app/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/page.tsx
 cp ~/Desktop/uiForAI/rag-ui/app/new/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/new/page.tsx
+cp ~/Desktop/uiForAI/rag-ui/app/chat/\[id\]/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/chat/\[id\]/page.tsx
 cp ~/Desktop/uiForAI/rag-ui/app/documents/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/documents/page.tsx
 cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/skills/page.tsx
 # API
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
+cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/history/chats
 # コンポーネント
 cp ~/Desktop/uiForAI/rag-ui/components/app-shell.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-shell.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/app-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-sidebar.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-header.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-header.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/chat-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/skills-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-page.tsx
 # ライブラリ
 cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/chat-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-db.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/chat-tree.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-tree.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skills-db.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
 
@@ -190,7 +202,7 @@ docker compose build --no-cache
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## 踩坑記録
