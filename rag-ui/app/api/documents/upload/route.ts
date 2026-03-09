@@ -27,8 +27,16 @@ export async function POST(req: Request) {
 
     const upload = new FormData();
     upload.append("file", file);
-    const result = await ingestDocument(upload);
-    return Response.json(result);
+    try {
+      const result = await ingestDocument(upload);
+      return Response.json(result);
+    } catch (err) {
+      // Forward 409 Conflict (duplicate file) as-is
+      if (err instanceof Error && err.message.includes("既に存在")) {
+        return Response.json({ error: err.message }, { status: 409 });
+      }
+      throw err;
+    }
   } catch (err) {
     return Response.json(
       { error: err instanceof Error ? err.message : "Upload failed" },

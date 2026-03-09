@@ -89,7 +89,15 @@ export async function ingestDocument(formData: FormData): Promise<IngestResponse
     { method: "POST", body: formData },
     30_000, // only waiting for OCR now
   );
-  if (!res.ok) throw buildError("Ingest failed", res.status, await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    // Preserve backend error message for 409 (duplicate file)
+    if (res.status === 409) {
+      const detail = (() => { try { return JSON.parse(body).detail; } catch { return body; } })();
+      throw new Error(detail || "Duplicate file");
+    }
+    throw buildError("Ingest failed", res.status, body);
+  }
   return res.json();
 }
 

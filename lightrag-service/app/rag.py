@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 from pathlib import Path
 
 import numpy as np
@@ -51,25 +50,15 @@ async def _embed_ollama(texts: list[str]) -> np.ndarray:
     return np.array(resp["embeddings"], dtype=np.float32)
 
 
-_embed_semaphore = asyncio.Semaphore(5)  # max 5 concurrent embedding calls
-_embed_min_interval = 0.7  # seconds between calls (~85 req/min, under 100 free limit)
-_embed_last_call = 0.0
+_embed_semaphore = asyncio.Semaphore(10)
 
 
 async def _embed_gemini(texts: list[str]) -> np.ndarray:
-    """Gemini embedding with rate limiting for free tier (100 req/min)."""
-    global _embed_last_call
+    """Gemini embedding (paid tier)."""
     from google import genai
     from google.genai import types
 
     async with _embed_semaphore:
-        # Rate limit: ensure minimum interval between calls
-        now = time.monotonic()
-        wait = _embed_min_interval - (now - _embed_last_call)
-        if wait > 0:
-            await asyncio.sleep(wait)
-        _embed_last_call = time.monotonic()
-
         client = genai.Client(api_key=config.GEMINI_API_KEY)
         result = client.models.embed_content(
             model=config.GEMINI_EMBEDDING_MODEL,

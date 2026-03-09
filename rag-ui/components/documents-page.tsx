@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useOptimistic, useRef, useState, useTransition } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -99,6 +99,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
+  const [, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -163,6 +164,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
   const { data: documents = [], isPending: loading } = useQuery({
     queryKey: ["documents"],
     queryFn: fetchDocuments,
+    refetchOnWindowFocus: false,
     refetchInterval: (query) => {
       const docs = query.state.data;
       if (!docs) return false;
@@ -170,28 +172,10 @@ export const DocumentsPage = memo(function DocumentsPage() {
     },
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/documents/upload", { method: "POST", body: formData });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Upload failed");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["documents"] });
-      // Fire-and-forget KB config regeneration
-      fetch("/api/kb-config/generate", { method: "POST" })
-        .then(() => {
-          kbInitRef.current = false;
-          queryClient.invalidateQueries({ queryKey: ["kb-config"] });
-        })
-        .catch(() => {});
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : "アップロードに失敗しました"),
-  });
+  const [optimisticDocs, addOptimisticDoc] = useOptimistic(
+    documents,
+    (state, newDoc: DocumentInfo) => [newDoc, ...state],
+  );
 
   const handleUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,9 +183,37 @@ export const DocumentsPage = memo(function DocumentsPage() {
       if (fileList.length === 0) return;
       if (fileInputRef.current) fileInputRef.current.value = "";
       setError(null);
-      for (const file of fileList) uploadMutation.mutate(file);
+      for (const file of fileList) {
+        startTransition(async () => {
+          addOptimisticDoc({
+            id: `uploading-${Date.now()}`,
+            name: file.name.replace(/\.pdf$/i, ""),
+            page_count: 0,
+            status: "uploading",
+          });
+          const formData = new FormData();
+          formData.append("file", file);
+          try {
+            const res = await fetch("/api/documents/upload", { method: "POST", body: formData });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error || "Upload failed");
+            }
+            await queryClient.invalidateQueries({ queryKey: ["documents"] });
+            // Fire-and-forget KB config regeneration
+            fetch("/api/kb-config/generate", { method: "POST" })
+              .then(() => {
+                kbInitRef.current = false;
+                queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+              })
+              .catch(() => {});
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+          }
+        });
+      }
     },
-    [uploadMutation],
+    [addOptimisticDoc, queryClient, kbInitRef],
   );
 
   const deleteMutation = useMutation({
@@ -233,7 +245,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
     [deleteMutation],
   );
 
-  const processedCount = documents.filter((d) => d.status === "processed" || !d.status).length;
+  const processedCount = optimisticDocs.filter((d) => d.status === "processed" || !d.status).length;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -244,9 +256,9 @@ export const DocumentsPage = memo(function DocumentsPage() {
             <h2 className="text-lg font-semibold tracking-tight">ドキュメント</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               ナレッジベースの PDF を管理
-              {documents.length > 0 && (
+              {optimisticDocs.length > 0 && (
                 <span className="ml-2 text-xs">
-                  ({processedCount} / {documents.length} 処理済み)
+                  ({processedCount} / {optimisticDocs.length} 処理済み)
                 </span>
               )}
             </p>
@@ -346,7 +358,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
             <div className="flex items-center justify-center py-16">
               <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
             </div>
-          ) : documents.length === 0 ? (
+          ) : optimisticDocs.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
                 <FileTextIcon className="size-6 text-primary" />
@@ -360,13 +372,17 @@ export const DocumentsPage = memo(function DocumentsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {documents.map((doc) => (
+              {optimisticDocs.map((doc) => (
                 <div
                   key={doc.id}
                   className="group flex items-center gap-3 rounded-lg border border-border/50 px-4 py-3 transition-colors hover:bg-muted/30"
                 >
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/8 ring-1 ring-primary/10">
-                    <FileTextIcon className="size-4 text-primary/70" />
+                    {doc.id.startsWith("uploading-") ? (
+                      <Loader2Icon className="size-4 animate-spin text-primary/70" />
+                    ) : (
+                      <FileTextIcon className="size-4 text-primary/70" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="truncate text-sm font-medium">{doc.name}</p>

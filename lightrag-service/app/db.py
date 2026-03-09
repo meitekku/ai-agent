@@ -23,19 +23,42 @@ async def init_db():
             track_id VARCHAR(255),
             status VARCHAR(64) DEFAULT 'processing',
             error_msg TEXT,
+            file_hash VARCHAR(64),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add file_hash column if missing (existing deployments)
+    await _pool.execute("""
+        ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)
+    """)
 
 
-async def save_job(doc_id: str, name: str, page_count: int, track_id: str, *, status: str = "processing"):
+async def save_job(doc_id: str, name: str, page_count: int, track_id: str, *, status: str = "processing", file_hash: str | None = None):
     await _pool.execute(
-        """INSERT INTO ingest_jobs (doc_id, name, page_count, track_id, status)
-           VALUES ($1, $2, $3, $4, $5)
+        """INSERT INTO ingest_jobs (doc_id, name, page_count, track_id, status, file_hash)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (doc_id) DO NOTHING""",
-        doc_id, name, page_count, track_id, status,
+        doc_id, name, page_count, track_id, status, file_hash,
     )
+
+
+async def find_by_hash(file_hash: str) -> dict | None:
+    """Find an existing non-failed job with the same file hash."""
+    row = await _pool.fetchrow(
+        "SELECT doc_id, name, status FROM ingest_jobs WHERE file_hash = $1 AND status != 'failed' LIMIT 1",
+        file_hash,
+    )
+    return dict(row) if row else None
+
+
+async def find_by_name(name: str) -> dict | None:
+    """Find an existing non-failed job with the same name (fallback for docs without hash)."""
+    row = await _pool.fetchrow(
+        "SELECT doc_id, name, status FROM ingest_jobs WHERE name = $1 AND status != 'failed' LIMIT 1",
+        name,
+    )
+    return dict(row) if row else None
 
 
 async def update_job_after_ocr(doc_id: str, page_count: int, track_id: str):

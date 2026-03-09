@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import re
 import uuid
 
@@ -114,9 +115,18 @@ async def ingest(
     doc_name = name or file.filename.replace(".pdf", "").replace(".PDF", "")
     file_bytes = await file.read()
 
+    # Deduplication: check by content hash first, then by name (fallback for old docs without hash)
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    existing = await db.find_by_hash(file_hash)
+    if existing:
+        raise HTTPException(409, f"同じファイルが既に存在します: {existing['name']}")
+    existing = await db.find_by_name(doc_name)
+    if existing:
+        raise HTTPException(409, f"同じ名前のドキュメントが既に存在します: {existing['name']}")
+
     # Save job immediately so it's visible in document list
     doc_id = str(uuid.uuid4())
-    await db.save_job(doc_id, doc_name, 0, "", status="uploading")
+    await db.save_job(doc_id, doc_name, 0, "", status="uploading", file_hash=file_hash)
 
     # Everything else runs in background
     asyncio.create_task(_ingest_background(doc_id, doc_name, file_bytes, file.filename))
