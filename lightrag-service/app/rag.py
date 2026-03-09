@@ -50,24 +50,30 @@ async def _embed_ollama(texts: list[str]) -> np.ndarray:
     return np.array(resp["embeddings"], dtype=np.float32)
 
 
-_embed_semaphore = asyncio.Semaphore(30)
+_gemini_client = None
+
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+        _gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+    return _gemini_client
 
 
 async def _embed_gemini(texts: list[str]) -> np.ndarray:
-    """Gemini embedding (paid tier)."""
-    from google import genai
+    """Gemini embedding (async, paid tier)."""
     from google.genai import types
 
-    async with _embed_semaphore:
-        client = genai.Client(api_key=config.GEMINI_API_KEY)
-        result = client.models.embed_content(
-            model=config.GEMINI_EMBEDDING_MODEL,
-            contents=texts,
-            config=types.EmbedContentConfig(
-                output_dimensionality=config.EMBEDDING_DIM,
-            ),
-        )
-        return np.array([e.values for e in result.embeddings], dtype=np.float32)
+    client = _get_gemini_client()
+    result = await client.aio.models.embed_content(
+        model=config.GEMINI_EMBEDDING_MODEL,
+        contents=texts,
+        config=types.EmbedContentConfig(
+            output_dimensionality=config.EMBEDDING_DIM,
+        ),
+    )
+    return np.array([e.values for e in result.embeddings], dtype=np.float32)
 
 
 _embed = _embed_gemini if config.EMBEDDING_PROVIDER == "gemini" else _embed_ollama

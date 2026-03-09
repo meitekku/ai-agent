@@ -133,7 +133,7 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
-  if (toolName === "readPage") {
+  if (toolName === "readPage" || toolName === "readUrl") {
     return (
       <StepIndicator
         icon={FileTextIcon}

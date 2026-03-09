@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useOptimistic, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -60,8 +60,8 @@ function StatusBadge({ status, errorMsg }: { status?: string; errorMsg?: string 
     uploading: { label: "アップロード中", className: "text-blue-500 bg-blue-500/10" },
     ocr: { label: "OCR 処理中", className: "text-blue-500 bg-blue-500/10" },
     indexing: { label: "インデックス作成中", className: "text-yellow-500 bg-yellow-500/10" },
-    extracting: { label: "実体抽出中", className: "text-yellow-500 bg-yellow-500/10" },
-    processing: { label: "実体抽出中", className: "text-yellow-500 bg-yellow-500/10" },
+    extracting: { label: "解析中", className: "text-yellow-500 bg-yellow-500/10" },
+    processing: { label: "解析中", className: "text-yellow-500 bg-yellow-500/10" },
     failed: { label: "失敗", className: "text-destructive bg-destructive/10" },
   };
 
@@ -101,25 +101,27 @@ export const DocumentsPage = memo(function DocumentsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
-  const [, startTransition] = useTransition();
+  const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   // KB config state
+  const [kbTitle, setKbTitle] = useState("");
+  const [kbDescription, setKbDescription] = useState("");
+  const [kbDirty, setKbDirty] = useState(false);
+  const kbSyncedRef = useRef<string | null>(null);
+
   const { data: kbConfig } = useQuery({
     queryKey: ["kb-config"],
     queryFn: fetchKbConfig,
   });
-  const [kbTitle, setKbTitle] = useState("");
-  const [kbDescription, setKbDescription] = useState("");
-  const [kbDirty, setKbDirty] = useState(false);
-  const kbInitRef = useRef(false);
 
-  // Sync fetched config into local state
-  if (kbConfig && !kbInitRef.current) {
-    kbInitRef.current = true;
-    setKbTitle(kbConfig.title);
-    setKbDescription(kbConfig.description);
+  // Sync fetched config into local state (when server data changes and user hasn't made edits)
+  const kbConfigKey = kbConfig ? `${kbConfig.title}|${kbConfig.description}` : null;
+  if (kbConfigKey && kbConfigKey !== kbSyncedRef.current && !kbDirty) {
+    kbSyncedRef.current = kbConfigKey;
+    setKbTitle(kbConfig!.title);
+    setKbDescription(kbConfig!.description);
   }
 
   const kbSaveMutation = useMutation({
@@ -174,10 +176,16 @@ export const DocumentsPage = memo(function DocumentsPage() {
     },
   });
 
-  const [optimisticDocs, addOptimisticDoc] = useOptimistic(
-    documents,
-    (state, newDoc: DocumentInfo) => [newDoc, ...state],
-  );
+  // Merge real documents with uploading placeholders
+  const displayDocs: DocumentInfo[] = [
+    ...uploadingNames.map((name, i) => ({
+      id: `uploading-${i}`,
+      name,
+      page_count: 0,
+      status: "uploading" as const,
+    })),
+    ...documents,
+  ];
 
   const handleUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,37 +193,42 @@ export const DocumentsPage = memo(function DocumentsPage() {
       if (fileList.length === 0) return;
       if (fileInputRef.current) fileInputRef.current.value = "";
       setError(null);
-      for (const file of fileList) {
-        startTransition(async () => {
-          addOptimisticDoc({
-            id: `uploading-${Date.now()}`,
-            name: file.name.replace(/\.pdf$/i, ""),
-            page_count: 0,
-            status: "uploading",
-          });
-          const formData = new FormData();
-          formData.append("file", file);
-          try {
-            const res = await fetch("/api/documents/upload", { method: "POST", body: formData });
+
+      const names = fileList.map((f) => f.name.replace(/\.pdf$/i, ""));
+      setUploadingNames((prev) => [...names, ...prev]);
+
+      // Upload all files, then regenerate KB config once at the end
+      const uploads = fileList.map((file) => {
+        const name = file.name.replace(/\.pdf$/i, "");
+        const formData = new FormData();
+        formData.append("file", file);
+        return fetch("/api/documents/upload", { method: "POST", body: formData })
+          .then(async (res) => {
             if (!res.ok) {
               const data = await res.json().catch(() => ({}));
               throw new Error(data.error || "Upload failed");
             }
-            await queryClient.invalidateQueries({ queryKey: ["documents"] });
-            // Fire-and-forget KB config regeneration
-            fetch("/api/kb-config/generate", { method: "POST" })
-              .then(() => {
-                kbInitRef.current = false;
-                queryClient.invalidateQueries({ queryKey: ["kb-config"] });
-              })
-              .catch(() => {});
-          } catch (err) {
+            queryClient.invalidateQueries({ queryKey: ["documents"] });
+          })
+          .catch((err) => {
             setError(err instanceof Error ? err.message : "アップロードに失敗しました");
-          }
-        });
-      }
+          })
+          .finally(() => {
+            setUploadingNames((prev) => prev.filter((n) => n !== name));
+          });
+      });
+
+      // Regenerate KB config once after all uploads complete
+      Promise.allSettled(uploads).then(() => {
+        fetch("/api/kb-config/generate", { method: "POST" })
+          .then(() => {
+            kbSyncedRef.current = null;
+            queryClient.invalidateQueries({ queryKey: ["kb-config"] });
+          })
+          .catch(() => {});
+      });
     },
-    [addOptimisticDoc, queryClient, kbInitRef],
+    [queryClient, kbSyncedRef],
   );
 
   const deleteMutation = useMutation({
@@ -229,7 +242,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
       // Fire-and-forget KB config regeneration
       fetch("/api/kb-config/generate", { method: "POST" })
         .then(() => {
-          kbInitRef.current = false;
+          kbSyncedRef.current = null;
           queryClient.invalidateQueries({ queryKey: ["kb-config"] });
         })
         .catch(() => {});
@@ -251,11 +264,12 @@ export const DocumentsPage = memo(function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      // Immediately update cache + local state to empty
+      queryClient.setQueryData(["kb-config"], { title: "", description: "" });
+      kbSyncedRef.current = "|";
       setKbTitle("");
       setKbDescription("");
       setKbDirty(false);
-      kbInitRef.current = false;
-      queryClient.invalidateQueries({ queryKey: ["kb-config"] });
     },
     onError: (err) => setError(err instanceof Error ? err.message : "全削除に失敗しました"),
   });
@@ -269,7 +283,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
     [deleteMutation],
   );
 
-  const processedCount = optimisticDocs.filter((d) => d.status === "processed" || !d.status).length;
+  const processedCount = displayDocs.filter((d) => d.status === "processed" || !d.status).length;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -280,15 +294,15 @@ export const DocumentsPage = memo(function DocumentsPage() {
             <h2 className="text-lg font-semibold tracking-tight">ドキュメント</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               ナレッジベースの PDF を管理
-              {optimisticDocs.length > 0 && (
+              {displayDocs.length > 0 && (
                 <span className="ml-2 text-xs">
-                  ({processedCount} / {optimisticDocs.length} 処理済み)
+                  ({processedCount} / {displayDocs.length} 処理済み)
                 </span>
               )}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {optimisticDocs.length > 0 && (
+            {displayDocs.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -398,7 +412,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
             <div className="flex items-center justify-center py-16">
               <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
             </div>
-          ) : optimisticDocs.length === 0 ? (
+          ) : displayDocs.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
                 <FileTextIcon className="size-6 text-primary" />
@@ -412,7 +426,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {optimisticDocs.map((doc) => (
+              {displayDocs.map((doc) => (
                 <div
                   key={doc.id}
                   className="group flex items-center gap-3 rounded-lg border border-border/50 px-4 py-3 transition-colors hover:bg-muted/30"
@@ -486,7 +500,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>全ドキュメントを削除</AlertDialogTitle>
             <AlertDialogDescription>
-              {optimisticDocs.length} 件のドキュメントを全て削除しますか？ナレッジグラフとベクトルデータも完全に削除されます。この操作は取り消せません。
+              {displayDocs.length} 件のドキュメントを全て削除しますか？ナレッジグラフとベクトルデータも完全に削除されます。この操作は取り消せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

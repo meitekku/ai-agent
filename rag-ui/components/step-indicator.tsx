@@ -43,7 +43,7 @@ export const StepIndicator = memo(function StepIndicator({
 
   return (
     <div
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs transition-all duration-300 ${
+      className={`inline-flex w-fit items-center gap-2.5 rounded-lg px-3 py-2 text-xs transition-all duration-300 ${
         active
           ? "border border-primary/30 bg-primary/10 text-foreground/70"
           : "text-muted-foreground/60"

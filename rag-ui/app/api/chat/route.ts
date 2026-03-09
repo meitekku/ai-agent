@@ -31,11 +31,14 @@ function buildSystemPrompt(): string {
 
 ## 回答ガイドライン
 - 回答言語: ユーザーの質問と同じ言語で回答してください。デフォルトは日本語です。
-- 出典の記載: ナレッジベースの検索結果を使用した場合は、回答の末尾に出典を記載してください。形式:「（出典: ドキュメント名, セクション名）」。複数のドキュメントを参照した場合は全て列挙してください。
-- 回答スタイル: 簡潔で読みやすい文章で回答してください。箇条書きは本当に必要な場合のみ使用し、基本は流れのある文章で回答してください。
+- 回答の充実度: 検索結果に含まれる情報を**漏れなく**活用し、ユーザーの質問に対して包括的で詳細な回答を作成してください。検索結果に複数のドキュメントや視点がある場合は、それぞれの情報を統合して回答してください。短い要約ではなく、具体的なデータ、人名、研究結果、事例などを積極的に引用してください。
+- 回答の構造: 見出し（##）や箇条書きを活用して、読みやすく構造化してください。
+- 出典の記載: 回答中の各段落やセクションの末尾に、参照したドキュメント名とページを記載してください。形式:「（出典: ドキュメント名, Page X）」。
 
 ## ツール使用
-ナレッジベースのトピックに関連する質問には searchKnowledgeBase を使用してください。挨拶や雑談など明らかに関係ない場合は直接回答してください。`;
+- ナレッジベースのトピックに関連する質問には searchKnowledgeBase を使用してください。
+- ユーザーが URL を提示した場合や、ウェブ検索結果の中で特に重要そうなページがある場合は readUrl を使用して詳細な内容を取得してください。
+- 挨拶や雑談など明らかに関係ない場合は直接回答してください。`;
 
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   if (hasTavily || hasGoogleSearch) {
@@ -132,7 +135,7 @@ export async function POST(req: Request) {
         console.log(`[chat] 🔍 searchKnowledgeBase: "${query}"`);
         const t0 = Date.now();
         try {
-          const searchRes = await searchOnly(query, { topK: 3, service });
+          const searchRes = await searchOnly(query, { topK: 8, service });
           const elapsed = Date.now() - t0;
           console.log(
             `[chat] 🔍 search: ${elapsed}ms →`,
@@ -171,6 +174,58 @@ export async function POST(req: Request) {
       },
     }),
   };
+
+  // readUrl: fetch any URL and extract text content (always available)
+  tools.readUrl = tool({
+    description:
+      "Fetch a web page by URL and extract its text content. Use when: (1) the user provides a specific URL, (2) a web search result looks highly relevant and you need the full content beyond the summary, (3) you need to verify or get details from a specific source.",
+    inputSchema: z.object({
+      url: z.string().url().describe("The URL to fetch"),
+    }),
+    execute: async ({ url }) => {
+      console.log(`[chat] 🔗 readUrl: ${url}`);
+      const t0 = Date.now();
+      try {
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; RAGBot/1.0)",
+            Accept: "text/html,application/xhtml+xml,text/plain,*/*",
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+          return { success: false, error: `HTTP ${res.status}` };
+        }
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("text/") && !contentType.includes("application/json") && !contentType.includes("application/xml")) {
+          return { success: false, error: `Unsupported content type: ${contentType}` };
+        }
+        const html = await res.text();
+        // Strip HTML tags, scripts, styles to get plain text
+        const text = html
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+          .replace(/<header[\s\S]*?<\/header>/gi, "")
+          .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+          .replace(/<[^>]+>/g, "\n")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        const truncated = text.slice(0, 8000);
+        console.log(`[chat] 🔗 readUrl done: ${Date.now() - t0}ms, ${truncated.length} chars`);
+        return { success: true, url, content: truncated };
+      } catch (err) {
+        console.error(`[chat] ❌ readUrl failed: ${err}`);
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  });
 
   if (hasTavily) {
     tools.webSearch = tool({
@@ -360,7 +415,7 @@ export async function POST(req: Request) {
       system: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       messages: await convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(10),
       maxOutputTokens: 8192,
       onChunk() {
         if (!firstTokenTime) {
