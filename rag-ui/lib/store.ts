@@ -25,11 +25,8 @@ interface ChatSettingsState {
 
   // Sidebar
   sidebarOpen: boolean;
-  sidebarPinned: boolean;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
-  setSidebarPinned: (pinned: boolean) => void;
-  toggleSidebarPinned: () => void;
 
   // Chat reset counter (used as key to force ChatPage remount on /new)
   chatResetCounter: number;
@@ -54,13 +51,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
     });
   },
 
-  // Sidebar — initialize as false to avoid SSR hydration mismatch
+  // Sidebar
   sidebarOpen: false,
-  sidebarPinned: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSidebarPinned: (pinned) => set({ sidebarPinned: pinned }),
-  toggleSidebarPinned: () => set((s) => ({ sidebarPinned: !s.sidebarPinned })),
 
   // Chat reset
   chatResetCounter: 0,

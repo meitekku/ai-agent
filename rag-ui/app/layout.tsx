@@ -28,7 +28,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const sidebarPinned = cookieStore.get("sidebar-pinned")?.value === "true";
+  const initialSidebarOpen = cookieStore.get("sidebar-open")?.value === "true";
 
   return (
     <html lang="ja" suppressHydrationWarning>
@@ -36,7 +36,7 @@ export default async function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <QueryProvider>
             <TooltipProvider>
-              <AppShell initialSidebarPinned={sidebarPinned}>{children}</AppShell>
+              <AppShell initialSidebarOpen={initialSidebarOpen}>{children}</AppShell>
             </TooltipProvider>
           </QueryProvider>
         </ThemeProvider>

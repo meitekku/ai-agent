@@ -31,7 +31,7 @@ export async function ensureUiConfigTable(): Promise<void> {
 }
 
 export interface UiPreferences {
-  sidebarPinned?: boolean;
+  sidebarOpen?: boolean;
   [key: string]: unknown;
 }
 

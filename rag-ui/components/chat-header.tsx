@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PanelLeftIcon, BotIcon, FileTextIcon, SparklesIcon, MessageSquareIcon } from "lucide-react";
@@ -13,10 +14,25 @@ const VIEW_CONFIG: Record<string, { icon: typeof BotIcon; title: string; subtitl
   "/skills": { icon: SparklesIcon, title: "スキル", subtitle: "AI の回答をカスタマイズ" },
 };
 
+function persistSidebarState(open: boolean) {
+  document.cookie = `sidebar-open=${open}; path=/; max-age=31536000; SameSite=Lax`;
+  fetch("/api/ui-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sidebarOpen: open }),
+  }).catch(() => {});
+}
+
 export function ChatHeader() {
   const pathname = usePathname();
   const sidebarOpen = useChatSettingsStore((s) => s.sidebarOpen);
   const toggleSidebar = useChatSettingsStore((s) => s.toggleSidebar);
+
+  const handleToggle = useCallback(() => {
+    const next = !useChatSettingsStore.getState().sidebarOpen;
+    toggleSidebar();
+    persistSidebarState(next);
+  }, [toggleSidebar]);
 
   const config =
     Object.entries(VIEW_CONFIG).find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
@@ -28,7 +44,7 @@ export function ChatHeader() {
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={toggleSidebar}
+        onClick={handleToggle}
         className="text-muted-foreground hover:text-foreground transition-colors"
         aria-label="サイドバーを開閉"
         aria-expanded={sidebarOpen}

@@ -5,13 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChatSettingsStore } from "@/lib/store";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
@@ -24,16 +17,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
-import {
   MessageSquareIcon,
   FileTextIcon,
   SparklesIcon,
-  PinIcon,
-  PinOffIcon,
   BotIcon,
   XIcon,
   Trash2Icon,
@@ -41,19 +27,16 @@ import {
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// useIsDesktop hook
+// Persist sidebar state to cookie + DB (fire-and-forget)
 // ---------------------------------------------------------------------------
 
-function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const mql = window.matchMedia("(min-width: 768px)");
-    setIsDesktop(mql.matches);
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-  return isDesktop;
+function persistSidebarState(open: boolean) {
+  document.cookie = `sidebar-open=${open}; path=/; max-age=31536000; SameSite=Lax`;
+  fetch("/api/ui-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sidebarOpen: open }),
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -102,19 +85,13 @@ function groupByDate(items: ChatItem[]) {
 }
 
 // ---------------------------------------------------------------------------
-// SidebarInner — shared navigation for both modes
+// SidebarInner
 // ---------------------------------------------------------------------------
 
 function SidebarInner({ onClose }: { onClose?: () => void }) {
-  const isDesktop = useIsDesktop();
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const sidebarPinned = useChatSettingsStore((s) => s.sidebarPinned);
-  const toggleSidebarPinned = useChatSettingsStore(
-    (s) => s.toggleSidebarPinned,
-  );
-  const setSidebarOpen = useChatSettingsStore((s) => s.setSidebarOpen);
   const incrementChatReset = useChatSettingsStore((s) => s.incrementChatReset);
 
   // Fetch chat history
@@ -130,17 +107,6 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
 
   const conversations = historyData?.conversations ?? [];
   const groups = groupByDate(conversations);
-
-  const handleTogglePin = useCallback(() => {
-    const next = !sidebarPinned;
-    toggleSidebarPinned();
-    document.cookie = `sidebar-pinned=${next}; path=/; max-age=31536000; SameSite=Lax`;
-    fetch("/api/ui-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sidebarPinned: next }),
-    }).catch(() => {});
-  }, [sidebarPinned, toggleSidebarPinned]);
 
   // Delete confirmation dialog state
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
@@ -167,11 +133,11 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
         <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
           <BotIcon className="size-3.5 text-primary" />
         </div>
-        <h2 className="text-sm font-semibold tracking-tight">RAG Chat</h2>
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">RAG Chat</h2>
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="ml-auto flex size-7 items-center justify-center rounded-md text-foreground/60 transition-colors hover:bg-muted/50 hover:text-foreground"
             aria-label="サイドバーを閉じる"
           >
             <XIcon className="size-3.5" />
@@ -181,7 +147,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
 
       <Separator />
 
-      {/* Navigation */}
+      {/* Navigation — clicking does NOT close sidebar */}
       <nav className="px-2 py-2 space-y-0.5">
         {NAV_ITEMS.map((item) => {
           const isActive =
@@ -194,19 +160,18 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
               href={item.href}
               onClick={() => {
                 if (item.href === "/new") incrementChatReset();
-                if (!sidebarPinned) setSidebarOpen(false);
               }}
               className={`
                 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors
                 ${
                   isActive
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "text-foreground/70 hover:bg-muted/50 hover:text-foreground"
                 }
               `}
             >
               <item.icon
-                className={`size-4 shrink-0 ${isActive ? "text-primary" : ""}`}
+                className={`size-4 shrink-0 ${isActive ? "text-primary" : "text-foreground/50"}`}
               />
               {item.label}
             </Link>
@@ -214,14 +179,14 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
         })}
       </nav>
 
-      {/* Chat History */}
+      {/* Chat History — clicking does NOT close sidebar */}
       {conversations.length > 0 && (
         <>
           <Separator />
           <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
             {groups.map((group) => (
               <div key={group.label}>
-                <p className="px-3 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                <p className="px-3 pb-1 text-[11px] font-medium text-foreground/40 uppercase tracking-wider">
                   {group.label}
                 </p>
                 <div className="space-y-0.5">
@@ -231,17 +196,16 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                       <Link
                         key={chat.id}
                         href={`/chat/${chat.id}`}
-                        onClick={() => { if (!sidebarPinned) setSidebarOpen(false); }}
                         className={`
                           group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors
                           ${
                             isActive
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                              ? "bg-primary/15 text-primary font-medium"
+                              : "text-foreground/70 hover:bg-muted/50 hover:text-foreground"
                           }
                         `}
                       >
-                        <MessageSquareIcon className="size-3.5 shrink-0 opacity-50" />
+                        <MessageSquareIcon className="size-3.5 shrink-0 opacity-60" />
                         <span className="flex-1 truncate text-left">
                           {chat.title}
                         </span>
@@ -259,33 +223,6 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                 </div>
               </div>
             ))}
-          </div>
-        </>
-      )}
-
-      {/* Footer — pin toggle (desktop only) */}
-      {isDesktop && (
-        <>
-          <Separator />
-          <div className="px-2 py-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleTogglePin}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                >
-                  {sidebarPinned ? (
-                    <PinOffIcon className="size-4 shrink-0" />
-                  ) : (
-                    <PinIcon className="size-4 shrink-0" />
-                  )}
-                  {sidebarPinned ? "固定解除" : "サイドバーを固定"}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {sidebarPinned ? "固定解除" : "サイドバーを固定"}
-              </TooltipContent>
-            </Tooltip>
           </div>
         </>
       )}
@@ -312,56 +249,49 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// AppSidebar — dual-mode (overlay Sheet / pinned aside)
+// AppSidebar — slide open/close, state persisted to cookie + DB
 // ---------------------------------------------------------------------------
 
-export function AppSidebar({ initialPinned }: { initialPinned: boolean }) {
-  const isDesktop = useIsDesktop();
+export function AppSidebar({ initialOpen }: { initialOpen: boolean }) {
   const sidebarOpen = useChatSettingsStore((s) => s.sidebarOpen);
-  const sidebarPinned = useChatSettingsStore((s) => s.sidebarPinned);
   const setSidebarOpen = useChatSettingsStore((s) => s.setSidebarOpen);
-  const setSidebarPinned = useChatSettingsStore((s) => s.setSidebarPinned);
 
   // Hydrate Zustand from server cookie value (once on mount)
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
-    if (initialPinned) {
-      setSidebarPinned(true);
-      setSidebarOpen(true);
-    }
-  }, [initialPinned, setSidebarPinned, setSidebarOpen]);
+    setSidebarOpen(initialOpen);
+  }, [initialOpen, setSidebarOpen]);
 
   // Before hydration use server value; after, use Zustand
-  const effectivePinned = hydratedRef.current ? sidebarPinned : initialPinned;
+  const isOpen = hydratedRef.current ? sidebarOpen : initialOpen;
+
+  const handleClose = useCallback(() => {
+    setSidebarOpen(false);
+    persistSidebarState(false);
+  }, [setSidebarOpen]);
 
   return (
     <>
-      {/* Pinned: CSS hidden md:flex handles desktop visibility */}
-      {effectivePinned && (
-        <aside className="hidden md:flex w-56 shrink-0 h-dvh flex-col glass-sidebar border-r border-border">
-          <SidebarInner />
-        </aside>
+      {/* Backdrop (mobile) */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={handleClose}
+        />
       )}
 
-      {/* Overlay: on mobile or when not pinned */}
-      <Sheet
-        open={isDesktop && effectivePinned ? false : sidebarOpen}
-        onOpenChange={setSidebarOpen}
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed md:relative z-50 md:z-auto h-dvh w-56 shrink-0 flex-col glass-sidebar border-r border-border
+          transition-all duration-200 ease-in-out
+          ${isOpen ? "flex translate-x-0" : "-translate-x-full md:-ml-56 hidden"}
+        `}
       >
-        <SheetContent
-          side="left"
-          className="w-56 sm:max-w-56 p-0 flex flex-col"
-          showCloseButton={false}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>ナビゲーション</SheetTitle>
-            <SheetDescription>ページ切替</SheetDescription>
-          </SheetHeader>
-          <SidebarInner onClose={() => setSidebarOpen(false)} />
-        </SheetContent>
-      </Sheet>
+        <SidebarInner onClose={handleClose} />
+      </aside>
     </>
   );
 }
