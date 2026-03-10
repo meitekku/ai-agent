@@ -2,9 +2,15 @@ import { createClient, type RedisClientType } from "redis";
 import { REDIS_URL } from "./constants";
 import { generateEmbedding, cosineSimilarity } from "./embedding-client";
 
-const ENTRY_PREFIX = "rag:cache:v2:entry:";
-const EXACT_PREFIX = "rag:cache:v2:exact:";
-const INDEX_KEY = "rag:cache:v2:index";
+function entryPrefix(kb: string) {
+  return `rag:cache:v2:${kb}:entry:`;
+}
+function exactPrefix(kb: string) {
+  return `rag:cache:v2:${kb}:exact:`;
+}
+function indexKey(kb: string) {
+  return `rag:cache:v2:${kb}:index`;
+}
 const CACHE_TTL = 3600; // 1 hour
 const SIMILARITY_THRESHOLD = 0.85;
 
@@ -31,7 +37,10 @@ async function getClient(): Promise<RedisClientType | null> {
     CACHE_ENABLED = true;
     return client;
   } catch (err) {
-    console.error("[semantic-cache] Failed to connect to Redis:", (err as Error).message);
+    console.error(
+      "[semantic-cache] Failed to connect to Redis:",
+      (err as Error).message,
+    );
     CACHE_ENABLED = false;
     connectionFailed = true;
     client = null;
@@ -48,10 +57,17 @@ type CacheHit = {
 };
 type CacheMiss = { hit: false };
 
-export async function getCachedResponse(query: string): Promise<CacheHit | CacheMiss> {
+export async function getCachedResponse(
+  query: string,
+  kb: string,
+): Promise<CacheHit | CacheMiss> {
   try {
     const redis = await getClient();
     if (!redis) return { hit: false };
+
+    const ENTRY_PREFIX = entryPrefix(kb);
+    const EXACT_PREFIX = exactPrefix(kb);
+    const INDEX_KEY = indexKey(kb);
 
     // --- Fast path: exact match ---
     const normalized = normalizeQuery(query);
@@ -77,7 +93,10 @@ export async function getCachedResponse(query: string): Promise<CacheHit | Cache
     try {
       queryEmbedding = await generateEmbedding(query);
     } catch (err) {
-      console.error("[semantic-cache] Embedding generation failed:", (err as Error).message);
+      console.error(
+        "[semantic-cache] Embedding generation failed:",
+        (err as Error).message,
+      );
       return { hit: false };
     }
 
@@ -115,7 +134,9 @@ export async function getCachedResponse(query: string): Promise<CacheHit | Cache
     }
 
     if (bestEntry && bestSimilarity >= SIMILARITY_THRESHOLD) {
-      console.log(`[semantic-cache] Semantic match hit: similarity=${bestSimilarity.toFixed(4)}`);
+      console.log(
+        `[semantic-cache] Semantic match hit: similarity=${bestSimilarity.toFixed(4)}`,
+      );
       return {
         hit: true,
         response: bestEntry.response,
@@ -127,7 +148,10 @@ export async function getCachedResponse(query: string): Promise<CacheHit | Cache
 
     return { hit: false };
   } catch (err) {
-    console.error("[semantic-cache] getCachedResponse error:", (err as Error).message);
+    console.error(
+      "[semantic-cache] getCachedResponse error:",
+      (err as Error).message,
+    );
     return { hit: false };
   }
 }
@@ -144,10 +168,15 @@ export async function cacheResponse(
   query: string,
   response: string,
   sources: object[],
+  kb: string,
 ): Promise<void> {
   try {
     const redis = await getClient();
     if (!redis) return;
+
+    const ENTRY_PREFIX = entryPrefix(kb);
+    const EXACT_PREFIX = exactPrefix(kb);
+    const INDEX_KEY = indexKey(kb);
 
     let embedding: number[];
     try {
@@ -180,26 +209,45 @@ export async function cacheResponse(
       redis.set(`${EXACT_PREFIX}${normalized}`, id, { EX: CACHE_TTL }),
     ]);
   } catch (err) {
-    console.error("[semantic-cache] cacheResponse error:", (err as Error).message);
+    console.error(
+      "[semantic-cache] cacheResponse error:",
+      (err as Error).message,
+    );
   }
 }
 
-export async function invalidateCache(): Promise<void> {
+export async function invalidateCache(kb?: string): Promise<void> {
   try {
     const redis = await getClient();
     if (!redis) return;
 
-    const entryIds = await redis.sMembers(INDEX_KEY);
-    const keysToDelete = [INDEX_KEY, ...entryIds.map((id) => `${ENTRY_PREFIX}${id}`)];
+    if (kb) {
+      const INDEX_KEY = indexKey(kb);
+      const ENTRY_PREFIX = entryPrefix(kb);
+      const EXACT_PREFIX = exactPrefix(kb);
 
-    // Also clean up exact match keys
-    const exactKeys = await redis.keys(`${EXACT_PREFIX}*`);
-    keysToDelete.push(...exactKeys);
+      const entryIds = await redis.sMembers(INDEX_KEY);
+      const keysToDelete = [
+        INDEX_KEY,
+        ...entryIds.map((id) => `${ENTRY_PREFIX}${id}`),
+      ];
+      const exactKeys = await redis.keys(`${EXACT_PREFIX}*`);
+      keysToDelete.push(...exactKeys);
 
-    if (keysToDelete.length > 0) {
-      await redis.del(keysToDelete);
+      if (keysToDelete.length > 0) {
+        await redis.del(keysToDelete);
+      }
+    } else {
+      // Invalidate all caches (legacy behavior)
+      const allKeys = await redis.keys("rag:cache:v2:*");
+      if (allKeys.length > 0) {
+        await redis.del(allKeys);
+      }
     }
   } catch (err) {
-    console.error("[semantic-cache] invalidateCache error:", (err as Error).message);
+    console.error(
+      "[semantic-cache] invalidateCache error:",
+      (err as Error).message,
+    );
   }
 }

@@ -14,11 +14,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      return NextResponse.json({ error: ".zip ファイルのみ対応" }, { status: 400 });
+      return NextResponse.json(
+        { error: ".zip ファイルのみ対応" },
+        { status: 400 },
+      );
     }
 
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: "ファイルサイズは 10MB 以下にしてください" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ファイルサイズは 10MB 以下にしてください" },
+        { status: 400 },
+      );
     }
 
     const buffer = await file.arrayBuffer();

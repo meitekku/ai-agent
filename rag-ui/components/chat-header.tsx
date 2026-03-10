@@ -3,15 +3,40 @@
 import { useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { PanelLeftIcon, BotIcon, FileTextIcon, SparklesIcon, MessageSquareIcon } from "lucide-react";
+import {
+  PanelLeftIcon,
+  BotIcon,
+  FileTextIcon,
+  SparklesIcon,
+  MessageSquareIcon,
+} from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useChatSettingsStore } from "@/lib/store";
 
-const VIEW_CONFIG: Record<string, { icon: typeof BotIcon; title: string; subtitle: string }> = {
-  "/chat": { icon: MessageSquareIcon, title: "RAG Chat", subtitle: "ナレッジベースに基づいて回答します" },
-  "/new": { icon: BotIcon, title: "RAG Chat", subtitle: "ナレッジベースに基づいて回答します" },
-  "/documents": { icon: FileTextIcon, title: "ドキュメント", subtitle: "ナレッジベースの管理" },
-  "/skills": { icon: SparklesIcon, title: "スキル", subtitle: "AI の回答をカスタマイズ" },
+const VIEW_CONFIG: Record<
+  string,
+  { icon: typeof BotIcon; title: string; subtitle: string }
+> = {
+  "/chat": {
+    icon: MessageSquareIcon,
+    title: "RAG Chat",
+    subtitle: "ナレッジベースに基づいて回答します",
+  },
+  "/new": {
+    icon: BotIcon,
+    title: "RAG Chat",
+    subtitle: "ナレッジベースに基づいて回答します",
+  },
+  "/documents": {
+    icon: FileTextIcon,
+    title: "ドキュメント",
+    subtitle: "ナレッジベースの管理",
+  },
+  "/skills": {
+    icon: SparklesIcon,
+    title: "スキル",
+    subtitle: "AI の回答をカスタマイズ",
+  },
 };
 
 function persistSidebarState(open: boolean) {
@@ -35,8 +60,9 @@ export function ChatHeader() {
   }, [toggleSidebar]);
 
   const config =
-    Object.entries(VIEW_CONFIG).find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
-    VIEW_CONFIG["/new"];
+    Object.entries(VIEW_CONFIG).find(([prefix]) =>
+      pathname.startsWith(prefix),
+    )?.[1] ?? VIEW_CONFIG["/new"];
   const ViewIcon = config.icon;
 
   return (

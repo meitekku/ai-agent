@@ -29,7 +29,10 @@ export async function POST(req: Request) {
     };
 
     if (!question || !answer) {
-      return Response.json({ error: "question and answer are required" }, { status: 400 });
+      return Response.json(
+        { error: "question and answer are required" },
+        { status: 400 },
+      );
     }
 
     const model = getSlideModel();
@@ -52,12 +55,22 @@ export async function POST(req: Request) {
 
       const parsed = parsePlanMarkdown(planMd);
       if (parsed.slides.length < 3) {
-        planMd = generateFallbackPlan(question, answer, max_slides, style_options);
+        planMd = generateFallbackPlan(
+          question,
+          answer,
+          max_slides,
+          style_options,
+        );
         source = "fallback";
       }
     } catch (err) {
       console.error("[slides/htmlslide/plan] LLM error, using fallback:", err);
-      planMd = generateFallbackPlan(question, answer, max_slides, style_options);
+      planMd = generateFallbackPlan(
+        question,
+        answer,
+        max_slides,
+        style_options,
+      );
       source = "fallback";
     }
 
@@ -72,6 +85,9 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[slides/htmlslide/plan] Unexpected error:", err);
-    return Response.json({ error: "Failed to generate slide plan" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to generate slide plan" },
+      { status: 500 },
+    );
   }
 }

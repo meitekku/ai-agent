@@ -28,7 +28,14 @@ export type SlideChart = {
 export type Slide = {
   id?: string;
   title: string;
-  layout?: "title" | "content" | "visual" | "table" | "chart" | "comparison" | null;
+  layout?:
+    | "title"
+    | "content"
+    | "visual"
+    | "table"
+    | "chart"
+    | "comparison"
+    | null;
   bullets: string[];
   diagram_mermaid?: string;
   table?: SlideTable | null;

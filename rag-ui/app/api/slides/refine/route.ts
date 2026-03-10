@@ -50,7 +50,10 @@ export async function POST(req: Request) {
     const { deck, instruction, backend } = body;
 
     if (!deck || !instruction) {
-      return Response.json({ error: "deck and instruction are required" }, { status: 400 });
+      return Response.json(
+        { error: "deck and instruction are required" },
+        { status: 400 },
+      );
     }
 
     const model = getSlideModel();
@@ -72,6 +75,9 @@ Return the refined deck in the same structure. Keep the same number of slides un
     return Response.json({ deck: result.object });
   } catch (err) {
     console.error("[slides/refine] error:", err);
-    return Response.json({ error: "Failed to refine slide deck" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to refine slide deck" },
+      { status: 500 },
+    );
   }
 }

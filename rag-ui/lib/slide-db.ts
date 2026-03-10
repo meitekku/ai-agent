@@ -1,6 +1,7 @@
 import pg from "pg";
 
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
+const DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
 
 // Lazy singleton pool
 let pool: pg.Pool | null = null;
@@ -49,7 +50,9 @@ export async function ensureSlideTables(): Promise<void> {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_slide_pages_deck ON slide_pages(deck_id)`);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_slide_pages_deck ON slide_pages(deck_id)`,
+    );
     await client.query(`
       CREATE TABLE IF NOT EXISTS slide_templates (
         id SERIAL PRIMARY KEY,
@@ -153,9 +156,10 @@ export async function updateSlideDeck(
         [JSON.stringify(data.style_options), deckId],
       );
     } else {
-      await client.query(`UPDATE slide_decks SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [
-        deckId,
-      ]);
+      await client.query(
+        `UPDATE slide_decks SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [deckId],
+      );
     }
 
     await client.query(`DELETE FROM slide_pages WHERE deck_id = $1`, [deckId]);
@@ -217,7 +221,10 @@ export async function getSlideDeckHistory(
 
 export async function getSlideDeckDetail(deckId: number) {
   await ensureSlideTables();
-  const deckRes = await getPool().query(`SELECT * FROM slide_decks WHERE id = $1`, [deckId]);
+  const deckRes = await getPool().query(
+    `SELECT * FROM slide_decks WHERE id = $1`,
+    [deckId],
+  );
   if (deckRes.rows.length === 0) return null;
 
   const deck = deckRes.rows[0];
@@ -240,7 +247,10 @@ export async function getSlideDeckDetail(deckId: number) {
   };
 }
 
-export async function renameSlideDeck(deckId: number, newTitle: string): Promise<void> {
+export async function renameSlideDeck(
+  deckId: number,
+  newTitle: string,
+): Promise<void> {
   await ensureSlideTables();
   await getPool().query(
     `UPDATE slide_decks SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
@@ -291,7 +301,9 @@ export async function saveSlideTemplate(data: {
 
 export async function getSlideTemplates() {
   await ensureSlideTables();
-  const res = await getPool().query(`SELECT * FROM slide_templates ORDER BY position, name`);
+  const res = await getPool().query(
+    `SELECT * FROM slide_templates ORDER BY position, name`,
+  );
   return res.rows.map((r) => ({
     ...r,
     created_at: String(r.created_at),
@@ -300,5 +312,7 @@ export async function getSlideTemplates() {
 
 export async function deleteSlideTemplate(templateId: number): Promise<void> {
   await ensureSlideTables();
-  await getPool().query(`DELETE FROM slide_templates WHERE id = $1`, [templateId]);
+  await getPool().query(`DELETE FROM slide_templates WHERE id = $1`, [
+    templateId,
+  ]);
 }

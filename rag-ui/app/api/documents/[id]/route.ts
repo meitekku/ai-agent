@@ -2,10 +2,21 @@ import { deleteDocument } from "@/lib/rag-client";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
-    await deleteDocument(id);
+    const { searchParams } = new URL(req.url);
+    const kb = searchParams.get("kb");
+    if (!kb) {
+      return Response.json(
+        { error: "kb parameter is required" },
+        { status: 400 },
+      );
+    }
+    await deleteDocument(id, kb);
     return Response.json({ success: true });
   } catch (err) {
     return Response.json(

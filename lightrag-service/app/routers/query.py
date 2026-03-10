@@ -1,13 +1,14 @@
 import json
 import inspect
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query as QParam
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from lightrag import QueryParam
 
 from ..rag import get_rag
+from .. import db
 
 router = APIRouter()
 
@@ -19,9 +20,13 @@ class QueryRequest(BaseModel):
 
 
 @router.post("/query/search-only")
-async def search_only(req: QueryRequest):
+async def search_only(req: QueryRequest, kb: str = QParam(..., description="KB slug")):
     """検索コンテキスト取得。チャンク単位でソースドキュメント名を返す。"""
-    rag = await get_rag()
+    kb_info = await db.get_kb(kb)
+    if not kb_info:
+        raise HTTPException(404, f"KB '{kb}' not found")
+
+    rag = await get_rag(kb)
 
     result = await rag.aquery_llm(
         req.question,
@@ -88,9 +93,13 @@ async def search_only(req: QueryRequest):
 
 
 @router.post("/query")
-async def query(req: QueryRequest):
+async def query(req: QueryRequest, kb: str = QParam(..., description="KB slug")):
     """检索 + LLM 生成答案。支持流式 SSE。"""
-    rag = await get_rag()
+    kb_info = await db.get_kb(kb)
+    if not kb_info:
+        raise HTTPException(404, f"KB '{kb}' not found")
+
+    rag = await get_rag(kb)
 
     sources = [{"document": "LightRAG Knowledge Graph", "sections": ["hybrid"]}]
 

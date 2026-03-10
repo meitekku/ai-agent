@@ -70,7 +70,10 @@ export async function POST(req: Request) {
     const { question, answer, backend } = body;
 
     if (!question || !answer) {
-      return Response.json({ error: "question and answer are required" }, { status: 400 });
+      return Response.json(
+        { error: "question and answer are required" },
+        { status: 400 },
+      );
     }
 
     const maxSlides = body.max_slides || calcMaxSlides(answer);
@@ -101,6 +104,9 @@ ${answer}
     return Response.json({ deck: result.object });
   } catch (err) {
     console.error("[slides/generate] Error:", err);
-    return Response.json({ error: "Failed to generate structured deck" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to generate structured deck" },
+      { status: 500 },
+    );
   }
 }

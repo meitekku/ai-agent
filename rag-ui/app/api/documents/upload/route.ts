@@ -6,6 +6,15 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export async function POST(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const kb = searchParams.get("kb");
+    if (!kb) {
+      return Response.json(
+        { error: "kb parameter is required" },
+        { status: 400 },
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -16,11 +25,17 @@ export async function POST(req: Request) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return Response.json({ error: "File too large (max 50 MB)" }, { status: 413 });
+      return Response.json(
+        { error: "File too large (max 50 MB)" },
+        { status: 413 },
+      );
     }
 
     if (file.type !== "application/pdf" && !file.name.endsWith(".pdf")) {
-      return Response.json({ error: "Only PDF files are supported" }, { status: 400 });
+      return Response.json(
+        { error: "Only PDF files are supported" },
+        { status: 400 },
+      );
     }
 
     // -- Forward to backend -------------------------------------------------
@@ -28,7 +43,7 @@ export async function POST(req: Request) {
     const upload = new FormData();
     upload.append("file", file);
     try {
-      const result = await ingestDocument(upload);
+      const result = await ingestDocument(upload, kb);
       return Response.json(result);
     } catch (err) {
       // Forward 409 Conflict (duplicate file) as-is

@@ -27,7 +27,12 @@ interface ChatTreeState {
   // Actions
   loadTree: (conversationId: string, dbMessages: MessageRow[]) => void;
   addMessages: (
-    msgs: { id: string; parentId: string | null; role: string; parts: unknown[] }[],
+    msgs: {
+      id: string;
+      parentId: string | null;
+      role: string;
+      parts: unknown[];
+    }[],
   ) => void;
   getActivePath: () => UIMessage[];
   getSiblings: (nodeId: string) => string[];
@@ -42,10 +47,7 @@ interface ChatTreeState {
 // ============================================================
 
 /** Walk from a node to the root, collecting IDs bottom-up, then reverse. */
-function pathToRoot(
-  nodes: Record<string, TreeNode>,
-  leafId: string,
-): string[] {
+function pathToRoot(nodes: Record<string, TreeNode>, leafId: string): string[] {
   const path: string[] = [];
   let current: string | null = leafId;
   const visited = new Set<string>();
@@ -59,10 +61,7 @@ function pathToRoot(
 }
 
 /** From a node, find a leaf by always picking the last child. */
-function findLeaf(
-  nodes: Record<string, TreeNode>,
-  nodeId: string,
-): string {
+function findLeaf(nodes: Record<string, TreeNode>, nodeId: string): string {
   let current = nodeId;
   const visited = new Set<string>();
   while (true) {
@@ -169,7 +168,9 @@ export const useChatTreeStore = create<ChatTreeState>((set, get) => ({
 
     // Set active leaf to the last added message's leaf
     const lastMsg = msgs[msgs.length - 1];
-    const activeLeafId = lastMsg ? findLeaf(newNodes, lastMsg.id) : get().activeLeafId;
+    const activeLeafId = lastMsg
+      ? findLeaf(newNodes, lastMsg.id)
+      : get().activeLeafId;
 
     set({ nodes: newNodes, rootIds: newRootIds, activeLeafId });
   },
@@ -185,7 +186,8 @@ export const useChatTreeStore = create<ChatTreeState>((set, get) => ({
     const { nodes, rootIds } = get();
     const node = nodes[nodeId];
     if (!node) return [nodeId];
-    if (!node.parentId) return rootIds.filter((id) => nodes[id]?.role === node.role);
+    if (!node.parentId)
+      return rootIds.filter((id) => nodes[id]?.role === node.role);
     const parent = nodes[node.parentId];
     if (!parent) return [nodeId];
     return parent.childIds.filter((id) => nodes[id]?.role === node.role);

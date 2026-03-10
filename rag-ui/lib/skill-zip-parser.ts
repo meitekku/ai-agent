@@ -63,7 +63,10 @@ function findFile(zip: JSZip, filename: string): string | null {
   return null;
 }
 
-function parseFrontmatter(md: string): { frontmatter: Record<string, string>; body: string } {
+function parseFrontmatter(md: string): {
+  frontmatter: Record<string, string>;
+  body: string;
+} {
   const match = md.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!match) {
     return { frontmatter: {}, body: md };
@@ -85,8 +88,26 @@ function parseFrontmatter(md: string): { frontmatter: Record<string, string>; bo
   return { frontmatter, body };
 }
 
-const IGNORED_DIRS = new Set(["scripts", "assets", "images", "img", ".git", "node_modules", "__MACOSX"]);
-const TEXT_EXTENSIONS = new Set([".md", ".txt", ".html", ".json", ".yaml", ".yml", ".csv", ".xml", ".toml"]);
+const IGNORED_DIRS = new Set([
+  "scripts",
+  "assets",
+  "images",
+  "img",
+  ".git",
+  "node_modules",
+  "__MACOSX",
+]);
+const TEXT_EXTENSIONS = new Set([
+  ".md",
+  ".txt",
+  ".html",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".csv",
+  ".xml",
+  ".toml",
+]);
 
 async function collectReferences(
   zip: JSZip,

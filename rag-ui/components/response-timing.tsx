@@ -4,7 +4,11 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { isToolUIPart } from "ai";
 import { Badge } from "@/components/ui/badge";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { ClockIcon } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -98,7 +102,9 @@ export function useResponseTimings(
     const t = tsRef.current;
     const toolParts = message.parts.filter((p) => isToolUIPart(p));
     const hasSearch = toolParts.length > 0;
-    const searchDone = toolParts.some((p) => isToolUIPart(p) && p.state === "output-available");
+    const searchDone = toolParts.some(
+      (p) => isToolUIPart(p) && p.state === "output-available",
+    );
 
     if (hasSearch && !t.searchStarted) t.searchStarted = Date.now();
     if (searchDone && !t.searchEnded) t.searchEnded = Date.now();
@@ -131,7 +137,9 @@ export const ResponseTimingBadge = memo(function ResponseTimingBadge({
 }: {
   timestamps: Timestamps;
 }) {
-  const total = Math.round((timestamps.completed - timestamps.submitted) / 1000);
+  const total = Math.round(
+    (timestamps.completed - timestamps.submitted) / 1000,
+  );
   if (total < 1) return null;
 
   const phases = buildPhases(timestamps);
@@ -171,7 +179,9 @@ export const ResponseTimingBadge = memo(function ResponseTimingBadge({
               </div>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground tabular-nums">{total}秒</p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {total}秒
+            </p>
           )}
         </div>
       </HoverCardContent>

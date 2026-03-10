@@ -1,6 +1,7 @@
 import pg from "pg";
 
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
+const DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
 
 let pool: pg.Pool | null = null;
 
@@ -37,12 +38,16 @@ export interface UiPreferences {
 
 export async function getUiPreferences(): Promise<UiPreferences> {
   await ensureUiConfigTable();
-  const res = await getPool().query(`SELECT preferences FROM ui_config WHERE id = 1`);
+  const res = await getPool().query(
+    `SELECT preferences FROM ui_config WHERE id = 1`,
+  );
   if (res.rows.length === 0) return {};
   return res.rows[0].preferences as UiPreferences;
 }
 
-export async function updateUiPreferences(updates: Partial<UiPreferences>): Promise<UiPreferences> {
+export async function updateUiPreferences(
+  updates: Partial<UiPreferences>,
+): Promise<UiPreferences> {
   await ensureUiConfigTable();
   const res = await getPool().query(
     `INSERT INTO ui_config (id, preferences, updated_at)

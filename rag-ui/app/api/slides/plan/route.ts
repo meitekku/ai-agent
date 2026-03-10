@@ -24,7 +24,10 @@ export async function POST(req: Request) {
     const { question, answer, maxSlides = 12, styleOptions, backend } = body;
 
     if (!question || !answer) {
-      return Response.json({ error: "question and answer are required" }, { status: 400 });
+      return Response.json(
+        { error: "question and answer are required" },
+        { status: 400 },
+      );
     }
 
     const model = getSlideModel();
@@ -51,7 +54,12 @@ export async function POST(req: Request) {
         console.warn(
           `[slides/plan] LLM plan too short (${parsed.slides.length} slides), using fallback`,
         );
-        planMd = generateFallbackPlan(question, answer, maxSlides, styleOptions);
+        planMd = generateFallbackPlan(
+          question,
+          answer,
+          maxSlides,
+          styleOptions,
+        );
         source = "fallback";
       }
     } catch (err) {
@@ -71,6 +79,9 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[slides/plan] Unexpected error:", err);
-    return Response.json({ error: "Failed to generate slide plan" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to generate slide plan" },
+      { status: 500 },
+    );
   }
 }

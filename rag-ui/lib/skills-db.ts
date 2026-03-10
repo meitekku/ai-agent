@@ -1,6 +1,7 @@
 import pg from "pg";
 
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
+const DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
 
 // Lazy singleton pool (shared with slide-db via same DATABASE_URL)
 let pool: pg.Pool | null = null;
@@ -97,7 +98,13 @@ export async function createSkill(data: {
     `INSERT INTO skills (name, description, content, enabled, source_type)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
-    [data.name, data.description || "", data.content, data.enabled ?? true, data.source_type || "manual"],
+    [
+      data.name,
+      data.description || "",
+      data.content,
+      data.enabled ?? true,
+      data.source_type || "manual",
+    ],
   );
   return res.rows[0].id as number;
 }

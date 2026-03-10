@@ -4,9 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import PORT
-from .rag import get_rag
 from . import db
-from .routers import ingest, query, documents, doc_status
+from .routers import ingest, query, documents, doc_status, kbs
 
 
 @asynccontextmanager
@@ -15,10 +14,8 @@ async def lifespan(app: FastAPI):
     await db.init_db()
     print("[lightrag] DB initialized")
 
-    # Initialize LightRAG
-    print("[lightrag] Initializing LightRAG...")
-    await get_rag()
-    print("[lightrag] Ready")
+    # No automatic RAG initialization — instances are loaded lazily per KB
+    print("[lightrag] Ready (KB instances will be loaded on demand)")
 
     # Resume stale processing jobs
     import asyncio
@@ -26,7 +23,9 @@ async def lifespan(app: FastAPI):
     if stale:
         print(f"[lightrag] Resuming {len(stale)} stale processing jobs")
         for job in stale:
-            asyncio.create_task(ingest._process_background(job["doc_id"], job["track_id"]))
+            asyncio.create_task(
+                ingest._process_background(job["doc_id"], job["track_id"], job["kb_slug"])
+            )
 
     yield
 
@@ -40,6 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(kbs.router)
 app.include_router(ingest.router)
 app.include_router(query.router)
 app.include_router(documents.router)

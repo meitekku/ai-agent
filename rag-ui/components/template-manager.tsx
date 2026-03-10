@@ -2,7 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSlideTemplates, saveSlideTemplate, deleteSlideTemplate } from "@/lib/slide-api";
+import {
+  fetchSlideTemplates,
+  saveSlideTemplate,
+  deleteSlideTemplate,
+} from "@/lib/slide-api";
 import type { SlideTemplate } from "@/lib/slide-types";
 import { Eye, Image, Loader2, Trash2, Upload, X } from "lucide-react";
 
@@ -118,9 +122,15 @@ export function TemplateManager({ open, onClose }: TemplateManagerProps) {
                 !c.includes("#FFFFFF"),
             );
             if (nonWhite.length >= 1)
-              headerColor = nonWhite[0].replace(/background(?:-color)?:\s*/, "");
+              headerColor = nonWhite[0].replace(
+                /background(?:-color)?:\s*/,
+                "",
+              );
             if (nonWhite.length >= 2)
-              footerColor = nonWhite[nonWhite.length - 1].replace(/background(?:-color)?:\s*/, "");
+              footerColor = nonWhite[nonWhite.length - 1].replace(
+                /background(?:-color)?:\s*/,
+                "",
+              );
           }
         }
 
@@ -158,14 +168,17 @@ export function TemplateManager({ open, onClose }: TemplateManagerProps) {
 
   if (!open) return null;
 
-  const getTemplateForPosition = (pos: Position) => templates.find((t) => t.position === pos);
+  const getTemplateForPosition = (pos: Position) =>
+    templates.find((t) => t.position === pos);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-2xl mx-4 bg-card rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-foreground">テンプレート管理</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            テンプレート管理
+          </h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
@@ -191,7 +204,9 @@ export function TemplateManager({ open, onClose }: TemplateManagerProps) {
                   className="flex items-center gap-3 p-3 border border-border/50 rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {label}
+                    </p>
                     {tpl ? (
                       <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
                         {tpl.html?.includes('data-image-template="true"') ? (

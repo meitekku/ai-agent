@@ -48,11 +48,5 @@ export default function ChatByIdPage() {
     );
   }
 
-  return (
-    <ChatPage
-      key={id}
-      conversationId={id}
-      initialData={data}
-    />
-  );
+  return <ChatPage key={id} conversationId={id} initialData={data} />;
 }

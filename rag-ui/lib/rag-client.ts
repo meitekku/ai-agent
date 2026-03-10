@@ -39,6 +39,16 @@ export interface DocumentInfo {
   error_msg?: string | null;
 }
 
+export interface KnowledgeBase {
+  slug: string;
+  name: string;
+  title: string;
+  description: string;
+  doc_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -67,15 +77,86 @@ function buildError(label: string, status: number, body?: string): Error {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Knowledge Base API
+// ---------------------------------------------------------------------------
+
+export async function listKBs(): Promise<KnowledgeBase[]> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/kbs`);
+  if (!res.ok)
+    throw buildError("List KBs failed", res.status, await res.text());
+  const data = await res.json();
+  return data.knowledge_bases || [];
+}
+
+export async function createKB(data: {
+  slug: string;
+  name: string;
+  title?: string;
+  description?: string;
+}): Promise<KnowledgeBase> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/kbs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    if (res.status === 409) {
+      const detail = (() => {
+        try {
+          return JSON.parse(body).detail;
+        } catch {
+          return body;
+        }
+      })();
+      throw new Error(detail || "KB already exists");
+    }
+    throw buildError("Create KB failed", res.status, body);
+  }
+  return res.json();
+}
+
+export async function getKB(slug: string): Promise<KnowledgeBase> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/kbs/${slug}`);
+  if (!res.ok) throw buildError("Get KB failed", res.status, await res.text());
+  return res.json();
+}
+
+export async function updateKB(
+  slug: string,
+  data: { name?: string; title?: string; description?: string },
+): Promise<KnowledgeBase> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/kbs/${slug}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok)
+    throw buildError("Update KB failed", res.status, await res.text());
+  return res.json();
+}
+
+export async function deleteKB(slug: string): Promise<void> {
+  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/kbs/${slug}`, {
+    method: "DELETE",
+  });
+  if (!res.ok)
+    throw buildError("Delete KB failed", res.status, await res.text());
+}
+
+// ---------------------------------------------------------------------------
+// Document API (with kb parameter)
 // ---------------------------------------------------------------------------
 
 export async function searchOnly(
   question: string,
-  options?: { topK?: number; service?: "lightrag" | "pageindex" },
+  options?: { topK?: number; service?: "lightrag" | "pageindex"; kb?: string },
 ): Promise<SearchResponse> {
-  const baseUrl = options?.service === "pageindex" ? QUERY_SERVICE_URL : LIGHTRAG_URL;
-  const res = await fetchWithTimeout(`${baseUrl}/query/search-only`, {
+  const baseUrl =
+    options?.service === "pageindex" ? QUERY_SERVICE_URL : LIGHTRAG_URL;
+  const kb = options?.kb;
+  const url = `${baseUrl}/query/search-only${kb ? `?kb=${encodeURIComponent(kb)}` : ""}`;
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -87,9 +168,12 @@ export async function searchOnly(
   return res.json();
 }
 
-export async function ingestDocument(formData: FormData): Promise<IngestResponse> {
+export async function ingestDocument(
+  formData: FormData,
+  kb: string,
+): Promise<IngestResponse> {
   const res = await fetchWithTimeout(
-    `${LIGHTRAG_URL}/ingest`,
+    `${LIGHTRAG_URL}/ingest?kb=${encodeURIComponent(kb)}`,
     { method: "POST", body: formData },
     30_000, // only waiting for OCR now
   );
@@ -97,7 +181,13 @@ export async function ingestDocument(formData: FormData): Promise<IngestResponse
     const body = await res.text();
     // Preserve backend error message for 409 (duplicate file)
     if (res.status === 409) {
-      const detail = (() => { try { return JSON.parse(body).detail; } catch { return body; } })();
+      const detail = (() => {
+        try {
+          return JSON.parse(body).detail;
+        } catch {
+          return body;
+        }
+      })();
       throw new Error(detail || "Duplicate file");
     }
     throw buildError("Ingest failed", res.status, body);
@@ -105,23 +195,37 @@ export async function ingestDocument(formData: FormData): Promise<IngestResponse
   return res.json();
 }
 
-export async function listDocuments(): Promise<{ documents: DocumentInfo[] }> {
-  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/documents`);
-  if (!res.ok) throw buildError("List documents failed", res.status, await res.text());
+export async function listDocuments(
+  kb: string,
+): Promise<{ documents: DocumentInfo[] }> {
+  const res = await fetchWithTimeout(
+    `${LIGHTRAG_URL}/documents?kb=${encodeURIComponent(kb)}`,
+  );
+  if (!res.ok)
+    throw buildError("List documents failed", res.status, await res.text());
   return res.json();
 }
 
-export async function deleteDocument(docId: string): Promise<void> {
-  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/documents/${docId}`, {
-    method: "DELETE",
-  });
+export async function deleteDocument(docId: string, kb: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${LIGHTRAG_URL}/documents/${docId}?kb=${encodeURIComponent(kb)}`,
+    {
+      method: "DELETE",
+    },
+  );
   if (!res.ok) throw buildError("Delete failed", res.status, await res.text());
 }
 
-export async function deleteAllDocuments(): Promise<{ deleted: number }> {
-  const res = await fetchWithTimeout(`${LIGHTRAG_URL}/documents`, {
-    method: "DELETE",
-  });
-  if (!res.ok) throw buildError("Delete all failed", res.status, await res.text());
+export async function deleteAllDocuments(
+  kb: string,
+): Promise<{ deleted: number }> {
+  const res = await fetchWithTimeout(
+    `${LIGHTRAG_URL}/documents?kb=${encodeURIComponent(kb)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (!res.ok)
+    throw buildError("Delete all failed", res.status, await res.text());
   return res.json();
 }

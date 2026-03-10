@@ -48,7 +48,12 @@ type GeneratedSlide = {
   fallback?: boolean;
 };
 
-type Phase = "outline_loading" | "outline_ready" | "generating" | "done" | "error";
+type Phase =
+  | "outline_loading"
+  | "outline_ready"
+  | "generating"
+  | "done"
+  | "error";
 
 // ============================================================
 // Preset pill colors
@@ -106,10 +111,16 @@ const DEFAULT_PRESETS: Record<string, StylePreset> = {
   blueprint: { label: "Blueprint", description: "ダークブルー技術的スタイル" },
   corporate: { label: "Corporate", description: "クリーンなビジネススタイル" },
   minimal: { label: "Minimal", description: "シンプルなグレースタイル" },
-  "sketch-notes": { label: "Sketch Notes", description: "手書き風の温かいスタイル" },
+  "sketch-notes": {
+    label: "Sketch Notes",
+    description: "手書き風の温かいスタイル",
+  },
   "dark-atmospheric": { label: "Dark", description: "ダークモードスタイル" },
   "bold-editorial": { label: "Bold", description: "大胆なカラフルスタイル" },
-  "pptx-cards": { label: "PPTX Native", description: "カード型・即時生成（LLM不要）" },
+  "pptx-cards": {
+    label: "PPTX Native",
+    description: "カード型・即時生成（LLM不要）",
+  },
 };
 
 // Slide dimensions (px)
@@ -134,7 +145,14 @@ const PPTX_COLORS = {
   tableHeaderText: "#FFFFFF",
 };
 
-const CARD_ACCENTS = ["#F4A261", "#6BB8C9", "#10B981", "#E91E63", "#8B5CF6", "#F59E0B"];
+const CARD_ACCENTS = [
+  "#F4A261",
+  "#6BB8C9",
+  "#10B981",
+  "#E91E63",
+  "#8B5CF6",
+  "#F59E0B",
+];
 
 const TOPIC_ICONS: Record<string, string> = {
   概要: "📋",
@@ -206,7 +224,9 @@ function generatePptxNativeHtml(
   // ---------- Cover / Back-cover ----------
   if (layout === "cover") {
     const isCover = slide.type === "cover";
-    const subtitle = isCover ? toTakeaway(slide.key_message, 80) : "ご清聴ありがとうございました";
+    const subtitle = isCover
+      ? toTakeaway(slide.key_message, 80)
+      : "ご清聴ありがとうございました";
     const mainTitle = isCover ? deckTitle : slide.title;
 
     return `<div style="${baseStyle}background:linear-gradient(135deg,${C.primary} 0%,${C.primaryDark} 100%);">
@@ -529,14 +549,19 @@ export function VisualSlideViewer({
       let editables = container.querySelectorAll('[data-editable="true"]');
       if (editables.length === 0) {
         // Fallback: make all text-bearing leaf elements editable
-        editables = container.querySelectorAll("h1, h2, h3, h4, h5, h6, p, li, td, th, span, div");
+        editables = container.querySelectorAll(
+          "h1, h2, h3, h4, h5, h6, p, li, td, th, span, div",
+        );
       }
 
       editables.forEach((el) => {
         const htmlEl = el as HTMLElement;
         // Only make leaf-ish elements editable (those with direct text content)
         const hasDirectText = Array.from(htmlEl.childNodes).some(
-          (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0,
+          (n) =>
+            n.nodeType === Node.TEXT_NODE &&
+            n.textContent &&
+            n.textContent.trim().length > 0,
         );
         if (!hasDirectText && !htmlEl.hasAttribute("data-editable")) return;
 
@@ -592,7 +617,9 @@ export function VisualSlideViewer({
 
     const updatedHtml = container.innerHTML;
     setGeneratedSlides((prev) =>
-      prev.map((s, i) => (i === activeSlideIndex ? { ...s, html: updatedHtml } : s)),
+      prev.map((s, i) =>
+        i === activeSlideIndex ? { ...s, html: updatedHtml } : s,
+      ),
     );
   }, [activeSlideIndex]);
 
@@ -632,7 +659,10 @@ export function VisualSlideViewer({
       // Build updated outline slide with edited text
       const updatedOutlineSlide: OutlineSlide = {
         ...slide.outlineSlide,
-        text_elements: updatedTexts.length > 0 ? updatedTexts : slide.outlineSlide.text_elements,
+        text_elements:
+          updatedTexts.length > 0
+            ? updatedTexts
+            : slide.outlineSlide.text_elements,
       };
 
       const res = await fetch(`/api/slides/visual/renderhtml`, {
@@ -662,7 +692,11 @@ export function VisualSlideViewer({
       setGeneratedSlides((prev) =>
         prev.map((s, i) =>
           i === activeSlideIndex
-            ? { ...s, html: data.html || s.html, outlineSlide: updatedOutlineSlide }
+            ? {
+                ...s,
+                html: data.html || s.html,
+                outlineSlide: updatedOutlineSlide,
+              }
             : s,
         ),
       );
@@ -671,7 +705,13 @@ export function VisualSlideViewer({
     } finally {
       setRedrawing(false);
     }
-  }, [outline, selectedPreset, generatedSlides, activeSlideIndex, persistCurrentSlide]);
+  }, [
+    outline,
+    selectedPreset,
+    generatedSlides,
+    activeSlideIndex,
+    persistCurrentSlide,
+  ]);
 
   // ============================================================
   // Keyboard navigation
@@ -691,7 +731,9 @@ export function VisualSlideViewer({
       if (e.key === "ArrowLeft") {
         setActiveSlideIndex((prev) => Math.max(0, prev - 1));
       } else if (e.key === "ArrowRight") {
-        setActiveSlideIndex((prev) => Math.min(generatedSlides.length - 1, prev + 1));
+        setActiveSlideIndex((prev) =>
+          Math.min(generatedSlides.length - 1, prev + 1),
+        );
       } else if (e.key === "Escape") {
         onClose();
       }
@@ -709,30 +751,33 @@ export function VisualSlideViewer({
   const [exportProgress, setExportProgress] = useState("");
 
   /** Render a single slide's HTML to a PNG data-URL via html2canvas. */
-  const renderSlideToPng = useCallback(async (html: string): Promise<string> => {
-    const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.left = "-99999px";
-    container.style.top = "0";
-    container.style.width = `${SLIDE_W}px`;
-    container.style.height = `${SLIDE_H}px`;
-    container.style.overflow = "hidden";
-    container.innerHTML = html;
-    document.body.appendChild(container);
+  const renderSlideToPng = useCallback(
+    async (html: string): Promise<string> => {
+      const container = document.createElement("div");
+      container.style.position = "fixed";
+      container.style.left = "-99999px";
+      container.style.top = "0";
+      container.style.width = `${SLIDE_W}px`;
+      container.style.height = `${SLIDE_H}px`;
+      container.style.overflow = "hidden";
+      container.innerHTML = html;
+      document.body.appendChild(container);
 
-    try {
-      const canvas = await html2canvas(container, {
-        width: SLIDE_W,
-        height: SLIDE_H,
-        scale: 2, // 2x for crisp output in PPTX
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      });
-      return canvas.toDataURL("image/png");
-    } finally {
-      document.body.removeChild(container);
-    }
-  }, []);
+      try {
+        const canvas = await html2canvas(container, {
+          width: SLIDE_W,
+          height: SLIDE_H,
+          scale: 2, // 2x for crisp output in PPTX
+          useCORS: true,
+          backgroundColor: "#ffffff",
+        });
+        return canvas.toDataURL("image/png");
+      } finally {
+        document.body.removeChild(container);
+      }
+    },
+    [],
+  );
 
   const handleExport = useCallback(async () => {
     if (generatedSlides.length === 0) return;
@@ -799,7 +844,8 @@ export function VisualSlideViewer({
             )}
             {phase === "done" && generatedSlides.some((s) => s.fallback) && (
               <span className="text-xs text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">
-                {generatedSlides.filter((s) => s.fallback).length}枚 LLM失敗→フォールバック
+                {generatedSlides.filter((s) => s.fallback).length}枚
+                LLM失敗→フォールバック
               </span>
             )}
           </div>
@@ -866,7 +912,9 @@ export function VisualSlideViewer({
           {phase === "outline_loading" && (
             <div className="flex flex-col items-center justify-center h-full gap-3">
               <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-              <p className="text-sm text-muted-foreground">アウトラインを生成中...</p>
+              <p className="text-sm text-muted-foreground">
+                アウトラインを生成中...
+              </p>
             </div>
           )}
 
@@ -906,7 +954,9 @@ export function VisualSlideViewer({
                         <p className="text-sm font-medium text-foreground leading-tight">
                           {slide.title}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{slide.key_message}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {slide.key_message}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -920,27 +970,28 @@ export function VisualSlideViewer({
                   スタイル
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {Object.entries(Object.keys(presets).length > 0 ? presets : DEFAULT_PRESETS).map(
-                    ([key, preset]) => {
-                      const colors = PRESET_COLORS[key] || PRESET_COLORS.corporate;
-                      const isActive = selectedPreset === key;
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => setSelectedPreset(key)}
-                          className={cn(
-                            "px-3 py-1.5 text-xs font-medium rounded-full border transition-all",
-                            isActive
-                              ? `${colors.activeBg} ${colors.border} ${colors.text} ring-2 ring-offset-1 ring-amber-400`
-                              : `${colors.bg} ${colors.border} ${colors.text} hover:${colors.activeBg}`,
-                          )}
-                          title={preset.description}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    },
-                  )}
+                  {Object.entries(
+                    Object.keys(presets).length > 0 ? presets : DEFAULT_PRESETS,
+                  ).map(([key, preset]) => {
+                    const colors =
+                      PRESET_COLORS[key] || PRESET_COLORS.corporate;
+                    const isActive = selectedPreset === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setSelectedPreset(key)}
+                        className={cn(
+                          "px-3 py-1.5 text-xs font-medium rounded-full border transition-all",
+                          isActive
+                            ? `${colors.activeBg} ${colors.border} ${colors.text} ring-2 ring-offset-1 ring-amber-400`
+                            : `${colors.bg} ${colors.border} ${colors.text} hover:${colors.activeBg}`,
+                        )}
+                        title={preset.description}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -981,13 +1032,17 @@ export function VisualSlideViewer({
               {/* Grid of generated slides (thumbnail preview) */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {outline?.slides.map((slide, idx) => {
-                  const generated = generatedSlides.find((s) => s.index === idx);
+                  const generated = generatedSlides.find(
+                    (s) => s.index === idx,
+                  );
                   return (
                     <div
                       key={idx}
                       className={cn(
                         "relative aspect-video rounded-lg border overflow-hidden",
-                        generated ? "border-amber-300" : "border-border bg-secondary/30",
+                        generated
+                          ? "border-amber-300"
+                          : "border-border bg-secondary/30",
                       )}
                     >
                       {generated ? (
@@ -1010,7 +1065,9 @@ export function VisualSlideViewer({
                       ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
                           <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-                          <span className="text-[10px] text-muted-foreground">{slide.title}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {slide.title}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1070,7 +1127,9 @@ export function VisualSlideViewer({
                 <button
                   onClick={() => {
                     if (editing) persistCurrentSlide();
-                    setActiveSlideIndex((prev) => Math.min(generatedSlides.length - 1, prev + 1));
+                    setActiveSlideIndex((prev) =>
+                      Math.min(generatedSlides.length - 1, prev + 1),
+                    );
                   }}
                   disabled={activeSlideIndex === generatedSlides.length - 1}
                   className="absolute right-2 z-10 p-2 rounded-full bg-card/80 border border-border shadow-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1082,7 +1141,8 @@ export function VisualSlideViewer({
               {/* Slide title + editing hint */}
               {activeSlide && (
                 <p className="text-center text-sm font-medium text-foreground">
-                  {activeSlideIndex + 1}/{generatedSlides.length} - {activeSlide.title}
+                  {activeSlideIndex + 1}/{generatedSlides.length} -{" "}
+                  {activeSlide.title}
                   {activeSlide.fallback && (
                     <span className="ml-2 text-xs text-amber-500">
                       (フォールバック - LLM生成失敗)

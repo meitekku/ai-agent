@@ -64,8 +64,13 @@ function generateTitle(text: string): string {
 // ChatPage
 // ---------------------------------------------------------------------------
 
-export function ChatPage({ conversationId: initialConvId, initialData }: ChatPageProps) {
+export function ChatPage({
+  conversationId: initialConvId,
+  initialData,
+}: ChatPageProps) {
   const service = useChatSettingsStore((s) => s.service);
+  const activeKb = useChatSettingsStore((s) => s.activeKb);
+  const setActiveKb = useChatSettingsStore((s) => s.setActiveKb);
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
   const queryClient = useQueryClient();
 
@@ -78,11 +83,18 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
   // Track count of messages known before sending, to find new ones
   const knownCountRef = useRef(0);
 
-  const { messages, setMessages, sendMessage, status, stop, regenerate, error } =
-    useChat({
-      id: initialConvId ?? "new-chat",
-      experimental_throttle: 50,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    stop,
+    regenerate,
+    error,
+  } = useChat({
+    id: initialConvId ?? "new-chat",
+    experimental_throttle: 50,
+  });
 
   // Load initial data into tree AND sync to useChat
   useEffect(() => {
@@ -96,10 +108,14 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
       const path = treeStore.getActivePath();
       setMessages(path);
       knownCountRef.current = path.length;
+      // Restore KB selection from conversation
+      if (initialData.conversation.kb_slug) {
+        setActiveKb(initialData.conversation.kb_slug);
+      }
     } else {
       treeStore.clear();
     }
-  }, [initialConvId, initialData, treeStore, setMessages]);
+  }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const submitTimeRef = useRef(0);
@@ -108,7 +124,8 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const wasLoading =
-      prevStatusRef.current === "submitted" || prevStatusRef.current === "streaming";
+      prevStatusRef.current === "submitted" ||
+      prevStatusRef.current === "streaming";
     prevStatusRef.current = status;
 
     if (!wasLoading || status !== "ready") return;
@@ -126,7 +143,12 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
     pendingParentRef.current = null;
 
     // Build save list with parent chain
-    const toSave: { id: string; parent_id: string | null; role: string; parts: unknown[] }[] = [];
+    const toSave: {
+      id: string;
+      parent_id: string | null;
+      role: string;
+      parts: unknown[];
+    }[] = [];
     for (let i = 0; i < newMsgs.length; i++) {
       const msg = newMsgs[i];
       const pid = i === 0 ? parentId : newMsgs[i - 1].id;
@@ -171,14 +193,18 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
       fetch("/api/history/chats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title }),
+        body: JSON.stringify({ id, title, kb_slug: activeKb }),
       })
-        .then(() => queryClient.invalidateQueries({ queryKey: ["chat-history"] }))
-        .catch((e) => console.error("[chat-page] create conversation failed:", e));
+        .then(() =>
+          queryClient.invalidateQueries({ queryKey: ["chat-history"] }),
+        )
+        .catch((e) =>
+          console.error("[chat-page] create conversation failed:", e),
+        );
 
       return id;
     },
-    [queryClient],
+    [queryClient, activeKb],
   );
 
   const handleSend = useCallback(
@@ -191,13 +217,21 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
+      const body = { service, kb: activeKb };
       if (files && files.length > 0) {
-        sendMessage({ text, files }, { body: { service } });
+        sendMessage({ text, files }, { body });
       } else {
-        sendMessage({ text }, { body: { service } });
+        sendMessage({ text }, { body });
       }
     },
-    [sendMessage, service, ensureConversation, treeStore.activeLeafId, messages.length],
+    [
+      sendMessage,
+      service,
+      activeKb,
+      ensureConversation,
+      treeStore.activeLeafId,
+      messages.length,
+    ],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -205,11 +239,12 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
     // For regeneration, the new assistant will have the same parent as the current last assistant
     // which is the user message before it
     const lastUserIdx = messages.length >= 2 ? messages.length - 2 : -1;
-    pendingParentRef.current = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
+    pendingParentRef.current =
+      lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
-    regenerate({ body: { service, skipCache: true } });
-  }, [regenerate, service, messages]);
+    regenerate({ body: { service, kb: activeKb, skipCache: true } });
+  }, [regenerate, service, activeKb, messages]);
 
   // Edit message: create new branch
   const handleEdit = useCallback(
@@ -237,9 +272,9 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
       knownCountRef.current = truncated.length;
 
       // Send new message (creates new user+assistant pair as siblings of the edited message)
-      sendMessage({ text: newText }, { body: { service } });
+      sendMessage({ text: newText }, { body: { service, kb: activeKb } });
     },
-    [treeStore, setMessages, sendMessage, service],
+    [treeStore, setMessages, sendMessage, service, activeKb],
   );
 
   // Branch switching
@@ -302,9 +337,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
     return lastUserMsg
       ? lastUserMsg.parts
-          .filter(
-            (p): p is { type: "text"; text: string } => p.type === "text",
-          )
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
           .map((p) => p.text)
           .join("")
       : "";
@@ -375,9 +408,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
         const data = await res.json();
         setStudioDeck(data.deck);
       } catch (err) {
-        setStudioError(
-          err instanceof Error ? err.message : "Refine failed",
-        );
+        setStudioError(err instanceof Error ? err.message : "Refine failed");
       } finally {
         setStudioBusy(false);
       }
@@ -405,9 +436,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center bg-radial-glow">
               {emptyStateIcon}
               <div className="space-y-1">
-                <h3 className="font-medium text-sm">
-                  AI チャットへようこそ
-                </h3>
+                <h3 className="font-medium text-sm">AI チャットへようこそ</h3>
                 <p className="text-muted-foreground text-sm">
                   何でも質問してください。ナレッジベースやウェブ検索を自動的に活用して回答します。
                 </p>
@@ -432,9 +461,7 @@ export function ChatPage({ conversationId: initialConvId, initialData }: ChatPag
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
                     onGenerateSlides={handleGenerateSlides}
-                    onEdit={
-                      message.role === "user" ? handleEdit : undefined
-                    }
+                    onEdit={message.role === "user" ? handleEdit : undefined}
                     branchInfo={branchInfo}
                     onSwitchBranch={handleSwitchBranch}
                   />

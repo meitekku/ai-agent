@@ -11,14 +11,21 @@ export async function POST(req: Request) {
     };
 
     if (!pngs || pngs.length === 0) {
-      return Response.json({ error: "pngs array is required" }, { status: 400 });
+      return Response.json(
+        { error: "pngs array is required" },
+        { status: 400 },
+      );
     }
 
     // Dynamic import to avoid SSR issues
     const { jsPDF } = await import("jspdf");
 
     // Landscape 16:9
-    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1280, 720] });
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "px",
+      format: [1280, 720],
+    });
 
     for (let i = 0; i < pngs.length; i++) {
       if (i > 0) pdf.addPage([1280, 720], "landscape");

@@ -14,11 +14,10 @@ import {
   backendName,
   geminiGoogleSearch,
 } from "@/lib/ollama-provider";
-import { searchOnly, type SearchResult } from "@/lib/rag-client";
+import { searchOnly, getKB, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
 import { TAVILY_API_KEY } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
-import { getKbConfig } from "@/lib/kb-config-db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -26,7 +25,7 @@ export const maxDuration = 300;
 const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(hasKb: boolean): string {
   let prompt = `あなたはナレッジベースを活用する AI アシスタントです。ユーザーの質問に対し、内部ドキュメントとウェブの情報を組み合わせて正確に回答します。
 
 ## 回答ガイドライン
@@ -35,10 +34,18 @@ function buildSystemPrompt(): string {
 - 回答の構造: 見出し（##）や箇条書きを活用して、読みやすく構造化してください。
 - 出典の記載: 回答中の各段落やセクションの末尾に、参照したドキュメント名とページを記載してください。形式:「（出典: ドキュメント名, Page X）」。
 
-## ツール使用
+## ツール使用`;
+
+  if (hasKb) {
+    prompt += `
 - ナレッジベースのトピックに関連する質問には searchKnowledgeBase を使用してください。
 - ユーザーが URL を提示した場合や、ウェブ検索結果の中で特に重要そうなページがある場合は readUrl を使用して詳細な内容を取得してください。
 - 挨拶や雑談など明らかに関係ない場合は直接回答してください。`;
+  } else {
+    prompt += `
+- ナレッジベースは選択されていません。ユーザーの質問に直接回答してください。
+- ユーザーが URL を提示した場合は readUrl を使用して詳細な内容を取得してください。`;
+  }
 
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   if (hasTavily || hasGoogleSearch) {
@@ -46,10 +53,10 @@ function buildSystemPrompt(): string {
 
 ## ウェブ検索
 ${webSearchToolName} ツールが利用可能です。以下の場合に使用してください：
-- ナレッジベースの検索結果が質問に対して不十分な場合
+- ${hasKb ? "ナレッジベースの検索結果が質問に対して不十分な場合" : "質問に最新情報やウェブ上の情報が必要な場合"}
 - 最新のニュース、時事問題、リアルタイム情報が必要な場合
 - ユーザーが「検索して」「調べて」「最新の」などウェブ検索を意図している場合
-ナレッジベースに十分な情報がある場合はそのまま回答してください。ウェブ検索結果を使用した場合は出典URLを含めてください。`;
+${hasKb ? "ナレッジベースに十分な情報がある場合はそのまま回答してください。" : ""}ウェブ検索結果を使用した場合は出典URLを含めてください。`;
   }
 
   return prompt;
@@ -59,11 +66,13 @@ export async function POST(req: Request) {
   let messages: UIMessage[];
   let service: "lightrag" | "pageindex";
   let skipCache = false;
+  let kb: string | null = null;
   try {
     const body = await req.json();
     messages = body.messages;
     service = body.service === "pageindex" ? "pageindex" : "lightrag";
     skipCache = !!body.skipCache;
+    kb = body.kb ?? null;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -86,8 +95,8 @@ export async function POST(req: Request) {
       .join(" ") || "";
 
   // Check semantic cache first (skip on regenerate)
-  if (queryText && !skipCache) {
-    const cached = await getCachedResponse(queryText);
+  if (queryText && !skipCache && kb) {
+    const cached = await getCachedResponse(queryText, kb);
     t.cache = Date.now() - t.start;
     if (cached.hit) {
       console.log(
@@ -111,31 +120,33 @@ export async function POST(req: Request) {
     }
   }
 
-  // Build KB tool description dynamically
-  let kbDescription =
-    "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
-  try {
-    const kbConfig = await getKbConfig();
-    if (kbConfig?.title) {
-      kbDescription = `ナレッジベース「${kbConfig.title}」を検索: ${kbConfig.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
-    }
-  } catch (e) {
-    console.error("[chat] kb-config fetch failed:", e);
-  }
-
   // Build tools map
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tools: Record<string, any> = {
-    searchKnowledgeBase: tool({
+  const tools: Record<string, any> = {};
+
+  // Only inject searchKnowledgeBase when a KB is selected
+  if (kb) {
+    let kbDescription =
+      "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
+    try {
+      const kbInfo = await getKB(kb);
+      if (kbInfo?.title) {
+        kbDescription = `ナレッジベース「${kbInfo.title}」を検索: ${kbInfo.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
+      }
+    } catch (e) {
+      console.error("[chat] kb fetch failed:", e);
+    }
+
+    tools.searchKnowledgeBase = tool({
       description: kbDescription,
       inputSchema: z.object({
         query: z.string().describe("Search query for the knowledge base"),
       }),
       execute: async ({ query }) => {
-        console.log(`[chat] 🔍 searchKnowledgeBase: "${query}"`);
+        console.log(`[chat] 🔍 searchKnowledgeBase: "${query}" kb=${kb}`);
         const t0 = Date.now();
         try {
-          const searchRes = await searchOnly(query, { topK: 8, service });
+          const searchRes = await searchOnly(query, { topK: 8, service, kb });
           const elapsed = Date.now() - t0;
           console.log(
             `[chat] 🔍 search: ${elapsed}ms →`,
@@ -172,8 +183,8 @@ export async function POST(req: Request) {
           };
         }
       },
-    }),
-  };
+    });
+  }
 
   // readUrl: fetch any URL and extract text content (always available)
   tools.readUrl = tool({
@@ -405,7 +416,7 @@ export async function POST(req: Request) {
     t.prompt = t1 - t.start;
     let firstTokenTime = 0;
 
-    let systemPrompt = buildSystemPrompt();
+    let systemPrompt = buildSystemPrompt(!!kb);
 
     // Inject enabled skills into system prompt (non-fatal)
     try {
@@ -448,8 +459,8 @@ export async function POST(req: Request) {
         const usedKB = steps?.some((step) =>
           step.toolCalls?.some((tc) => tc.toolName === "searchKnowledgeBase"),
         );
-        if (queryText && text && usedKB) {
-          cacheResponse(queryText, text, []).catch(() => {});
+        if (queryText && text && usedKB && kb) {
+          cacheResponse(queryText, text, [], kb).catch(() => {});
         }
       },
     });

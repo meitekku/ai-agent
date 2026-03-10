@@ -162,8 +162,16 @@
   /* Subtle background radial for empty state */
   .bg-radial-glow {
     background:
-      radial-gradient(ellipse 60% 50% at 50% 45%, oklch(0.72 0.17 165 / 6%) 0%, transparent 70%),
-      radial-gradient(ellipse 40% 35% at 55% 50%, oklch(0.65 0.12 250 / 4%) 0%, transparent 60%);
+      radial-gradient(
+        ellipse 60% 50% at 50% 45%,
+        oklch(0.72 0.17 165 / 6%) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 40% 35% at 55% 50%,
+        oklch(0.65 0.12 250 / 4%) 0%,
+        transparent 60%
+      );
   }
 
   /* Glow ring for focused input */
@@ -175,8 +183,13 @@
 
   /* Smooth pulse for step indicators */
   @keyframes soft-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
   .animate-soft-pulse {
     animation: soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

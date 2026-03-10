@@ -28,9 +28,14 @@ export async function ensureChatTables(): Promise<void> {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         active_leaf_id TEXT,
+        kb_slug VARCHAR(100),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+    // Add kb_slug column if missing (existing deployments)
+    await client.query(`
+      ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS kb_slug VARCHAR(100)
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_chat_conv_updated
@@ -69,6 +74,7 @@ export interface ConversationRow {
   id: string;
   title: string;
   active_leaf_id: string | null;
+  kb_slug: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,11 +102,12 @@ export interface MessageRow {
 export async function createConversation(
   id: string,
   title: string,
+  kbSlug?: string | null,
 ): Promise<void> {
   await ensureChatTables();
   await getPool().query(
-    `INSERT INTO chat_conversations (id, title) VALUES ($1, $2)`,
-    [id, title],
+    `INSERT INTO chat_conversations (id, title, kb_slug) VALUES ($1, $2, $3)`,
+    [id, title, kbSlug ?? null],
   );
 }
 
@@ -125,9 +132,7 @@ export async function listConversations(
   }));
 }
 
-export async function getConversation(
-  id: string,
-): Promise<{
+export async function getConversation(id: string): Promise<{
   conversation: ConversationRow;
   messages: MessageRow[];
 } | null> {
@@ -176,7 +181,13 @@ export async function saveMessages(
         `INSERT INTO chat_messages (id, conversation_id, parent_id, role, parts)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (id) DO UPDATE SET parts = $5`,
-        [msg.id, conversationId, msg.parent_id, msg.role, JSON.stringify(msg.parts)],
+        [
+          msg.id,
+          conversationId,
+          msg.parent_id,
+          msg.role,
+          JSON.stringify(msg.parts),
+        ],
       );
     }
     // Update conversation timestamp

@@ -32,11 +32,20 @@ export default async function RootLayout({
 
   return (
     <html lang="ja" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+      >
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
           <QueryProvider>
             <TooltipProvider>
-              <AppShell initialSidebarOpen={initialSidebarOpen}>{children}</AppShell>
+              <AppShell initialSidebarOpen={initialSidebarOpen}>
+                {children}
+              </AppShell>
             </TooltipProvider>
           </QueryProvider>
         </ThemeProvider>

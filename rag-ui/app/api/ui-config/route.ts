@@ -19,6 +19,9 @@ export async function PUT(req: Request) {
     return Response.json(updated);
   } catch (err) {
     console.error("[ui-config] PUT failed:", err);
-    return Response.json({ error: "Failed to update preferences" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to update preferences" },
+      { status: 500 },
+    );
   }
 }

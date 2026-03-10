@@ -45,7 +45,7 @@ function persistSidebarState(open: boolean) {
 
 const NAV_ITEMS = [
   { href: "/new", icon: PlusIcon, label: "新規チャット" },
-  { href: "/documents", icon: FileTextIcon, label: "ドキュメント" },
+  { href: "/documents", icon: FileTextIcon, label: "ナレッジベース" },
   { href: "/skills", icon: SparklesIcon, label: "スキル" },
 ] as const;
 
@@ -109,7 +109,10 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   const groups = groupByDate(conversations);
 
   // Delete confirmation dialog state
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -133,7 +136,9 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
         <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
           <BotIcon className="size-3.5 text-primary" />
         </div>
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">RAG Chat</h2>
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">
+          RAG Chat
+        </h2>
         {onClose && (
           <button
             onClick={onClose}
@@ -211,7 +216,11 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                         </span>
                         <span
                           role="button"
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteTarget({ id: chat.id, title: chat.title }); }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteTarget({ id: chat.id, title: chat.title });
+                          }}
                           className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5"
                           aria-label="削除"
                         >
@@ -228,17 +237,26 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
       )}
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>チャットを削除</AlertDialogTitle>
             <AlertDialogDescription>
-              「{deleteTarget?.title}」を削除しますか？この操作は取り消せません。
+              「{deleteTarget?.title}
+              」を削除しますか？この操作は取り消せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               削除
             </AlertDialogAction>
           </AlertDialogFooter>

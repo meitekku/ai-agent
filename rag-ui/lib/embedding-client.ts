@@ -25,7 +25,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       },
     );
     if (!res.ok) {
-      throw new Error(`Gemini embedding failed: ${res.status} ${res.statusText}`);
+      throw new Error(
+        `Gemini embedding failed: ${res.status} ${res.statusText}`,
+      );
     }
     const data = (await res.json()) as {
       embedding: { values: number[] };
@@ -44,7 +46,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   });
 
   if (!res.ok) {
-    throw new Error(`Embedding request failed: ${res.status} ${res.statusText}`);
+    throw new Error(
+      `Embedding request failed: ${res.status} ${res.statusText}`,
+    );
   }
 
   const data = (await res.json()) as { embeddings: number[][] };

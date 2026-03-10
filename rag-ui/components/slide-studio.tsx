@@ -27,7 +27,14 @@ export type SlideCitation = {
 export type Slide = {
   id?: string;
   title: string;
-  layout?: "title" | "content" | "visual" | "table" | "chart" | "comparison" | null;
+  layout?:
+    | "title"
+    | "content"
+    | "visual"
+    | "table"
+    | "chart"
+    | "comparison"
+    | null;
   bullets: string[];
   diagram_mermaid?: string;
   table?: SlideTable | null;
@@ -93,13 +100,17 @@ function csvToTable(text: string): SlideTable | null {
   const headers = parsed[0] || [];
   const rows = parsed.slice(1);
   const hasData =
-    headers.some((h) => h.length > 0) || rows.some((r) => r.some((c) => c.length > 0));
+    headers.some((h) => h.length > 0) ||
+    rows.some((r) => r.some((c) => c.length > 0));
   return hasData ? { headers, rows } : null;
 }
 
 function hasTableData(table?: SlideTable | null) {
   if (!table) return false;
-  return (table.headers && table.headers.length > 0) || (table.rows && table.rows.length > 0);
+  return (
+    (table.headers && table.headers.length > 0) ||
+    (table.rows && table.rows.length > 0)
+  );
 }
 
 function getSlideImageSrc(slide?: Slide | null) {
@@ -216,7 +227,13 @@ function getIconForTitle(title: string): string {
   return "📄";
 }
 
-type SlideLayoutType = "title" | "content" | "visual" | "table" | "chart" | "card";
+type SlideLayoutType =
+  | "title"
+  | "content"
+  | "visual"
+  | "table"
+  | "chart"
+  | "card";
 
 // Card accent colors (matching PPTX)
 const CARD_ACCENT_COLORS = [
@@ -246,7 +263,9 @@ function hasValidTableDataCheck(table?: SlideTable | null): boolean {
   const headers = Array.isArray(table.headers) ? table.headers : [];
   const rows = Array.isArray(table.rows) ? table.rows : [];
   const hasHeaders = headers.some((h) => h && h.trim().length > 0);
-  const hasRows = rows.some((r) => Array.isArray(r) && r.some((c) => c && c.trim().length > 0));
+  const hasRows = rows.some(
+    (r) => Array.isArray(r) && r.some((c) => c && c.trim().length > 0),
+  );
   return hasHeaders || hasRows;
 }
 
@@ -257,8 +276,11 @@ function detectSlideLayout(slide: Slide, idx: number): SlideLayoutType {
   const hasChart = hasValidChartData(slide.chart);
   const hasTable = hasValidTableDataCheck(slide.table);
   const hasImage = slide.image_url || slide.image_data_url;
-  const hasDiagram = slide.diagram_mermaid && slide.diagram_mermaid.trim().length > 0;
-  const bullets = Array.isArray(slide.bullets) ? slide.bullets.filter((b) => b && b.trim()) : [];
+  const hasDiagram =
+    slide.diagram_mermaid && slide.diagram_mermaid.trim().length > 0;
+  const bullets = Array.isArray(slide.bullets)
+    ? slide.bullets.filter((b) => b && b.trim())
+    : [];
 
   if (hasChart) return "chart";
   if (hasTable) return "table";
@@ -306,7 +328,9 @@ function deckToMarkdown(deck: SlideDeck) {
     }
     if (s.chart?.type) {
       lines.push("");
-      lines.push(`Chart: ${s.chart.type}${s.chart.title ? ` (${s.chart.title})` : ""}`);
+      lines.push(
+        `Chart: ${s.chart.type}${s.chart.title ? ` (${s.chart.title})` : ""}`,
+      );
     }
     if (s.speaker_notes?.trim()) {
       lines.push("");
@@ -320,7 +344,9 @@ function deckToMarkdown(deck: SlideDeck) {
         const title = c.source_title?.trim() || "Source";
         const quote = c.quote?.trim();
         const id = c.source_id != null ? `#${c.source_id}` : "";
-        lines.push(`- ${title}${id ? ` (${id})` : ""}${quote ? `: "${quote}"` : ""}`);
+        lines.push(
+          `- ${title}${id ? ` (${id})` : ""}${quote ? `: "${quote}"` : ""}`,
+        );
       });
     }
     lines.push("");
@@ -361,16 +387,28 @@ function getSvgSize(svg: string): { width: number; height: number } {
   if (widthMatch && heightMatch) {
     const width = Number(widthMatch[1]);
     const height = Number(heightMatch[1]);
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    if (
+      Number.isFinite(width) &&
+      Number.isFinite(height) &&
+      width > 0 &&
+      height > 0
+    ) {
       return { width, height };
     }
   }
 
-  const viewBoxMatch = svg.match(/viewBox="[\d.\-]+\s+[\d.\-]+\s+([\d.]+)\s+([\d.]+)"/i);
+  const viewBoxMatch = svg.match(
+    /viewBox="[\d.\-]+\s+[\d.\-]+\s+([\d.]+)\s+([\d.]+)"/i,
+  );
   if (viewBoxMatch) {
     const width = Number(viewBoxMatch[1]);
     const height = Number(viewBoxMatch[2]);
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    if (
+      Number.isFinite(width) &&
+      Number.isFinite(height) &&
+      width > 0 &&
+      height > 0
+    ) {
       return { width, height };
     }
   }
@@ -378,7 +416,10 @@ function getSvgSize(svg: string): { width: number; height: number } {
   return { width: 900, height: 520 };
 }
 
-async function svgToPngDataUrl(svg: string, scale: number = 2): Promise<string> {
+async function svgToPngDataUrl(
+  svg: string,
+  scale: number = 2,
+): Promise<string> {
   const { width, height } = getSvgSize(svg);
   const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -431,8 +472,14 @@ export function SlideStudio({
   const [exportIndex, setExportIndex] = useState<number>(0);
   const [imageGenerating, setImageGenerating] = useState(false);
   const exportSlideRef = useRef<HTMLDivElement>(null);
-  const exportPngCacheRef = useRef<{ fingerprint: string; pngs: string[] } | null>(null);
-  const selectedSlide = useMemo(() => deck.slides[selectedIndex], [deck.slides, selectedIndex]);
+  const exportPngCacheRef = useRef<{
+    fingerprint: string;
+    pngs: string[];
+  } | null>(null);
+  const selectedSlide = useMemo(
+    () => deck.slides[selectedIndex],
+    [deck.slides, selectedIndex],
+  );
   const [chartDraft, setChartDraft] = useState("");
   const chartUrl = useMemo(
     () => chartToQuickchartUrl(selectedSlide?.chart || null),
@@ -456,7 +503,11 @@ export function SlideStudio({
     (async () => {
       try {
         const { default: mermaid } = await import("mermaid");
-        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: "default",
+        });
         const id = `m-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const out = await mermaid.render(id, code);
         if (!cancelled && out.svg) {
@@ -493,7 +544,8 @@ export function SlideStudio({
 
   if (!open) return null;
 
-  const updateDeck = (patch: Partial<SlideDeck>) => onDeckChange({ ...deck, ...patch });
+  const updateDeck = (patch: Partial<SlideDeck>) =>
+    onDeckChange({ ...deck, ...patch });
   const updateSlide = (index: number, patch: Partial<Slide>) => {
     const slides = deck.slides.slice();
     slides[index] = { ...slides[index], ...patch };
@@ -584,7 +636,11 @@ export function SlideStudio({
     const trimmed = (code || "").trim();
     if (!trimmed) return "";
     const { default: mermaid } = await import("mermaid");
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "default",
+    });
     const id = `m-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const out = await mermaid.render(id, trimmed);
     return out.svg || "";
@@ -644,10 +700,16 @@ export function SlideStudio({
     setExporting("pdf");
     try {
       const fingerprint = `${deck.title}|${deck.summary || ""}|${deck.slides
-        .map((s) => `${s.title}|${(s.bullets || []).join("•")}|${s.diagram_mermaid || ""}`)
+        .map(
+          (s) =>
+            `${s.title}|${(s.bullets || []).join("•")}|${s.diagram_mermaid || ""}`,
+        )
         .join("||")}`;
       const cached = exportPngCacheRef.current;
-      const pngs = cached?.fingerprint === fingerprint ? cached.pngs : await renderSlidePngs();
+      const pngs =
+        cached?.fingerprint === fingerprint
+          ? cached.pngs
+          : await renderSlidePngs();
       exportPngCacheRef.current = { fingerprint, pngs };
 
       const { jsPDF } = await import("jspdf");
@@ -673,7 +735,11 @@ export function SlideStudio({
       // Presenton-style optimization: export PPTX with editable text boxes + diagram images (smaller payload than full-slide PNGs)
       const diagramPngs: Array<string | null> = [];
       const { default: mermaid } = await import("mermaid");
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: "default",
+      });
 
       for (let i = 0; i < deck.slides.length; i++) {
         setExportIndex(i);
@@ -721,7 +787,10 @@ export function SlideStudio({
   const showExportImage = !exportDiagramSvg && !!exportImage;
   const showExportChart = !exportDiagramSvg && !exportImage && !!exportChartUrl;
   const showExportTable =
-    !exportDiagramSvg && !exportImage && !exportChartUrl && hasTableData(exportTable);
+    !exportDiagramSvg &&
+    !exportImage &&
+    !exportChartUrl &&
+    hasTableData(exportTable);
 
   return (
     <div
@@ -747,11 +816,14 @@ export function SlideStudio({
               placeholder="資料タイトル"
               disabled={busy || exporting !== null}
             />
-            {error && <div className="text-[11px] text-destructive mt-1">{error}</div>}
+            {error && (
+              <div className="text-[11px] text-destructive mt-1">{error}</div>
+            )}
             {exporting && (
               <div className="text-[11px] text-muted-foreground mt-1">
                 Exporting {exporting.toUpperCase()}… (
-                {Math.min(exportIndex + 1, deck.slides.length)}/{deck.slides.length})
+                {Math.min(exportIndex + 1, deck.slides.length)}/
+                {deck.slides.length})
               </div>
             )}
           </div>
@@ -813,7 +885,9 @@ export function SlideStudio({
           {/* Sidebar */}
           <div className="w-64 border-r border-border bg-card/30 flex flex-col">
             <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-              <div className="text-xs font-medium text-muted-foreground">Slides</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                Slides
+              </div>
               <button
                 type="button"
                 onClick={addSlide}
@@ -888,7 +962,9 @@ export function SlideStudio({
                                 ? "📊"
                                 : hasTableData(s.table)
                                   ? "📋"
-                                  : s.image_url || s.image_data_url || s.diagram_mermaid
+                                  : s.image_url ||
+                                      s.image_data_url ||
+                                      s.diagram_mermaid
                                     ? "🖼️"
                                     : getIconForTitle(s.title || "")}
                           </div>
@@ -896,7 +972,9 @@ export function SlideStudio({
                             <div className="text-[11px] text-muted-foreground flex items-center gap-1">
                               <span>{idx + 1}</span>
                               <span className="opacity-50">•</span>
-                              <span className="capitalize">{detectSlideLayout(s, idx)}</span>
+                              <span className="capitalize">
+                                {detectSlideLayout(s, idx)}
+                              </span>
                             </div>
                             <div className="text-xs font-medium text-foreground truncate">
                               {s.title || "Slide"}
@@ -924,7 +1002,11 @@ export function SlideStudio({
                             }}
                             className="p-1 rounded hover:bg-accent"
                             aria-label="Move down"
-                            disabled={busy || exporting !== null || idx === deck.slides.length - 1}
+                            disabled={
+                              busy ||
+                              exporting !== null ||
+                              idx === deck.slides.length - 1
+                            }
                           >
                             <ArrowDown className="w-3.5 h-3.5" />
                           </button>
@@ -943,7 +1025,8 @@ export function SlideStudio({
                         </div>
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground max-h-8 overflow-hidden">
-                        {(s.bullets || []).slice(0, 2).join(" / ") || "（内容なし）"}
+                        {(s.bullets || []).slice(0, 2).join(" / ") ||
+                          "（内容なし）"}
                       </div>
                     </div>
                   );
@@ -965,7 +1048,8 @@ export function SlideStudio({
                       style={{
                         aspectRatio: "16/9",
                         background:
-                          detectSlideLayout(selectedSlide, selectedIndex) === "title"
+                          detectSlideLayout(selectedSlide, selectedIndex) ===
+                          "title"
                             ? PREVIEW_COLORS.primaryLight
                             : PREVIEW_COLORS.background,
                       }}
@@ -975,16 +1059,21 @@ export function SlideStudio({
                         className="absolute top-0 left-0 right-0 h-1"
                         style={{
                           background:
-                            detectSlideLayout(selectedSlide, selectedIndex) === "chart"
+                            detectSlideLayout(selectedSlide, selectedIndex) ===
+                            "chart"
                               ? PREVIEW_COLORS.secondary
-                              : detectSlideLayout(selectedSlide, selectedIndex) === "table"
+                              : detectSlideLayout(
+                                    selectedSlide,
+                                    selectedIndex,
+                                  ) === "table"
                                 ? PREVIEW_COLORS.accent3
                                 : PREVIEW_COLORS.primary,
                         }}
                       />
 
                       {/* Title Slide Layout - Title Only, No Bullets */}
-                      {detectSlideLayout(selectedSlide, selectedIndex) === "title" ? (
+                      {detectSlideLayout(selectedSlide, selectedIndex) ===
+                      "title" ? (
                         <div className="h-full flex flex-col items-center justify-center p-6 text-center">
                           <div className="text-5xl mb-6">
                             {getIconForTitle(selectedSlide.title || "")}
@@ -999,11 +1088,15 @@ export function SlideStudio({
                             className="mt-4 h-px w-32"
                             style={{ background: PREVIEW_COLORS.primaryMid }}
                           />
-                          <div className="mt-4 text-sm" style={{ color: PREVIEW_COLORS.primary }}>
+                          <div
+                            className="mt-4 text-sm"
+                            style={{ color: PREVIEW_COLORS.primary }}
+                          >
                             AI Generated Presentation
                           </div>
                         </div>
-                      ) : detectSlideLayout(selectedSlide, selectedIndex) === "card" ? (
+                      ) : detectSlideLayout(selectedSlide, selectedIndex) ===
+                        "card" ? (
                         /* Card Layout - 2x2 Grid */
                         <div className="h-full flex flex-col">
                           {/* Header bar */}
@@ -1019,67 +1112,79 @@ export function SlideStudio({
                             </h2>
                             <div
                               className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                              style={{ background: "#FFFFFF", color: "#0D4F6F" }}
+                              style={{
+                                background: "#FFFFFF",
+                                color: "#0D4F6F",
+                              }}
                             >
                               {selectedIndex + 1}
                             </div>
                           </div>
                           {/* Card Grid */}
                           <div className="flex-1 p-3 grid grid-cols-2 gap-2">
-                            {(selectedSlide.bullets || []).slice(0, 4).map((bullet, i) => {
-                              const accentColor = CARD_ACCENT_COLORS[i % CARD_ACCENT_COLORS.length];
-                              const colonIdx =
-                                bullet.indexOf("：") !== -1
-                                  ? bullet.indexOf("：")
-                                  : bullet.indexOf(":");
-                              let cardTitle = `ポイント ${i + 1}`;
-                              let cardDesc = bullet;
-                              if (colonIdx !== -1 && colonIdx < 30) {
-                                cardTitle = bullet.slice(0, colonIdx).trim();
-                                cardDesc = bullet.slice(colonIdx + 1).trim();
-                              }
-                              return (
-                                <div
-                                  key={i}
-                                  className="rounded-lg overflow-hidden flex"
-                                  style={{
-                                    background: "#FFFFFF",
-                                    border: "1px solid #E5E7EB",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                  }}
-                                >
-                                  {/* Accent bar */}
+                            {(selectedSlide.bullets || [])
+                              .slice(0, 4)
+                              .map((bullet, i) => {
+                                const accentColor =
+                                  CARD_ACCENT_COLORS[
+                                    i % CARD_ACCENT_COLORS.length
+                                  ];
+                                const colonIdx =
+                                  bullet.indexOf("：") !== -1
+                                    ? bullet.indexOf("：")
+                                    : bullet.indexOf(":");
+                                let cardTitle = `ポイント ${i + 1}`;
+                                let cardDesc = bullet;
+                                if (colonIdx !== -1 && colonIdx < 30) {
+                                  cardTitle = bullet.slice(0, colonIdx).trim();
+                                  cardDesc = bullet.slice(colonIdx + 1).trim();
+                                }
+                                return (
                                   <div
-                                    className="w-1.5 flex-shrink-0"
-                                    style={{ background: accentColor }}
-                                  />
-                                  <div className="flex-1 p-2">
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                      <span
-                                        className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
-                                        style={{ background: `${accentColor}20` }}
+                                    key={i}
+                                    className="rounded-lg overflow-hidden flex"
+                                    style={{
+                                      background: "#FFFFFF",
+                                      border: "1px solid #E5E7EB",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                    }}
+                                  >
+                                    {/* Accent bar */}
+                                    <div
+                                      className="w-1.5 flex-shrink-0"
+                                      style={{ background: accentColor }}
+                                    />
+                                    <div className="flex-1 p-2">
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <span
+                                          className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+                                          style={{
+                                            background: `${accentColor}20`,
+                                          }}
+                                        >
+                                          {getIconForBullet(bullet, i)}
+                                        </span>
+                                        <span
+                                          className="text-xs font-semibold"
+                                          style={{ color: PREVIEW_COLORS.text }}
+                                        >
+                                          {cardTitle}
+                                        </span>
+                                      </div>
+                                      <p
+                                        className="text-[10px] leading-relaxed"
+                                        style={{
+                                          color: PREVIEW_COLORS.textLight,
+                                        }}
                                       >
-                                        {getIconForBullet(bullet, i)}
-                                      </span>
-                                      <span
-                                        className="text-xs font-semibold"
-                                        style={{ color: PREVIEW_COLORS.text }}
-                                      >
-                                        {cardTitle}
-                                      </span>
+                                        {cardDesc.length > 80
+                                          ? cardDesc.slice(0, 80) + "..."
+                                          : cardDesc}
+                                      </p>
                                     </div>
-                                    <p
-                                      className="text-[10px] leading-relaxed"
-                                      style={{ color: PREVIEW_COLORS.textLight }}
-                                    >
-                                      {cardDesc.length > 80
-                                        ? cardDesc.slice(0, 80) + "..."
-                                        : cardDesc}
-                                    </p>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
                           </div>
                           {/* More indicator */}
                           {(selectedSlide.bullets || []).length > 4 && (
@@ -1087,7 +1192,8 @@ export function SlideStudio({
                               className="px-3 pb-2 text-[10px] text-right"
                               style={{ color: PREVIEW_COLORS.textMuted }}
                             >
-                              + {(selectedSlide.bullets || []).length - 4} more items...
+                              + {(selectedSlide.bullets || []).length - 4} more
+                              items...
                             </div>
                           )}
                         </div>
@@ -1103,13 +1209,24 @@ export function SlideStudio({
                                 border: `1px solid ${PREVIEW_COLORS.primaryMid}`,
                               }}
                             >
-                              {detectSlideLayout(selectedSlide, selectedIndex) === "chart"
+                              {detectSlideLayout(
+                                selectedSlide,
+                                selectedIndex,
+                              ) === "chart"
                                 ? "📊"
-                                : detectSlideLayout(selectedSlide, selectedIndex) === "table"
+                                : detectSlideLayout(
+                                      selectedSlide,
+                                      selectedIndex,
+                                    ) === "table"
                                   ? "📋"
-                                  : detectSlideLayout(selectedSlide, selectedIndex) === "visual"
+                                  : detectSlideLayout(
+                                        selectedSlide,
+                                        selectedIndex,
+                                      ) === "visual"
                                     ? "🖼️"
-                                    : getIconForTitle(selectedSlide.title || "")}
+                                    : getIconForTitle(
+                                        selectedSlide.title || "",
+                                      )}
                             </div>
                             <h2
                               className="text-lg font-semibold flex-1"
@@ -1141,24 +1258,29 @@ export function SlideStudio({
                             >
                               {(selectedSlide.bullets || []).length > 0 ? (
                                 <ul className="space-y-1.5">
-                                  {(selectedSlide.bullets || []).slice(0, 6).map((b, i) => (
-                                    <li
-                                      key={i}
-                                      className="flex items-start gap-2 text-sm"
-                                      style={{ color: PREVIEW_COLORS.text }}
-                                    >
-                                      <span
-                                        className="mt-0.5 w-5 h-5 rounded flex items-center justify-center text-xs font-medium flex-shrink-0"
-                                        style={{
-                                          background: PREVIEW_COLORS.primaryLight,
-                                          color: PREVIEW_COLORS.primary,
-                                        }}
+                                  {(selectedSlide.bullets || [])
+                                    .slice(0, 6)
+                                    .map((b, i) => (
+                                      <li
+                                        key={i}
+                                        className="flex items-start gap-2 text-sm"
+                                        style={{ color: PREVIEW_COLORS.text }}
                                       >
-                                        {i + 1}
-                                      </span>
-                                      <span className="leading-relaxed">{b}</span>
-                                    </li>
-                                  ))}
+                                        <span
+                                          className="mt-0.5 w-5 h-5 rounded flex items-center justify-center text-xs font-medium flex-shrink-0"
+                                          style={{
+                                            background:
+                                              PREVIEW_COLORS.primaryLight,
+                                            color: PREVIEW_COLORS.primary,
+                                          }}
+                                        >
+                                          {i + 1}
+                                        </span>
+                                        <span className="leading-relaxed">
+                                          {b}
+                                        </span>
+                                      </li>
+                                    ))}
                                 </ul>
                               ) : (
                                 <div
@@ -1185,7 +1307,9 @@ export function SlideStudio({
                                 {selectedDiagramSvg ? (
                                   <div
                                     className="w-full max-h-full overflow-auto"
-                                    dangerouslySetInnerHTML={{ __html: selectedDiagramSvg }}
+                                    dangerouslySetInnerHTML={{
+                                      __html: selectedDiagramSvg,
+                                    }}
                                   />
                                 ) : getSlideImageSrc(selectedSlide) ? (
                                   <img
@@ -1203,18 +1327,24 @@ export function SlideStudio({
                                   <div className="w-full overflow-auto">
                                     <table className="w-full text-xs">
                                       {selectedSlide.table?.headers &&
-                                        selectedSlide.table.headers.length > 0 && (
+                                        selectedSlide.table.headers.length >
+                                          0 && (
                                           <thead>
                                             <tr>
-                                              {selectedSlide.table.headers.map((h, i) => (
-                                                <th
-                                                  key={i}
-                                                  className="text-left font-semibold px-2 py-1.5 text-white"
-                                                  style={{ background: PREVIEW_COLORS.primary }}
-                                                >
-                                                  {h}
-                                                </th>
-                                              ))}
+                                              {selectedSlide.table.headers.map(
+                                                (h, i) => (
+                                                  <th
+                                                    key={i}
+                                                    className="text-left font-semibold px-2 py-1.5 text-white"
+                                                    style={{
+                                                      background:
+                                                        PREVIEW_COLORS.primary,
+                                                    }}
+                                                  >
+                                                    {h}
+                                                  </th>
+                                                ),
+                                              )}
                                             </tr>
                                           </thead>
                                         )}
@@ -1258,7 +1388,8 @@ export function SlideStudio({
                                 color: PREVIEW_COLORS.primaryDark,
                               }}
                             >
-                              💡 <strong>Takeaway:</strong> {selectedSlide.title}
+                              💡 <strong>Takeaway:</strong>{" "}
+                              {selectedSlide.title}
                               のポイントを整理し、次のアクションを明確化
                             </div>
                           )}
@@ -1284,15 +1415,23 @@ export function SlideStudio({
                     <div className="px-3 py-2 bg-card border-t border-border flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Pencil className="w-3.5 h-3.5" />
-                        Preview ({detectSlideLayout(selectedSlide, selectedIndex)} layout)
+                        Preview (
+                        {detectSlideLayout(selectedSlide, selectedIndex)}{" "}
+                        layout)
                       </div>
                       <button
                         type="button"
                         onClick={ensureDiagramSvg}
                         className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        disabled={busy || exporting !== null || !selectedSlide.diagram_mermaid}
+                        disabled={
+                          busy ||
+                          exporting !== null ||
+                          !selectedSlide.diagram_mermaid
+                        }
                       >
-                        {selectedSlide.diagram_mermaid ? "🔄 Render Diagram" : ""}
+                        {selectedSlide.diagram_mermaid
+                          ? "🔄 Render Diagram"
+                          : ""}
                       </button>
                     </div>
                   </div>
@@ -1305,7 +1444,11 @@ export function SlideStudio({
                         </div>
                         <input
                           value={selectedSlide.title}
-                          onChange={(e) => updateSlide(selectedIndex, { title: e.target.value })}
+                          onChange={(e) =>
+                            updateSlide(selectedIndex, {
+                              title: e.target.value,
+                            })
+                          }
                           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40"
                           disabled={busy || exporting !== null}
                         />
@@ -1332,7 +1475,9 @@ export function SlideStudio({
                         <textarea
                           value={tableToCsv(selectedSlide.table)}
                           onChange={(e) =>
-                            updateSlide(selectedIndex, { table: csvToTable(e.target.value) })
+                            updateSlide(selectedIndex, {
+                              table: csvToTable(e.target.value),
+                            })
                           }
                           className="w-full h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40 font-mono"
                           placeholder="Header1, Header2\nValue1, Value2"
@@ -1359,7 +1504,8 @@ export function SlideStudio({
                           <label
                             className={cn(
                               "inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs hover:bg-accent transition-colors cursor-pointer",
-                              (busy || exporting !== null) && "opacity-50 cursor-not-allowed",
+                              (busy || exporting !== null) &&
+                                "opacity-50 cursor-not-allowed",
                             )}
                           >
                             <Upload className="w-3.5 h-3.5" />
@@ -1369,14 +1515,18 @@ export function SlideStudio({
                               accept="image/*"
                               className="hidden"
                               disabled={busy || exporting !== null}
-                              onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
+                              onChange={(e) =>
+                                handleImageFile(e.target.files?.[0] || null)
+                              }
                             />
                           </label>
                           <button
                             type="button"
                             onClick={handleGenerateImage}
                             className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs hover:bg-accent transition-colors"
-                            disabled={busy || exporting !== null || imageGenerating}
+                            disabled={
+                              busy || exporting !== null || imageGenerating
+                            }
                             title="AIで画像を自動生成（Gemini）"
                           >
                             {imageGenerating ? (
@@ -1389,7 +1539,10 @@ export function SlideStudio({
                           <button
                             type="button"
                             onClick={() =>
-                              updateSlide(selectedIndex, { image_url: "", image_data_url: "" })
+                              updateSlide(selectedIndex, {
+                                image_url: "",
+                                image_data_url: "",
+                              })
                             }
                             className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs hover:bg-accent transition-colors"
                             disabled={busy || exporting !== null}
@@ -1408,7 +1561,8 @@ export function SlideStudio({
                           onChange={(e) => setChartDraft(e.target.value)}
                           onBlur={() => {
                             const next = jsonToChart(chartDraft);
-                            if (next) updateSlide(selectedIndex, { chart: next });
+                            if (next)
+                              updateSlide(selectedIndex, { chart: next });
                           }}
                           className="w-full h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40 font-mono"
                           placeholder='{"type":"bar","title":"例","labels":["A","B"],"datasets":[{"label":"値","data":[10,20]}]}'
@@ -1435,7 +1589,9 @@ export function SlideStudio({
                         <textarea
                           value={selectedSlide.diagram_mermaid || ""}
                           onChange={(e) =>
-                            updateSlide(selectedIndex, { diagram_mermaid: e.target.value })
+                            updateSlide(selectedIndex, {
+                              diagram_mermaid: e.target.value,
+                            })
                           }
                           className="w-full h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40 font-mono"
                           placeholder="例: flowchart TD\n  A[Start] --> B{Decision}\n  B -->|Yes| C[OK]\n  B -->|No| D[Fix]"
@@ -1445,7 +1601,9 @@ export function SlideStudio({
                           <div className="mt-2 rounded-lg border border-border bg-background p-2 overflow-auto max-h-48">
                             <div
                               className="w-full"
-                              dangerouslySetInnerHTML={{ __html: selectedDiagramSvg }}
+                              dangerouslySetInnerHTML={{
+                                __html: selectedDiagramSvg,
+                              }}
                             />
                           </div>
                         )}
@@ -1457,7 +1615,9 @@ export function SlideStudio({
                         <textarea
                           value={selectedSlide.speaker_notes || ""}
                           onChange={(e) =>
-                            updateSlide(selectedIndex, { speaker_notes: e.target.value })
+                            updateSlide(selectedIndex, {
+                              speaker_notes: e.target.value,
+                            })
                           }
                           className="w-full h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40"
                           disabled={busy || exporting !== null}
@@ -1471,7 +1631,9 @@ export function SlideStudio({
                         </div>
                         <textarea
                           value={deck.summary || ""}
-                          onChange={(e) => updateDeck({ summary: e.target.value })}
+                          onChange={(e) =>
+                            updateDeck({ summary: e.target.value })
+                          }
                           className="w-full h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/40"
                           disabled={busy || exporting !== null}
                         />
@@ -1482,25 +1644,31 @@ export function SlideStudio({
                           Citations
                         </div>
                         {(selectedSlide.citations || []).length === 0 ? (
-                          <div className="text-xs text-muted-foreground">（引用なし）</div>
+                          <div className="text-xs text-muted-foreground">
+                            （引用なし）
+                          </div>
                         ) : (
                           <div className="space-y-2">
-                            {(selectedSlide.citations || []).slice(0, 6).map((c, i) => (
-                              <div
-                                key={i}
-                                className="rounded-lg border border-border bg-background px-2.5 py-2"
-                              >
-                                <div className="text-[11px] text-muted-foreground">
-                                  {c.source_title || "Source"}
-                                  {c.source_id != null ? ` (#${c.source_id})` : ""}
-                                </div>
-                                {c.quote?.trim() && (
-                                  <div className="text-xs text-foreground/90 mt-1 whitespace-pre-wrap">
-                                    “{c.quote.trim()}”
+                            {(selectedSlide.citations || [])
+                              .slice(0, 6)
+                              .map((c, i) => (
+                                <div
+                                  key={i}
+                                  className="rounded-lg border border-border bg-background px-2.5 py-2"
+                                >
+                                  <div className="text-[11px] text-muted-foreground">
+                                    {c.source_title || "Source"}
+                                    {c.source_id != null
+                                      ? ` (#${c.source_id})`
+                                      : ""}
                                   </div>
-                                )}
-                              </div>
-                            ))}
+                                  {c.quote?.trim() && (
+                                    <div className="text-xs text-foreground/90 mt-1 whitespace-pre-wrap">
+                                      “{c.quote.trim()}”
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                           </div>
                         )}
                       </div>
@@ -1561,7 +1729,10 @@ export function SlideStudio({
       </div>
 
       {/* Offscreen export slide - Enhanced Design */}
-      <div style={{ position: "fixed", left: -99999, top: 0 }} aria-hidden="true">
+      <div
+        style={{ position: "fixed", left: -99999, top: 0 }}
+        aria-hidden="true"
+      >
         <div
           ref={exportSlideRef}
           style={{ width: 1280, height: 720 }}
@@ -1591,11 +1762,20 @@ export function SlideStudio({
               <div className="text-8xl mb-10">
                 {getIconForTitle(slideForExport?.title || deck.title || "")}
               </div>
-              <h1 className="text-6xl font-bold mb-8" style={{ color: PREVIEW_COLORS.text }}>
+              <h1
+                className="text-6xl font-bold mb-8"
+                style={{ color: PREVIEW_COLORS.text }}
+              >
                 {slideForExport?.title || deck.title || "Presentation"}
               </h1>
-              <div className="mt-8 h-px w-40" style={{ background: PREVIEW_COLORS.primaryMid }} />
-              <div className="mt-6 text-lg" style={{ color: PREVIEW_COLORS.primary }}>
+              <div
+                className="mt-8 h-px w-40"
+                style={{ background: PREVIEW_COLORS.primaryMid }}
+              />
+              <div
+                className="mt-6 text-lg"
+                style={{ color: PREVIEW_COLORS.primary }}
+              >
                 AI Generated Presentation
               </div>
             </div>
@@ -1603,8 +1783,13 @@ export function SlideStudio({
             /* Card Layout for Export - 2x2 Grid */
             <div className="h-full flex flex-col">
               {/* Header bar */}
-              <div className="h-16 flex items-center px-8 gap-4" style={{ background: "#0D4F6F" }}>
-                <span className="text-3xl">{getIconForTitle(slideForExport?.title || "")}</span>
+              <div
+                className="h-16 flex items-center px-8 gap-4"
+                style={{ background: "#0D4F6F" }}
+              >
+                <span className="text-3xl">
+                  {getIconForTitle(slideForExport?.title || "")}
+                </span>
                 <h2 className="text-2xl font-semibold text-white flex-1">
                   {slideForExport?.title || "Slide"}
                 </h2>
@@ -1617,53 +1802,61 @@ export function SlideStudio({
               </div>
               {/* Card Grid */}
               <div className="flex-1 p-6 grid grid-cols-2 gap-4">
-                {(slideForExport?.bullets || []).slice(0, 4).map((bullet, i) => {
-                  const accentColor = CARD_ACCENT_COLORS[i % CARD_ACCENT_COLORS.length];
-                  const colonIdx =
-                    bullet.indexOf("：") !== -1 ? bullet.indexOf("：") : bullet.indexOf(":");
-                  let cardTitle = `ポイント ${i + 1}`;
-                  let cardDesc = bullet;
-                  if (colonIdx !== -1 && colonIdx < 30) {
-                    cardTitle = bullet.slice(0, colonIdx).trim();
-                    cardDesc = bullet.slice(colonIdx + 1).trim();
-                  }
-                  return (
-                    <div
-                      key={i}
-                      className="rounded-xl overflow-hidden flex"
-                      style={{
-                        background: "#FFFFFF",
-                        border: "2px solid #E5E7EB",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                      }}
-                    >
-                      {/* Accent bar */}
-                      <div className="w-3 flex-shrink-0" style={{ background: accentColor }} />
-                      <div className="flex-1 p-5">
-                        <div className="flex items-center gap-3 mb-3">
-                          <span
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
-                            style={{ background: `${accentColor}20` }}
+                {(slideForExport?.bullets || [])
+                  .slice(0, 4)
+                  .map((bullet, i) => {
+                    const accentColor =
+                      CARD_ACCENT_COLORS[i % CARD_ACCENT_COLORS.length];
+                    const colonIdx =
+                      bullet.indexOf("：") !== -1
+                        ? bullet.indexOf("：")
+                        : bullet.indexOf(":");
+                    let cardTitle = `ポイント ${i + 1}`;
+                    let cardDesc = bullet;
+                    if (colonIdx !== -1 && colonIdx < 30) {
+                      cardTitle = bullet.slice(0, colonIdx).trim();
+                      cardDesc = bullet.slice(colonIdx + 1).trim();
+                    }
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-xl overflow-hidden flex"
+                        style={{
+                          background: "#FFFFFF",
+                          border: "2px solid #E5E7EB",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        }}
+                      >
+                        {/* Accent bar */}
+                        <div
+                          className="w-3 flex-shrink-0"
+                          style={{ background: accentColor }}
+                        />
+                        <div className="flex-1 p-5">
+                          <div className="flex items-center gap-3 mb-3">
+                            <span
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
+                              style={{ background: `${accentColor}20` }}
+                            >
+                              {getIconForBullet(bullet, i)}
+                            </span>
+                            <span
+                              className="text-xl font-semibold"
+                              style={{ color: PREVIEW_COLORS.text }}
+                            >
+                              {cardTitle}
+                            </span>
+                          </div>
+                          <p
+                            className="text-base leading-relaxed"
+                            style={{ color: PREVIEW_COLORS.textLight }}
                           >
-                            {getIconForBullet(bullet, i)}
-                          </span>
-                          <span
-                            className="text-xl font-semibold"
-                            style={{ color: PREVIEW_COLORS.text }}
-                          >
-                            {cardTitle}
-                          </span>
+                            {cardDesc}
+                          </p>
                         </div>
-                        <p
-                          className="text-base leading-relaxed"
-                          style={{ color: PREVIEW_COLORS.textLight }}
-                        >
-                          {cardDesc}
-                        </p>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
               {/* More indicator */}
               {(slideForExport?.bullets || []).length > 4 && (
@@ -1695,7 +1888,10 @@ export function SlideStudio({
                         ? "🖼️"
                         : getIconForTitle(slideForExport?.title || "")}
                 </div>
-                <h2 className="text-4xl font-bold flex-1" style={{ color: PREVIEW_COLORS.text }}>
+                <h2
+                  className="text-4xl font-bold flex-1"
+                  style={{ color: PREVIEW_COLORS.text }}
+                >
                   {slideForExport?.title || "Slide"}
                 </h2>
                 <div
@@ -1712,7 +1908,10 @@ export function SlideStudio({
                 <div
                   className={cn(
                     "flex-1",
-                    exportDiagramSvg || showExportImage || showExportChart || showExportTable
+                    exportDiagramSvg ||
+                      showExportImage ||
+                      showExportChart ||
+                      showExportTable
                       ? "max-w-[55%]"
                       : "w-full",
                   )}
@@ -1740,7 +1939,10 @@ export function SlideStudio({
                 </div>
 
                 {/* Right: Visual content */}
-                {(exportDiagramSvg || showExportImage || showExportChart || showExportTable) && (
+                {(exportDiagramSvg ||
+                  showExportImage ||
+                  showExportChart ||
+                  showExportTable) && (
                   <div
                     className="w-[45%] rounded-2xl p-4 flex items-center justify-center overflow-hidden"
                     style={{
@@ -1768,21 +1970,24 @@ export function SlideStudio({
                     ) : showExportTable ? (
                       <div className="w-full overflow-auto">
                         <table className="w-full text-base">
-                          {exportTable?.headers && exportTable.headers.length > 0 && (
-                            <thead>
-                              <tr>
-                                {exportTable.headers.map((h, i) => (
-                                  <th
-                                    key={i}
-                                    className="text-left font-bold px-4 py-3 text-white"
-                                    style={{ background: PREVIEW_COLORS.primary }}
-                                  >
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                          )}
+                          {exportTable?.headers &&
+                            exportTable.headers.length > 0 && (
+                              <thead>
+                                <tr>
+                                  {exportTable.headers.map((h, i) => (
+                                    <th
+                                      key={i}
+                                      className="text-left font-bold px-4 py-3 text-white"
+                                      style={{
+                                        background: PREVIEW_COLORS.primary,
+                                      }}
+                                    >
+                                      {h}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                            )}
                           <tbody>
                             {(exportTable?.rows || []).map((row, rIdx) => (
                               <tr key={rIdx}>
@@ -1828,7 +2033,10 @@ export function SlideStudio({
 
               {/* Citations footer */}
               {(slideForExport?.citations || []).length > 0 && (
-                <div className="mt-3 text-sm" style={{ color: PREVIEW_COLORS.textMuted }}>
+                <div
+                  className="mt-3 text-sm"
+                  style={{ color: PREVIEW_COLORS.textMuted }}
+                >
                   📚 Sources:{" "}
                   {(slideForExport?.citations || []).slice(0, 4).map((c, i) => (
                     <span key={i}>

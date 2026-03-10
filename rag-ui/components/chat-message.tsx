@@ -280,9 +280,7 @@ export const ChatMessage = memo(function ChatMessage({
     (() => {
       const toolParts = message.parts.filter((p) => isToolUIPart(p));
       const strippedText = message.parts
-        .filter(
-          (p): p is { type: "text"; text: string } => p.type === "text",
-        )
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
         .map((p) => stripThinkTags(p.text))
         .join("")
         .trim();
@@ -299,9 +297,7 @@ export const ChatMessage = memo(function ChatMessage({
           (p) => isToolUIPart(p) && p.state === "output-available",
         );
       const strippedText = message.parts
-        .filter(
-          (p): p is { type: "text"; text: string } => p.type === "text",
-        )
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
         .map((p) => stripThinkTags(p.text))
         .join("")
         .trim();
@@ -367,13 +363,20 @@ export const ChatMessage = memo(function ChatMessage({
                   <img
                     key={key}
                     src={part.url}
-                    alt={("filename" in part ? (part as { filename?: string }).filename : undefined) ?? "image"}
+                    alt={
+                      ("filename" in part
+                        ? (part as { filename?: string }).filename
+                        : undefined) ?? "image"
+                    }
                     className="max-h-64 max-w-full rounded-lg border border-border object-contain"
                   />
                 );
               }
               // PDF / text / other files — show as a badge
-              const filename = ("filename" in part ? (part as { filename?: string }).filename : undefined) ?? "file";
+              const filename =
+                ("filename" in part
+                  ? (part as { filename?: string }).filename
+                  : undefined) ?? "file";
               return (
                 <div
                   key={key}

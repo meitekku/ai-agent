@@ -80,7 +80,11 @@ export const SkillsPage = memo(function SkillsPage() {
   const enabledCount = skills.filter((s) => s.enabled).length;
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; content: string }) => {
+    mutationFn: async (data: {
+      name: string;
+      description: string;
+      content: string;
+    }) => {
       const res = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +99,16 @@ export const SkillsPage = memo(function SkillsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; name?: string; description?: string; content?: string; enabled?: boolean }) => {
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: number;
+      name?: string;
+      description?: string;
+      content?: string;
+      enabled?: boolean;
+    }) => {
       const res = await fetch(`/api/skills/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -123,7 +136,10 @@ export const SkillsPage = memo(function SkillsPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/skills/upload", { method: "POST", body: formData });
+      const res = await fetch("/api/skills/upload", {
+        method: "POST",
+        body: formData,
+      });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Upload failed");
@@ -145,11 +161,16 @@ export const SkillsPage = memo(function SkillsPage() {
   const handleToggle = useCallback(
     (skill: Skill) => {
       queryClient.setQueryData<Skill[]>(["skills"], (old) =>
-        old?.map((s) => (s.id === skill.id ? { ...s, enabled: !s.enabled } : s)),
+        old?.map((s) =>
+          s.id === skill.id ? { ...s, enabled: !s.enabled } : s,
+        ),
       );
       updateMutation.mutate(
         { id: skill.id, enabled: !skill.enabled },
-        { onError: () => queryClient.invalidateQueries({ queryKey: ["skills"] }) },
+        {
+          onError: () =>
+            queryClient.invalidateQueries({ queryKey: ["skills"] }),
+        },
       );
     },
     [queryClient, updateMutation],
@@ -192,7 +213,14 @@ export const SkillsPage = memo(function SkillsPage() {
         content: formContent.trim(),
       });
     }
-  }, [formName, formDescription, formContent, editingSkill, createMutation, updateMutation]);
+  }, [
+    formName,
+    formDescription,
+    formContent,
+    editingSkill,
+    createMutation,
+    updateMutation,
+  ]);
 
   const confirmDelete = useCallback(
     (skill: Skill) => {
@@ -266,7 +294,8 @@ export const SkillsPage = memo(function SkillsPage() {
               <div className="space-y-1">
                 <p className="text-sm font-medium">スキルがありません</p>
                 <p className="text-sm text-muted-foreground">
-                  ドメイン知識やワークフロー指示を追加して、AI の回答をカスタマイズしましょう
+                  ドメイン知識やワークフロー指示を追加して、AI
+                  の回答をカスタマイズしましょう
                 </p>
               </div>
             </div>
@@ -286,7 +315,10 @@ export const SkillsPage = memo(function SkillsPage() {
                     <span className="flex-1 text-sm font-medium">
                       {skill.name}
                       {skill.source_type === "zip" && (
-                        <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 font-normal">
+                        <Badge
+                          variant="outline"
+                          className="ml-2 text-[10px] px-1.5 py-0 font-normal"
+                        >
                           ZIP
                         </Badge>
                       )}
@@ -335,7 +367,9 @@ export const SkillsPage = memo(function SkillsPage() {
       <Dialog open={isCreating} onOpenChange={(o) => !o && closeForm()}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingSkill ? "スキルを編集" : "新規スキル"}</DialogTitle>
+            <DialogTitle>
+              {editingSkill ? "スキルを編集" : "新規スキル"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -384,7 +418,10 @@ export const SkillsPage = memo(function SkillsPage() {
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>スキルを削除</AlertDialogTitle>

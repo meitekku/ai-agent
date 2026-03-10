@@ -1,17 +1,28 @@
-import type { SlideHistoryItem, SlideDeckDetail, SlideTemplate } from "./slide-types";
+import type {
+  SlideHistoryItem,
+  SlideDeckDetail,
+  SlideTemplate,
+} from "./slide-types";
 
 // ============================================================
 // Slide History API
 // ============================================================
 
-export async function fetchSlideHistory(limit = 50, offset = 0): Promise<SlideHistoryItem[]> {
-  const res = await fetch(`/api/history/slides?limit=${limit}&offset=${offset}`);
+export async function fetchSlideHistory(
+  limit = 50,
+  offset = 0,
+): Promise<SlideHistoryItem[]> {
+  const res = await fetch(
+    `/api/history/slides?limit=${limit}&offset=${offset}`,
+  );
   if (!res.ok) return [];
   const data = await res.json();
   return data.items || [];
 }
 
-export async function fetchSlideDeckDetail(id: number): Promise<SlideDeckDetail> {
+export async function fetchSlideDeckDetail(
+  id: number,
+): Promise<SlideDeckDetail> {
   const res = await fetch(`/api/history/slides/${id}`);
   if (!res.ok) throw new Error("Failed to fetch slide deck detail");
   return res.json();
@@ -61,7 +72,10 @@ export async function updateSlideDeck(
   if (!res.ok) throw new Error("Failed to update slide deck");
 }
 
-export async function renameSlideDeck(id: number, title: string): Promise<void> {
+export async function renameSlideDeck(
+  id: number,
+  title: string,
+): Promise<void> {
   const res = await fetch(`/api/history/slides/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

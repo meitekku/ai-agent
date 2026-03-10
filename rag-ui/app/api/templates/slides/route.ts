@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id });
   } catch (e) {
     console.error("POST /api/templates/slides error:", e);
-    return NextResponse.json({ error: "Failed to save template" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to save template" },
+      { status: 500 },
+    );
   }
 }

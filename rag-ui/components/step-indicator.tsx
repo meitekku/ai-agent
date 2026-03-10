@@ -39,7 +39,8 @@ export const StepIndicator = memo(function StepIndicator({
     return () => clearInterval(timer);
   }, [active]);
 
-  const elapsed = frozenRef.current ?? Math.floor((Date.now() - startRef.current) / 1000);
+  const elapsed =
+    frozenRef.current ?? Math.floor((Date.now() - startRef.current) / 1000);
 
   return (
     <div
@@ -58,7 +59,9 @@ export const StepIndicator = memo(function StepIndicator({
       )}
       <span>{active ? activeLabel : completedLabel}</span>
       {elapsed > 0 && (
-        <span className="ml-auto tabular-nums text-[10px] opacity-50">{elapsed}秒</span>
+        <span className="ml-auto tabular-nums text-[10px] opacity-50">
+          {elapsed}秒
+        </span>
       )}
     </div>
   );

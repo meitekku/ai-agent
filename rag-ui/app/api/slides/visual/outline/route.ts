@@ -40,7 +40,10 @@ export async function POST(req: Request) {
     const { question, answer, max_slides = 10, backend } = body;
 
     if (!question || !answer) {
-      return Response.json({ error: "question and answer are required" }, { status: 400 });
+      return Response.json(
+        { error: "question and answer are required" },
+        { status: 400 },
+      );
     }
 
     const model = getSlideModel();
@@ -71,7 +74,8 @@ ${answer}
       const outline = JSON.parse(jsonMatch[0]);
 
       // Build presets map for frontend
-      const presets: Record<string, { label: string; description: string }> = {};
+      const presets: Record<string, { label: string; description: string }> =
+        {};
       for (const [key, val] of Object.entries(STYLE_PRESETS)) {
         presets[key] = { label: val.label, description: val.description };
       }
@@ -88,10 +92,16 @@ ${answer}
       });
     } catch (err) {
       console.error("[slides/visual/outline] LLM error:", err);
-      return Response.json({ error: "Failed to generate outline" }, { status: 500 });
+      return Response.json(
+        { error: "Failed to generate outline" },
+        { status: 500 },
+      );
     }
   } catch (err) {
     console.error("[slides/visual/outline] Unexpected error:", err);
-    return Response.json({ error: "Failed to generate outline" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to generate outline" },
+      { status: 500 },
+    );
   }
 }

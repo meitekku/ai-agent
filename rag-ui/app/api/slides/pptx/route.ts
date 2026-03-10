@@ -31,7 +31,11 @@ type SlideData = {
     labels?: string[];
     datasets?: Array<{ label?: string; data?: number[] }>;
   };
-  citations?: Array<{ source_id?: number | null; source_title?: string; quote?: string }>;
+  citations?: Array<{
+    source_id?: number | null;
+    source_title?: string;
+    quote?: string;
+  }>;
   layout?: "title" | "content" | "visual" | "comparison" | "table";
 };
 
@@ -163,7 +167,10 @@ function isPngDataUrl(value: string) {
 }
 
 function sanitizeXmlText(value: string) {
-  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "");
+  return value.replace(
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g,
+    "",
+  );
 }
 
 function safeText(value: unknown) {
@@ -186,7 +193,8 @@ function toTakeaway(title: string, bullets: string[]) {
         .trim(),
     )
     .filter(Boolean);
-  if (b.length === 0) return `${t}のポイントを整理し、次のアクションを明確化します。`;
+  if (b.length === 0)
+    return `${t}のポイントを整理し、次のアクションを明確化します。`;
   return `${t}では「${b.join(" / ")}」を中心に整理し、実行判断に繋げます。`;
 }
 
@@ -194,7 +202,9 @@ function normalizeTable(table?: { headers?: string[]; rows?: string[][] }) {
   if (!table) return null;
   const headers = safeStringArray(table.headers);
   const rowsIn = Array.isArray(table.rows) ? table.rows : [];
-  const rows = rowsIn.filter((r) => Array.isArray(r)).map((r) => r.map((c) => safeText(c)));
+  const rows = rowsIn
+    .filter((r) => Array.isArray(r))
+    .map((r) => r.map((c) => safeText(c)));
 
   const maxCols = Math.max(headers.length, ...rows.map((r) => r.length), 0);
   if (maxCols === 0) return null;
@@ -246,11 +256,17 @@ function hasValidTableData(table?: SlideData["table"]): boolean {
   const rows = Array.isArray(table.rows) ? table.rows : [];
   // Need at least headers or rows with actual content
   const hasHeaders = headers.some((h) => h && h.trim().length > 0);
-  const hasRows = rows.some((r) => Array.isArray(r) && r.some((c) => c && c.trim().length > 0));
+  const hasRows = rows.some(
+    (r) => Array.isArray(r) && r.some((c) => c && c.trim().length > 0),
+  );
   return hasHeaders || hasRows;
 }
 
-function detectLayout(slideData: SlideData, idx: number, totalSlides: number): LayoutType {
+function detectLayout(
+  slideData: SlideData,
+  idx: number,
+  totalSlides: number,
+): LayoutType {
   // First slide is always title layout
   if (idx === 0) return "title";
 
@@ -258,7 +274,8 @@ function detectLayout(slideData: SlideData, idx: number, totalSlides: number): L
   const hasChart = hasValidChartData(slideData.chart);
   const hasTable = hasValidTableData(slideData.table);
   const hasImage = slideData.image_url || slideData.image_data_url;
-  const hasDiagram = slideData.diagram_mermaid && slideData.diagram_mermaid.trim().length > 0;
+  const hasDiagram =
+    slideData.diagram_mermaid && slideData.diagram_mermaid.trim().length > 0;
   const bullets = Array.isArray(slideData.bullets)
     ? slideData.bullets.filter((b) => b && b.trim())
     : [];
@@ -383,7 +400,13 @@ function renderFlowBoxes(
   const gapY = 0.3;
   const boxW = w - 0.4;
   const startX = x + 0.2;
-  const colors = [COLORS.primary, COLORS.secondary, COLORS.accent3, COLORS.accent4, COLORS.accent6];
+  const colors = [
+    COLORS.primary,
+    COLORS.secondary,
+    COLORS.accent3,
+    COLORS.accent4,
+    COLORS.accent6,
+  ];
 
   items.forEach((item, i) => {
     const boxY = y + i * (boxH + gapY);
@@ -715,7 +738,11 @@ function renderContentSlide(
     const bulletItems = bullets.map((b, i) => ({
       text: b,
       options: {
-        bullet: { type: "number", style: "arabicPeriod", color: COLORS.primary } as any,
+        bullet: {
+          type: "number",
+          style: "arabicPeriod",
+          color: COLORS.primary,
+        } as any,
         indentLevel: 0,
         paraSpaceBefore: i === 0 ? 0 : 6,
       },
@@ -948,7 +975,15 @@ function renderChartSlide(
   const chartW = 8;
   const chartH = 5.0;
 
-  const chartSuccess = addNativeChart(pptx, slide, s.chart, chartX, chartY, chartW, chartH);
+  const chartSuccess = addNativeChart(
+    pptx,
+    slide,
+    s.chart,
+    chartX,
+    chartY,
+    chartW,
+    chartH,
+  );
 
   // Fallback: if chart failed or no data, render flow boxes from bullets
   if (!chartSuccess && bullets.length > 0) {
@@ -1146,7 +1181,16 @@ function renderTableSlide(
     // Fallback: generate table from bullets
     const bullets = safeStringArray(s.bullets);
     if (bullets.length > 0) {
-      renderTableFromBullets(pptx, slide, title, bullets, tableX, tableY, tableW, maxTableH);
+      renderTableFromBullets(
+        pptx,
+        slide,
+        title,
+        bullets,
+        tableX,
+        tableY,
+        tableW,
+        maxTableH,
+      );
     }
   }
 
@@ -1515,7 +1559,9 @@ function renderCardLayoutSlide(
 
     // Card title (extract from bullet if colon exists)
     const colonIdx =
-      bulletText.indexOf("：") !== -1 ? bulletText.indexOf("：") : bulletText.indexOf(":");
+      bulletText.indexOf("：") !== -1
+        ? bulletText.indexOf("：")
+        : bulletText.indexOf(":");
     let cardTitle = `ポイント ${i + 1}`;
     let cardDesc = bulletText;
 
@@ -1646,7 +1692,11 @@ export async function POST(req: Request) {
     }
 
     // Mode B: structured PPTX (editable text + diagrams/charts/tables)
-    if (!body.deck || !Array.isArray(body.deck.slides) || body.deck.slides.length === 0) {
+    if (
+      !body.deck ||
+      !Array.isArray(body.deck.slides) ||
+      body.deck.slides.length === 0
+    ) {
       return new Response("Missing deck (or pngs)", { status: 400 });
     }
 
@@ -1657,7 +1707,9 @@ export async function POST(req: Request) {
     pptx.subject = body.deck.title || "AI Generated Presentation";
 
     const slides = body.deck.slides;
-    const diagramPngs = Array.isArray(body.diagram_pngs) ? body.diagram_pngs : [];
+    const diagramPngs = Array.isArray(body.diagram_pngs)
+      ? body.diagram_pngs
+      : [];
     const deckTitle = safeText(body.deck.title) || "Presentation";
     const deckSummary = safeText(body.deck.summary) || "";
 
@@ -1689,7 +1741,15 @@ export async function POST(req: Request) {
 
       switch (layout) {
         case "title":
-          renderTitleSlide(pptx, slide, s, deckTitle, deckSummary, SLIDE_W, SLIDE_H);
+          renderTitleSlide(
+            pptx,
+            slide,
+            s,
+            deckTitle,
+            deckSummary,
+            SLIDE_W,
+            SLIDE_H,
+          );
           break;
 
         case "chart":
@@ -1737,7 +1797,8 @@ export async function POST(req: Request) {
     const bytes = new Uint8Array(buf);
     return new Response(bytes, {
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "Content-Disposition": contentDisposition,
       },
     });

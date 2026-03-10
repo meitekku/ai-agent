@@ -12,7 +12,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("PUT /api/skills/[id] error:", e);
-    return NextResponse.json({ error: "Failed to update skill" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update skill" },
+      { status: 500 },
+    );
   }
 }
 
@@ -24,6 +27,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("DELETE /api/skills/[id] error:", e);
-    return NextResponse.json({ error: "Failed to delete skill" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to delete skill" },
+      { status: 500 },
+    );
   }
 }

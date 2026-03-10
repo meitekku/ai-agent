@@ -13,7 +13,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const deckId = Number(id);
   try {
     const detail = await getSlideDeckDetail(deckId);
-    if (!detail) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!detail)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(detail);
   } catch (e) {
     console.error("GET /api/history/slides/[id] error:", e);

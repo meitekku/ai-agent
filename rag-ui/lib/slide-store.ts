@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import type { SlideSection } from "./slide-prompts";
 
-export type SlidePhase = "idle" | "planning" | "plan_ready" | "rendering" | "done" | "error";
+export type SlidePhase =
+  | "idle"
+  | "planning"
+  | "plan_ready"
+  | "rendering"
+  | "done"
+  | "error";
 
 interface SlideState {
   // Modal
@@ -62,7 +68,8 @@ export const useSlideStore = create<SlideState>((set) => ({
 
   close: () => set({ open: false }),
 
-  setPlan: (planMd, deckTitle, slides) => set({ planMd, deckTitle, slides, phase: "plan_ready" }),
+  setPlan: (planMd, deckTitle, slides) =>
+    set({ planMd, deckTitle, slides, phase: "plan_ready" }),
 
   setRenderedSlide: (index, html) =>
     set((state) => ({

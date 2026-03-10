@@ -31,14 +31,15 @@ rag-deploy/
 │   └── app/
 │       ├── config.py               # 環境変数設定
 │       ├── main.py                 # FastAPI エントリ + lifespan
-│       ├── rag.py                  # LightRAG シングルトン + Gemini embedding 速率制限
+│       ├── rag.py                  # LightRAG LRU マルチインスタンス + Gemini embedding 速率制限
 │       ├── ocr.py                  # OCR（Gemini Vision / GLM-OCR）
-│       ├── db.py                   # asyncpg + ingest_jobs テーブル
+│       ├── db.py                   # asyncpg + knowledge_bases + ingest_jobs テーブル
 │       └── routers/
-│           ├── ingest.py           # POST /ingest（asyncio.Queue 排隊処理）
-│           ├── query.py            # POST /query + /query/search-only
-│           ├── documents.py        # GET/DELETE /documents
-│           └── doc_status.py       # GET /ingest/status/{track_id}
+│           ├── kbs.py              # CRUD /kbs（ナレッジベース管理）
+│           ├── ingest.py           # POST /ingest?kb=（asyncio.Queue 排隊処理）
+│           ├── query.py            # POST /query?kb= + /query/search-only?kb=
+│           ├── documents.py        # GET/DELETE /documents?kb=
+│           └── doc_status.py       # GET /ingest/status/{track_id}?kb=
 └── rag-ui/                         # Next.js フロントエンド
     ├── Dockerfile                  # oven/bun:1 + standalone
     ├── .dockerignore

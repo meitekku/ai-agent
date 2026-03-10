@@ -1,17 +1,20 @@
 import { generateText } from "ai";
 import { getChatModel, useGemini } from "@/lib/ollama-provider";
-import { listDocuments } from "@/lib/rag-client";
-import { upsertKbConfig } from "@/lib/kb-config-db";
+import { listDocuments, updateKB } from "@/lib/rag-client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function POST() {
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ slug: string }> },
+) {
   try {
-    const { documents } = await listDocuments();
+    const { slug } = await params;
+    const { documents } = await listDocuments(slug);
 
     if (documents.length === 0) {
-      await upsertKbConfig("", "");
+      await updateKB(slug, { title: "", description: "" });
       return Response.json({ title: "", description: "" });
     }
 
@@ -37,16 +40,25 @@ ${docNames}
     // Extract JSON from response (handle potential markdown wrapping)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("[kb-config/generate] no JSON in response:", text);
-      return Response.json({ error: "Failed to parse response" }, { status: 500 });
+      console.error("[kbs/generate] no JSON in response:", text);
+      return Response.json(
+        { error: "Failed to parse response" },
+        { status: 500 },
+      );
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { title: string; description: string };
-    await upsertKbConfig(parsed.title, parsed.description);
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      title: string;
+      description: string;
+    };
+    await updateKB(slug, {
+      title: parsed.title,
+      description: parsed.description,
+    });
     return Response.json(parsed);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[kb-config/generate] error:", message, err);
+    console.error("[kbs/generate] error:", message, err);
     return Response.json({ error: message }, { status: 500 });
   }
 }

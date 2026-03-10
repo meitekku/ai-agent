@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +31,7 @@ else:
     _llm_kwargs = {"host": config.OLLAMA_HOST, "options": {"num_ctx": 8192}, "timeout": 3600}
     _llm_max_async = 1
 
-WORKING_DIR = str(Path(__file__).resolve().parent.parent / "data")
+BASE_DATA_DIR = str(Path(__file__).resolve().parent.parent / "data" / "kbs")
 
 # 设置 PG 连接环境变量（LightRAG 的 PG 存储通过环境变量读取连接信息）
 os.environ.setdefault("POSTGRES_HOST", config.PG_HOST)
@@ -40,7 +41,10 @@ os.environ.setdefault("POSTGRES_PASSWORD", config.PG_PASSWORD)
 os.environ.setdefault("POSTGRES_DATABASE", config.PG_DATABASE)
 os.environ.setdefault("EMBEDDING_DIM", str(config.EMBEDDING_DIM))
 
-_rag: LightRAG | None = None
+# LRU cache of LightRAG instances
+MAX_INSTANCES = 5
+_instances: OrderedDict[str, LightRAG] = OrderedDict()
+_lock = asyncio.Lock()
 
 
 async def _embed_ollama(texts: list[str]) -> np.ndarray:
@@ -79,13 +83,25 @@ async def _embed_gemini(texts: list[str]) -> np.ndarray:
 _embed = _embed_gemini if config.EMBEDDING_PROVIDER == "gemini" else _embed_ollama
 
 
-async def get_rag() -> LightRAG:
-    global _rag
-    if _rag is not None:
-        return _rag
+async def get_rag(kb_slug: str) -> LightRAG:
+    """Get or create a LightRAG instance for the given KB slug (LRU cached)."""
+    async with _lock:
+        if kb_slug in _instances:
+            # Move to end (most recently used)
+            _instances.move_to_end(kb_slug)
+            return _instances[kb_slug]
 
-    _rag = LightRAG(
-        working_dir=WORKING_DIR,
+        # Evict oldest if at capacity
+        while len(_instances) >= MAX_INSTANCES:
+            evicted_slug, _ = _instances.popitem(last=False)
+            print(f"[rag] Evicted LightRAG instance: {evicted_slug}")
+
+    # Create new instance outside lock (initialization can be slow)
+    working_dir = os.path.join(BASE_DATA_DIR, kb_slug)
+    os.makedirs(working_dir, exist_ok=True)
+
+    rag = LightRAG(
+        working_dir=working_dir,
         llm_model_func=_llm_func,
         llm_model_name=_llm_name,
         llm_model_kwargs=_llm_kwargs,
@@ -96,12 +112,24 @@ async def get_rag() -> LightRAG:
         ),
         kv_storage="PGKVStorage",
         vector_storage="PGVectorStorage",
-        graph_storage="NetworkXStorage",  # AGE 扩展未安装，用 NetworkX 本地文件
+        graph_storage="NetworkXStorage",
         doc_status_storage="PGDocStatusStorage",
         llm_model_max_async=_llm_max_async,
         default_llm_timeout=3600 if config.LLM_PROVIDER == "local" else 120,
-        # 日语文档，实体/摘要/关键词提取全部用日语
         addon_params={"language": "Japanese"},
+        # Use kb_slug as workspace to isolate PG table data per KB
+        namespace=kb_slug,
     )
-    await _rag.initialize_storages()
-    return _rag
+    await rag.initialize_storages()
+
+    async with _lock:
+        _instances[kb_slug] = rag
+        _instances.move_to_end(kb_slug)
+
+    print(f"[rag] Initialized LightRAG instance: {kb_slug} (working_dir={working_dir})")
+    return rag
+
+
+def remove_instance(kb_slug: str):
+    """Remove a cached instance (e.g., when deleting a KB)."""
+    _instances.pop(kb_slug, None)

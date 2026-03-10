@@ -19,6 +19,10 @@ interface ChatSettingsState {
   service: string;
   setService: (service: string) => void;
 
+  // Active KB
+  activeKb: string | null;
+  setActiveKb: (kb: string | null) => void;
+
   // Per-message metadata (service used for each assistant message)
   messageMeta: Record<string, MessageMeta>;
   recordMessageMeta: (messageId: string) => void;
@@ -37,6 +41,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   // Service
   service: DEFAULT_SERVICE,
   setService: (service) => set({ service }),
+
+  // Active KB
+  activeKb: null,
+  setActiveKb: (kb) => set({ activeKb: kb }),
 
   // Per-message metadata
   messageMeta: {},
@@ -58,5 +66,6 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
 
   // Chat reset
   chatResetCounter: 0,
-  incrementChatReset: () => set((s) => ({ chatResetCounter: s.chatResetCounter + 1 })),
+  incrementChatReset: () =>
+    set((s) => ({ chatResetCounter: s.chatResetCounter + 1 })),
 }));

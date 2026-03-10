@@ -1,13 +1,18 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from ..rag import get_rag
+from .. import db
 
 router = APIRouter()
 
 
 @router.get("/ingest/status/{track_id}")
-async def get_ingest_status(track_id: str):
-    rag = await get_rag()
+async def get_ingest_status(track_id: str, kb: str = Query(..., description="KB slug")):
+    kb_info = await db.get_kb(kb)
+    if not kb_info:
+        raise HTTPException(404, f"KB '{kb}' not found")
+
+    rag = await get_rag(kb)
     docs = await rag.aget_docs_by_track_id(track_id)
     if not docs:
         raise HTTPException(404, "Track ID not found")
