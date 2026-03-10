@@ -9,7 +9,7 @@
 - Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
 - shadcn/ui（已初始化）
 - AI Elements（`ai-elements`）— Conversation, Message, PromptInput コンポーネント
-- Vercel AI SDK (`ai` v6) — streamText + useChat
+- Vercel AI SDK (`ai` v6) — ToolLoopAgent + useChat
 - `@ai-sdk/react` — useChat フック
 - `@ai-sdk/openai` — MLX OpenAI 互換プロバイダー（フォールバック用）
 - `@ai-sdk/google` — Gemini プロバイダー
@@ -20,7 +20,7 @@
 
 ```
 Browser useChat → /api/chat Route Handler → Valkey cache check
-                                          → Gemini/MLX streamText + tool calling
+                                          → Gemini/MLX ToolLoopAgent + tool calling
                                             → searchKnowledgeBase（LightRAG search-only）
                                             → webSearch / readPage（Tavily）or google_search（Gemini grounding）
                                           → Valkey cache write
@@ -117,7 +117,7 @@ rag-ui/
 │   ├── documents/page.tsx             # ドキュメント管理ページ
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # streamText + tool calling + Valkey cache + skills injection
+│       ├── chat/route.ts              # ToolLoopAgent + tool calling + Valkey cache + skills injection
 │       ├── kb-config/
 │       │   ├── route.ts               # GET/PUT ナレッジベース設定
 │       │   └── generate/route.ts      # POST LLM で title+description 自動生成
@@ -219,7 +219,7 @@ rag-ui/
 
 | メソッド             | パス                          | 説明                                                     |
 | -------------------- | ----------------------------- | -------------------------------------------------------- |
-| POST                 | /api/chat                     | AI チャット（streamText + tool calling + Valkey cache） |
+| POST                 | /api/chat                     | AI チャット（ToolLoopAgent + tool calling + Valkey cache） |
 | GET/PUT              | /api/kb-config                | ナレッジベース設定（title + description）               |
 | POST                 | /api/kb-config/generate       | LLM で KB title+description を自動生成                  |
 | GET/PUT              | /api/ui-config                | UI設定（サイドバー状態等、JSONB preferences）           |

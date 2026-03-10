@@ -13,7 +13,7 @@ LightRAG ベースの知識グラフ検索 + LLM ストリーミング生成を�
 
 - **フレームワーク**: Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
 - **UI**: shadcn/ui + AI Elements
-- **AI**: Vercel AI SDK v6 (`streamText`, `generateObject`, `useChat`)
+- **AI**: Vercel AI SDK v6 (`ToolLoopAgent`, `generateObject`, `useChat`)
 - **LLM**: Gemini API（デフォルト） / MLX Qwen3.5-35B-A3B（フォールバック）
 - **検索**: LightRAG（知識グラフ + ベクトル検索）
 - **キャッシュ**: Valkey（Redis 互換、セマンティックキャッシュ）

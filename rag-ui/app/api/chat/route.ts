@@ -3,8 +3,8 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   stepCountIs,
-  streamText,
   tool,
+  ToolLoopAgent,
   UIMessage,
 } from "ai";
 import { z } from "zod";
@@ -197,8 +197,15 @@ export async function POST(req: Request) {
           return { success: false, error: `HTTP ${res.status}` };
         }
         const contentType = res.headers.get("content-type") ?? "";
-        if (!contentType.includes("text/") && !contentType.includes("application/json") && !contentType.includes("application/xml")) {
-          return { success: false, error: `Unsupported content type: ${contentType}` };
+        if (
+          !contentType.includes("text/") &&
+          !contentType.includes("application/json") &&
+          !contentType.includes("application/xml")
+        ) {
+          return {
+            success: false,
+            error: `Unsupported content type: ${contentType}`,
+          };
         }
         const html = await res.text();
         // Strip HTML tags, scripts, styles to get plain text
@@ -218,11 +225,16 @@ export async function POST(req: Request) {
           .replace(/\n{3,}/g, "\n\n")
           .trim();
         const truncated = text.slice(0, 8000);
-        console.log(`[chat] 🔗 readUrl done: ${Date.now() - t0}ms, ${truncated.length} chars`);
+        console.log(
+          `[chat] 🔗 readUrl done: ${Date.now() - t0}ms, ${truncated.length} chars`,
+        );
         return { success: true, url, content: truncated };
       } catch (err) {
         console.error(`[chat] ❌ readUrl failed: ${err}`);
-        return { success: false, error: err instanceof Error ? err.message : String(err) };
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
     },
   });
@@ -410,14 +422,17 @@ export async function POST(req: Request) {
 
     const chatModel = getChatModel();
 
-    const result = streamText({
+    const agent = new ToolLoopAgent({
       model: chatModel,
-      system: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
-      messages: await convertToModelMessages(messages),
+      instructions: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       tools,
       stopWhen: stepCountIs(10),
       maxOutputTokens: 8192,
-      onChunk() {
+    });
+
+    const result = await agent.stream({
+      messages: await convertToModelMessages(messages),
+      experimental_onStepStart() {
         if (!firstTokenTime) {
           firstTokenTime = Date.now();
           const ttft = firstTokenTime - t1;
