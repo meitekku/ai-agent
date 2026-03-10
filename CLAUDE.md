@@ -171,26 +171,26 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 
 ```bash
 # ビルド
-docker compose build
+docker compose --profile prod build
 
 # 起動
-docker compose up -d
+docker compose --profile prod up -d
 
 # 状態確認
-docker compose ps
+docker compose --profile prod ps
 
 # ログ確認
-docker compose logs -f lightrag
-docker compose logs -f rag-ui
+docker compose --profile prod logs -f lightrag
+docker compose --profile prod logs -f rag-ui
 
 # 停止
-docker compose down
+docker compose --profile prod down
 
 # データ含め完全削除
-docker compose down -v
+docker compose --profile prod down -v
 
 # 強制再ビルド
-docker compose build --no-cache
+docker compose --profile prod build --no-cache
 ```
 
 ## データ永続化

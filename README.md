@@ -59,8 +59,8 @@ GEMINI_API_KEY=AIzaSy...your-key-here
 ### 2. ビルドと起動
 
 ```bash
-docker compose build
-docker compose up -d
+docker compose --profile prod build
+docker compose --profile prod up -d
 ```
 
 初回ビルドは数分かかります。2 回目以降はキャッシュが効きます。
@@ -107,27 +107,27 @@ docker compose up -d
 
 ```bash
 # 状態確認
-docker compose ps
+docker compose --profile prod ps
 
 # ログ表示（全サービス）
-docker compose logs -f
+docker compose --profile prod logs -f
 
 # 特定サービスのログ
-docker compose logs -f lightrag
-docker compose logs -f rag-ui
+docker compose --profile prod logs -f lightrag
+docker compose --profile prod logs -f rag-ui
 
 # 再起動
-docker compose restart
+docker compose --profile prod restart
 
 # 停止（データは保持）
-docker compose down
+docker compose --profile prod down
 
 # データ含め完全削除
-docker compose down -v
+docker compose --profile prod down -v
 
 # コード変更後の再ビルド
-docker compose build --no-cache
-docker compose up -d
+docker compose --profile prod build --no-cache
+docker compose --profile prod up -d
 ```
 
 ## データ永続化
