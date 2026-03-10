@@ -4,9 +4,11 @@ import {
   SLIDE_HTML_SYSTEM_PROMPT,
   buildRenderPrompt,
   extractHtmlFromResponse,
+  getSlideHtmlValidationIssue,
   isValidSlideHtml,
   extractDisplayTexts,
   generateFallbackHtml,
+  shouldRetryInvalidSlideHtml,
   type StyleOptions,
 } from "@/lib/slide-prompts";
 
@@ -57,28 +59,57 @@ export async function POST(req: Request) {
 
     let html: string;
     let fallback = false;
+    const textElements = extractDisplayTexts(slidePlanSection);
 
-    try {
+    const generateHtml = async (retry = false) => {
       const result = await generateText({
         model,
         system: SLIDE_HTML_SYSTEM_PROMPT,
-        prompt,
+        prompt: retry
+          ? `${prompt}\n\n【再出力指示】\n前回のHTMLは途中で切れたか、閉じタグが不足して無効でした。要素数を減らしてよいので、必ず完全に閉じた単一の<div>のみを返してください。最後は必ず </div> で終えてください。`
+          : prompt,
         temperature: 0.2,
-        maxOutputTokens: 3000,
+        maxOutputTokens: 4000,
       });
 
-      html = extractHtmlFromResponse(result.text);
+      return extractHtmlFromResponse(result.text);
+    };
+
+    try {
+      html = await generateHtml();
+
+      if (!isValidSlideHtml(html) && shouldRetryInvalidSlideHtml(html)) {
+        const issue = getSlideHtmlValidationIssue(html);
+        console.warn(
+          `[slides/render] Invalid HTML for slide ${slideIndex + 1} (${issue}), retrying once`,
+        );
+        html = await generateHtml(true);
+      }
 
       if (!isValidSlideHtml(html)) {
-        console.warn(`[slides/render] Invalid HTML for slide ${slideIndex + 1}, using fallback`);
-        const textElements = extractDisplayTexts(slidePlanSection);
-        html = generateFallbackHtml(slideTitle, slideType, textElements, deckTitle);
+        const issue = getSlideHtmlValidationIssue(html);
+        console.warn(
+          `[slides/render] Invalid HTML for slide ${slideIndex + 1} (${issue}), using fallback`,
+        );
+        html = generateFallbackHtml(
+          slideTitle,
+          slideType,
+          textElements,
+          deckTitle,
+        );
         fallback = true;
       }
     } catch (err) {
-      console.error(`[slides/render] LLM error for slide ${slideIndex + 1}:`, err);
-      const textElements = extractDisplayTexts(slidePlanSection);
-      html = generateFallbackHtml(slideTitle, slideType, textElements, deckTitle);
+      console.error(
+        `[slides/render] LLM error for slide ${slideIndex + 1}:`,
+        err,
+      );
+      html = generateFallbackHtml(
+        slideTitle,
+        slideType,
+        textElements,
+        deckTitle,
+      );
       fallback = true;
     }
 

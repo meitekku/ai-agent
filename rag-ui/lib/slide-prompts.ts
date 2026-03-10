@@ -147,6 +147,7 @@ export const SLIDE_HTML_SYSTEM_PROMPT = `あなたはプレゼンテーション
 5. テキストは日本語でも英語でも読みやすいサイズ
 6. テキスト要素には data-editable="true" 属性を付与
 7. font-family: 'Noto Sans JP', 'Inter', sans-serif（CDN読み込み済み）
+8. すべてのタグを必ず閉じ、出力の最後はルートdivの閉じタグ </div> で終える
 
 【利用可能なCDN】（ビューアが自動読み込み）
 - Tailwind CSS v4 — 全ユーティリティクラス使用可能
@@ -196,7 +197,11 @@ export function detectContentHints(title: string, body: string): ContentHint[] {
   const combined = `${title} ${body || ""}`;
 
   // Statistics
-  if (/\d+[%％]|\d+\.\d+|\d{2,}[万億千百]|増加|減少|成長|割合|平均|合計/.test(combined)) {
+  if (
+    /\d+[%％]|\d+\.\d+|\d{2,}[万億千百]|増加|減少|成長|割合|平均|合計/.test(
+      combined,
+    )
+  ) {
     hints.push("statistics");
   }
 
@@ -217,7 +222,11 @@ export function detectContentHints(title: string, body: string): ContentHint[] {
   }
 
   // Flow/process
-  if (/手順|ステップ|フロー|流れ|工程|プロセス|順番|段階|step|phase|workflow/i.test(combined)) {
+  if (
+    /手順|ステップ|フロー|流れ|工程|プロセス|順番|段階|step|phase|workflow/i.test(
+      combined,
+    )
+  ) {
     hints.push("flow");
   }
 
@@ -226,7 +235,10 @@ export function detectContentHints(title: string, body: string): ContentHint[] {
 
 // --- Plan Markdown Parser ---
 
-export function parsePlanMarkdown(planMd: string): { deckTitle: string; slides: SlideSection[] } {
+export function parsePlanMarkdown(planMd: string): {
+  deckTitle: string;
+  slides: SlideSection[];
+} {
   const lines = planMd.trim().split("\n");
   let deckTitle = "Slides";
   const slides: SlideSection[] = [];
@@ -245,7 +257,11 @@ export function parsePlanMarkdown(planMd: string): { deckTitle: string; slides: 
     const slideMatch = stripped.match(/^##\s+スライド\d+[:\s：]\s*(.+)/);
     if (slideMatch) {
       if (currentSlide) slides.push(currentSlide);
-      currentSlide = { title: slideMatch[1].trim(), type: "content", planText: "" };
+      currentSlide = {
+        title: slideMatch[1].trim(),
+        type: "content",
+        planText: "",
+      };
       continue;
     }
 
@@ -295,7 +311,9 @@ export function extractDisplayTexts(planText: string): string[] {
     if (PLAN_META_PATTERN.test(stripped)) {
       if (/^[-*]\s*(表示テキスト|内容)[:\s：]/.test(stripped)) {
         inTextBlock = true;
-        const inline = stripped.replace(/^[-*]\s*(表示テキスト|内容)[:\s：]\s*/, "").trim();
+        const inline = stripped
+          .replace(/^[-*]\s*(表示テキスト|内容)[:\s：]\s*/, "")
+          .trim();
         if (inline) texts.push(inline);
       } else {
         inTextBlock = false;
@@ -318,13 +336,107 @@ function extractPlanField(planText: string, fieldName: string): string {
   for (const line of planText.trim().split("\n")) {
     const stripped = line.trim();
     const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const m = stripped.match(new RegExp(`^[-*]\\s*${escapedField}[:\\s：]\\s*(.+)`));
+    const m = stripped.match(
+      new RegExp(`^[-*]\\s*${escapedField}[:\\s：]\\s*(.+)`),
+    );
     if (m) return m[1].trim();
   }
   return "";
 }
 
 // --- HTML Extraction from LLM Response ---
+
+const ROOT_DIV_PATTERN = /<div[\s>]/i;
+const VOID_HTML_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+function findBalancedRootDivEnd(html: string): number {
+  let depth = 0;
+  let i = 0;
+
+  while (i < html.length) {
+    if (html.startsWith("<!--", i)) {
+      const commentEnd = html.indexOf("-->", i + 4);
+      if (commentEnd === -1) return -1;
+      i = commentEnd + 3;
+      continue;
+    }
+
+    if (html[i] !== "<") {
+      i += 1;
+      continue;
+    }
+
+    let cursor = i + 1;
+    let isClosingTag = false;
+
+    if (html[cursor] === "/") {
+      isClosingTag = true;
+      cursor += 1;
+    }
+
+    while (cursor < html.length && /\s/.test(html[cursor])) {
+      cursor += 1;
+    }
+
+    const tagNameStart = cursor;
+    while (cursor < html.length && /[A-Za-z0-9:-]/.test(html[cursor])) {
+      cursor += 1;
+    }
+
+    const tagName = html.slice(tagNameStart, cursor).toLowerCase();
+    if (!tagName) {
+      i += 1;
+      continue;
+    }
+
+    let quote: '"' | "'" | null = null;
+    while (cursor < html.length) {
+      const ch = html[cursor];
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === ">") {
+        break;
+      }
+      cursor += 1;
+    }
+
+    if (cursor >= html.length) return -1;
+
+    const rawTag = html.slice(i, cursor + 1);
+    const isSelfClosing = /\/\s*>$/.test(rawTag) || VOID_HTML_TAGS.has(tagName);
+
+    if (tagName === "div") {
+      if (isClosingTag) {
+        depth -= 1;
+        if (depth === 0) return cursor + 1;
+        if (depth < 0) return -1;
+      } else if (!isSelfClosing) {
+        depth += 1;
+      }
+    }
+
+    i = cursor + 1;
+  }
+
+  return -1;
+}
 
 export function extractHtmlFromResponse(text: string): string {
   let result = text.trim();
@@ -336,9 +448,16 @@ export function extractHtmlFromResponse(text: string): string {
   }
 
   // Ensure it starts with a <div
-  const divMatch = result.match(/(<div[\s>][\s\S]*)/);
+  const divMatch = result.match(/(<div[\s>][\s\S]*)/i);
   if (divMatch) {
     result = divMatch[1];
+  }
+
+  if (ROOT_DIV_PATTERN.test(result)) {
+    const balancedEnd = findBalancedRootDivEnd(result);
+    if (balancedEnd > 0) {
+      result = result.slice(0, balancedEnd).trim();
+    }
   }
 
   return result;
@@ -360,18 +479,59 @@ const HTML_QUALITY_REJECT_PATTERNS = [
   "タイプ：",
 ];
 
-export function isValidSlideHtml(html: string): boolean {
-  if (!html?.trim()) return false;
-  if (!html.toLowerCase().includes("<div")) return false;
-  if (!html.includes("style=") && !html.includes("class=")) return false;
-  if (html.trim().length < 200) return false;
+function getVisibleSlideText(normalized: string) {
+  return normalized
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function getSlideHtmlValidationIssue(
+  html: string,
+):
+  | "empty"
+  | "missing-root-div"
+  | "missing-styles"
+  | "too-short"
+  | "unbalanced-root-div"
+  | "forbidden-tag"
+  | "visible-text-too-short"
+  | "meta-text-leak"
+  | null {
+  const normalized = extractHtmlFromResponse(html);
+  if (!normalized?.trim()) return "empty";
+  if (!ROOT_DIV_PATTERN.test(normalized)) return "missing-root-div";
+  if (!normalized.includes("style=") && !normalized.includes("class=")) {
+    return "missing-styles";
+  }
+  if (normalized.trim().length < 200) return "too-short";
+  if (findBalancedRootDivEnd(normalized) !== normalized.length) {
+    return "unbalanced-root-div";
+  }
+  if (/<(?:html|head|body|script|iframe)\b/i.test(normalized)) {
+    return "forbidden-tag";
+  }
 
   // Check reject patterns in visible text only
-  const visibleText = html.replace(/<[^>]+>/g, " ");
+  const visibleText = getVisibleSlideText(normalized);
+  if (visibleText.length < 4) return "visible-text-too-short";
+
   for (const pattern of HTML_QUALITY_REJECT_PATTERNS) {
-    if (visibleText.includes(pattern)) return false;
+    if (visibleText.includes(pattern)) return "meta-text-leak";
   }
-  return true;
+  return null;
+}
+
+export function shouldRetryInvalidSlideHtml(html: string): boolean {
+  const issue = getSlideHtmlValidationIssue(html);
+  return issue === "too-short" || issue === "unbalanced-root-div";
+}
+
+export function isValidSlideHtml(html: string): boolean {
+  return getSlideHtmlValidationIssue(html) === null;
 }
 
 // --- Build Plan Prompt ---
@@ -402,7 +562,9 @@ export function buildPlanPrompt(
         `- 色スタイル: ${styleOptions.colorStyle}（この色をメインカラーとして全スライドのデザイン指示に反映）`,
       );
     if (styleOptions.font)
-      parts.push(`- フォント: ${styleOptions.font}（デザイン指示にこのフォントファミリーを指定）`);
+      parts.push(
+        `- フォント: ${styleOptions.font}（デザイン指示にこのフォントファミリーを指定）`,
+      );
     if (parts.length > 0)
       styleInstruction = `\n## スタイル指定（必ず全スライドに反映すること）\n${parts.join("\n")}\n`;
   }
@@ -618,13 +780,18 @@ export function buildRenderPrompt(
   for (const [key, directive] of Object.entries(VISUAL_DIRECTIVE_MAP)) {
     if (
       contentHints.includes(key as ContentHint) ||
-      visualLower.includes(key === "statistics" ? "テーブル" : key === "flow" ? "フロー" : key)
+      visualLower.includes(
+        key === "statistics" ? "テーブル" : key === "flow" ? "フロー" : key,
+      )
     ) {
       visualDirective = directive;
       break;
     }
   }
-  if (effectiveTexts.length >= 3 && visualDirective.includes("ビジュアル要素を必ず含め")) {
+  if (
+    effectiveTexts.length >= 3 &&
+    visualDirective.includes("ビジュアル要素を必ず含め")
+  ) {
     visualDirective = VISUAL_DIRECTIVE_MAP.list;
   }
 
@@ -632,9 +799,15 @@ export function buildRenderPrompt(
   let exampleHtml = "";
   if (slideType === "cover") {
     exampleHtml = COVER_EXAMPLE;
-  } else if (contentHints.includes("statistics") || /テーブル|table/i.test(visualLower)) {
+  } else if (
+    contentHints.includes("statistics") ||
+    /テーブル|table/i.test(visualLower)
+  ) {
     exampleHtml = STATS_EXAMPLE;
-  } else if (contentHints.includes("flow") || /フロー|ステップ/i.test(visualLower)) {
+  } else if (
+    contentHints.includes("flow") ||
+    /フロー|ステップ/i.test(visualLower)
+  ) {
     exampleHtml = FLOW_EXAMPLE;
   } else if (contentHints.includes("comparison") || /比較/i.test(visualLower)) {
     exampleHtml = COMPARISON_EXAMPLE;
@@ -646,15 +819,20 @@ export function buildRenderPrompt(
   let styleSection = "";
   if (styleOptions) {
     const parts: string[] = [];
-    if (styleOptions.industry) parts.push(`- 対象産業: ${styleOptions.industry}`);
-    if (styleOptions.profession) parts.push(`- 対象職種: ${styleOptions.profession}`);
-    if (styleOptions.ageGroup) parts.push(`- 対象年代層: ${styleOptions.ageGroup}`);
+    if (styleOptions.industry)
+      parts.push(`- 対象産業: ${styleOptions.industry}`);
+    if (styleOptions.profession)
+      parts.push(`- 対象職種: ${styleOptions.profession}`);
+    if (styleOptions.ageGroup)
+      parts.push(`- 対象年代層: ${styleOptions.ageGroup}`);
     if (styleOptions.colorStyle)
       parts.push(
         `- 色スタイル: ${styleOptions.colorStyle}（メインカラーとして全体デザインに反映）`,
       );
-    if (styleOptions.font) parts.push(`- フォント: ${styleOptions.font}（font-familyに指定）`);
-    if (parts.length > 0) styleSection = `\n【スタイル指定】\n${parts.join("\n")}\n`;
+    if (styleOptions.font)
+      parts.push(`- フォント: ${styleOptions.font}（font-familyに指定）`);
+    if (parts.length > 0)
+      styleSection = `\n【スタイル指定】\n${parts.join("\n")}\n`;
   }
 
   return `以下の設計指示に従い、プレゼンスライド1枚分のリッチなHTML+インラインCSSを出力してください。
@@ -678,6 +856,7 @@ ${textList}
 4. テキスト要素に data-editable="true"
 5. SVGアイコン、CSSグラデーション、カード、テーブル等のビジュアル要素を積極的に使う
 6. 単にテキストを羅列するだけのスライドは絶対に作らない
+7. 全タグを閉じ、出力の最後は必ず </div> にする
 ${exampleHtml}
 ━━━ 出力（<div>のみ） ━━━`;
 }
@@ -700,7 +879,9 @@ export function calcMaxSlides(answer: string): number {
   return 12;
 }
 
-function splitAnswerIntoSections(answer: string): { title: string; body: string }[] {
+function splitAnswerIntoSections(
+  answer: string,
+): { title: string; body: string }[] {
   if (!answer?.trim()) return [];
 
   const lines = answer.trim().split("\n");
@@ -761,7 +942,12 @@ function splitAnswerIntoSections(answer: string): { title: string; body: string 
       if (!stripped) {
         if (chunk.length >= 2) {
           paragraphSections.push({
-            title: compact(chunk[0].replace(/^[-・●▪▸*]\s*/, "").replace(/^\d+[.）)]\s*/, ""), 40),
+            title: compact(
+              chunk[0]
+                .replace(/^[-・●▪▸*]\s*/, "")
+                .replace(/^\d+[.）)]\s*/, ""),
+              40,
+            ),
             body: chunk.join("\n"),
           });
           chunk = [];
@@ -772,7 +958,10 @@ function splitAnswerIntoSections(answer: string): { title: string; body: string 
       // Split every 3 lines if chunk gets large
       if (chunk.length >= 4) {
         paragraphSections.push({
-          title: compact(chunk[0].replace(/^[-・●▪▸*]\s*/, "").replace(/^\d+[.）)]\s*/, ""), 40),
+          title: compact(
+            chunk[0].replace(/^[-・●▪▸*]\s*/, "").replace(/^\d+[.）)]\s*/, ""),
+            40,
+          ),
           body: chunk.join("\n"),
         });
         chunk = [];
@@ -780,7 +969,10 @@ function splitAnswerIntoSections(answer: string): { title: string; body: string 
     }
     if (chunk.length > 0) {
       paragraphSections.push({
-        title: compact(chunk[0].replace(/^[-・●▪▸*]\s*/, "").replace(/^\d+[.）)]\s*/, ""), 40),
+        title: compact(
+          chunk[0].replace(/^[-・●▪▸*]\s*/, "").replace(/^\d+[.）)]\s*/, ""),
+          40,
+        ),
         body: chunk.join("\n"),
       });
     }
@@ -840,7 +1032,10 @@ export function generateFallbackPlan(
     ダーク: ["#0F172A", "#334155"],
   };
   const colorStyle = styleOptions?.colorStyle || "";
-  const [accentDark, accentLight] = colorMap[colorStyle] || ["#1E3A5F", "#3B82F6"];
+  const [accentDark, accentLight] = colorMap[colorStyle] || [
+    "#1E3A5F",
+    "#3B82F6",
+  ];
   const fontNote = styleOptions?.font ? `、フォント: ${styleOptions.font}` : "";
 
   const lines: string[] = [`# ${deckTitle}`, ""];
@@ -858,18 +1053,23 @@ export function generateFallbackPlan(
   lines.push("");
 
   let slideNum = 2;
-  const budget = sections.length > 0 ? Math.min(maxSlides - 2, sections.length) : 1;
+  const budget =
+    sections.length > 0 ? Math.min(maxSlides - 2, sections.length) : 1;
 
   if (sections.length === 0) {
     const textItems = extractTextElements(answer || question, 5);
     lines.push(`## スライド${slideNum}: 内容`);
     lines.push("- タイプ: content");
     lines.push("- 表示テキスト:");
-    for (const item of textItems.length > 0 ? textItems : [compact(answer || question, 120)]) {
+    for (const item of textItems.length > 0
+      ? textItems
+      : [compact(answer || question, 120)]) {
       lines.push(`  - ${item}`);
     }
     lines.push("- レイアウト: cards");
-    lines.push(`- デザイン: 白背景、左アクセントバー${accentLight}、カード影付き${fontNote}`);
+    lines.push(
+      `- デザイン: 白背景、左アクセントバー${accentLight}、カード影付き${fontNote}`,
+    );
     lines.push("- ビジュアル要素: SVGアイコン付きカードグリッド");
     lines.push("");
     slideNum++;
@@ -927,7 +1127,9 @@ export function generateFallbackPlan(
   }
   lines.push("  - ご清聴ありがとうございました");
   lines.push("- レイアウト: 中央揃え");
-  lines.push(`- デザイン: グラデーション背景（${accentDark} → ${accentLight}）、白文字${fontNote}`);
+  lines.push(
+    `- デザイン: グラデーション背景（${accentDark} → ${accentLight}）、白文字${fontNote}`,
+  );
   lines.push("");
 
   return lines.join("\n");
@@ -953,7 +1155,13 @@ const PRESET_THEMES: Record<
     text: "#1E293B",
     muted: "#64748B",
   },
-  minimal: { bg: "#FFFFFF", bg2: "#F9FAFB", accent: "#6B7280", text: "#111827", muted: "#9CA3AF" },
+  minimal: {
+    bg: "#FFFFFF",
+    bg2: "#F9FAFB",
+    accent: "#6B7280",
+    text: "#111827",
+    muted: "#9CA3AF",
+  },
   "sketch-notes": {
     bg: "#FFFBEB",
     bg2: "#FEF3C7",
@@ -990,7 +1198,8 @@ export function generateFallbackHtml(
 
   // Cover / back-cover
   if (slideType === "cover" || slideType === "back-cover") {
-    const subtitle = slideType === "cover" ? "" : "ご清聴ありがとうございました";
+    const subtitle =
+      slideType === "cover" ? "" : "ご清聴ありがとうございました";
     const mainTitle = slideType === "cover" ? deckTitle : slideTitle;
     return `<div style="${base}background:linear-gradient(135deg,${accent} 0%,${bg2} 100%);display:flex;align-items:center;justify-content:center;">
   <div style="text-align:center;width:80%;">

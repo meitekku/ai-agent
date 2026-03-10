@@ -26,7 +26,12 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { saveSlideDeck, updateSlideDeck, fetchSlideTemplates } from "@/lib/slide-api";
+import {
+  saveSlideDeck,
+  updateSlideDeck,
+  fetchSlideTemplates,
+} from "@/lib/slide-api";
+import { getRenderedSlideIssue } from "@/lib/slide-render-sanity";
 import type { SlideTemplate } from "@/lib/slide-types";
 import { StyleOptionsPanel, type StyleOptions } from "./style-options-panel";
 import { TemplateManager } from "./template-manager";
@@ -49,11 +54,34 @@ type GeneratedSlide = {
   fallback?: boolean;
 };
 
-type Phase = "setup" | "planning" | "plan_ready" | "generating" | "done" | "error";
+type Phase =
+  | "setup"
+  | "planning"
+  | "plan_ready"
+  | "generating"
+  | "done"
+  | "error";
 
 // Slide dimensions (px)
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
+
+function createFallbackSlidePng(title: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = SLIDE_W;
+  canvas.height = SLIDE_H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Failed to create fallback canvas");
+
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 40px 'Noto Sans JP', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(title || "Slide", SLIDE_W / 2, SLIDE_H / 2);
+  return canvas.toDataURL("image/png");
+}
 
 // Font family presets
 const FONT_PRESETS = [
@@ -139,17 +167,55 @@ ${html}
 
 /** Style properties to copy when baking computed styles into inline */
 const BAKE_STYLE_PROPS = [
-  "display", "position", "top", "right", "bottom", "left",
-  "width", "height", "min-width", "min-height", "max-width", "max-height",
-  "margin", "padding", "border", "border-radius",
-  "background", "background-color", "background-image",
-  "color", "font-size", "font-weight", "font-family", "line-height",
-  "text-align", "text-decoration", "text-transform", "letter-spacing",
-  "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
-  "align-items", "justify-content", "gap",
-  "grid-template-columns", "grid-template-rows", "grid-column", "grid-row",
-  "overflow", "opacity", "z-index", "box-shadow",
-  "transform", "transform-origin", "white-space", "word-break", "vertical-align",
+  "display",
+  "position",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "width",
+  "height",
+  "min-width",
+  "min-height",
+  "max-width",
+  "max-height",
+  "margin",
+  "padding",
+  "border",
+  "border-radius",
+  "background",
+  "background-color",
+  "background-image",
+  "color",
+  "font-size",
+  "font-weight",
+  "font-family",
+  "line-height",
+  "text-align",
+  "text-decoration",
+  "text-transform",
+  "letter-spacing",
+  "flex-direction",
+  "flex-wrap",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+  "align-items",
+  "justify-content",
+  "gap",
+  "grid-template-columns",
+  "grid-template-rows",
+  "grid-column",
+  "grid-row",
+  "overflow",
+  "opacity",
+  "z-index",
+  "box-shadow",
+  "transform",
+  "transform-origin",
+  "white-space",
+  "word-break",
+  "vertical-align",
 ];
 
 /**
@@ -264,7 +330,10 @@ function findDraggableBlocks(container: HTMLElement): HTMLElement[] {
       // ALSO recurse into children when:
       // - 2+ significant children (composite block), OR
       // - large block with 1+ significant children (try to break it down)
-      if (depth < 6 && (sigKids.length >= 2 || (isLarge && sigKids.length >= 1))) {
+      if (
+        depth < 6 &&
+        (sigKids.length >= 2 || (isLarge && sigKids.length >= 1))
+      ) {
         collect(child, depth + 1);
       }
     }
@@ -345,7 +414,9 @@ function setupDragHandles(container: HTMLElement) {
 }
 
 function cleanupDragHandles(container: HTMLElement) {
-  container.querySelectorAll("[data-drag-toolbar]").forEach((el) => el.remove());
+  container
+    .querySelectorAll("[data-drag-toolbar]")
+    .forEach((el) => el.remove());
   container.querySelectorAll("[data-resize]").forEach((el) => el.remove());
   container.querySelectorAll("[data-draggable]").forEach((el) => {
     el.removeAttribute("data-draggable");
@@ -397,7 +468,11 @@ function parsePlanMd(md: string): { title: string; slides: SlideSection[] } {
     // Fallback: any ## header
     if (/^##\s+/.test(stripped) && !slideMatch) {
       if (current) slides.push(current);
-      current = { title: stripped.replace(/^##\s+/, "").trim(), type: "content", plan_text: "" };
+      current = {
+        title: stripped.replace(/^##\s+/, "").trim(),
+        type: "content",
+        plan_text: "",
+      };
       continue;
     }
 
@@ -470,7 +545,9 @@ export function HtmlSlideViewer({
   const [editing, setEditing] = useState(false);
 
   // Save / deck ID
-  const [currentDeckId, setCurrentDeckId] = useState<number | undefined>(initialDeckId);
+  const [currentDeckId, setCurrentDeckId] = useState<number | undefined>(
+    initialDeckId,
+  );
   const [saving, setSaving] = useState(false);
 
   // Style options (Feature 4)
@@ -617,7 +694,9 @@ export function HtmlSlideViewer({
         model: data.plan_model,
         error: data.plan_error,
         prompt_len: data.prompt_len,
-        time: data.generationTimeMs ? data.generationTimeMs / 1000 : data.generation_time_seconds,
+        time: data.generationTimeMs
+          ? data.generationTimeMs / 1000
+          : data.generation_time_seconds,
       });
 
       const parsed = parsePlanMd(md);
@@ -810,13 +889,18 @@ export function HtmlSlideViewer({
     const setup = () => {
       let editables = container.querySelectorAll('[data-editable="true"]');
       if (editables.length === 0) {
-        editables = container.querySelectorAll("h1, h2, h3, h4, h5, h6, p, li, td, th, span, div");
+        editables = container.querySelectorAll(
+          "h1, h2, h3, h4, h5, h6, p, li, td, th, span, div",
+        );
       }
 
       editables.forEach((el) => {
         const htmlEl = el as HTMLElement;
         const hasDirectText = Array.from(htmlEl.childNodes).some(
-          (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0,
+          (n) =>
+            n.nodeType === Node.TEXT_NODE &&
+            n.textContent &&
+            n.textContent.trim().length > 0,
         );
         if (!hasDirectText && !htmlEl.hasAttribute("data-editable")) return;
 
@@ -849,7 +933,9 @@ export function HtmlSlideViewer({
     // -- JS-based hover tracking (reliable after transforms, replaces CSS :hover) --
     let hoveredBlock: HTMLElement | null = null;
     const onHoverMove = (e: MouseEvent) => {
-      const block = (e.target as HTMLElement).closest("[data-draggable]") as HTMLElement | null;
+      const block = (e.target as HTMLElement).closest(
+        "[data-draggable]",
+      ) as HTMLElement | null;
       if (block === hoveredBlock) return;
       if (hoveredBlock) hoveredBlock.removeAttribute("data-hovered");
       if (block) block.setAttribute("data-hovered", "");
@@ -868,8 +954,16 @@ export function HtmlSlideViewer({
       if (!e.shiftKey) return;
       const target = e.target as HTMLElement;
       // Don't interfere with text editing or toolbar buttons
-      if (target.contentEditable === "true" || target.closest('[contenteditable="true"]')) return;
-      if (target.closest("[data-drag-toolbar]") || target.closest("[data-resize]")) return;
+      if (
+        target.contentEditable === "true" ||
+        target.closest('[contenteditable="true"]')
+      )
+        return;
+      if (
+        target.closest("[data-drag-toolbar]") ||
+        target.closest("[data-resize]")
+      )
+        return;
       const block = target.closest("[data-draggable]") as HTMLElement | null;
       if (!block) return;
       e.preventDefault();
@@ -899,11 +993,15 @@ export function HtmlSlideViewer({
       const target = e.target as HTMLElement;
 
       // Copy / Delete action buttons
-      const actionBtn = target.closest("[data-block-action]") as HTMLElement | null;
+      const actionBtn = target.closest(
+        "[data-block-action]",
+      ) as HTMLElement | null;
       if (actionBtn) {
         e.preventDefault();
         e.stopPropagation();
-        const block = actionBtn.closest("[data-draggable]") as HTMLElement | null;
+        const block = actionBtn.closest(
+          "[data-draggable]",
+        ) as HTMLElement | null;
         if (!block) return;
         const action = actionBtn.getAttribute("data-block-action");
 
@@ -916,7 +1014,9 @@ export function HtmlSlideViewer({
         if (action === "copy") {
           const clone = block.cloneNode(true) as HTMLElement;
           // Remove toolbar & resize handles from clone (will be re-created by setupDragHandles)
-          clone.querySelectorAll("[data-drag-toolbar]").forEach((el) => el.remove());
+          clone
+            .querySelectorAll("[data-drag-toolbar]")
+            .forEach((el) => el.remove());
           clone.querySelectorAll("[data-resize]").forEach((el) => el.remove());
           clone.removeAttribute("data-draggable");
           clone.removeAttribute("data-drag-pos");
@@ -1130,7 +1230,9 @@ export function HtmlSlideViewer({
       if (!slide) return;
       const bakedHtml = await bakeSlideHtml(slide.html);
       setGeneratedSlides((prev) =>
-        prev.map((s, i) => (i === activeSlideIndex ? { ...s, html: bakedHtml } : s)),
+        prev.map((s, i) =>
+          i === activeSlideIndex ? { ...s, html: bakedHtml } : s,
+        ),
       );
       setEditing(true);
     } finally {
@@ -1160,7 +1262,10 @@ export function HtmlSlideViewer({
     setGeneratedSlides((prev) =>
       prev.map((s, i) => {
         if (i === activeSlideIndex) return { ...s, html: updatedHtml };
-        const cleaned = s.html.replace(/<style id="__font-override">[^<]*<\/style>/g, "");
+        const cleaned = s.html.replace(
+          /<style id="__font-override">[^<]*<\/style>/g,
+          "",
+        );
         return { ...s, html: overrideTag + cleaned };
       }),
     );
@@ -1179,7 +1284,10 @@ export function HtmlSlideViewer({
     const overrideTag = `<style id="__font-override">* { font-family: ${cssFont} !important; }</style>`;
     setGeneratedSlides((prev) =>
       prev.map((s) => {
-        const cleaned = s.html.replace(/<style id="__font-override">[^<]*<\/style>/g, "");
+        const cleaned = s.html.replace(
+          /<style id="__font-override">[^<]*<\/style>/g,
+          "",
+        );
         return { ...s, html: overrideTag + cleaned };
       }),
     );
@@ -1270,7 +1378,9 @@ export function HtmlSlideViewer({
       const data = await res.json();
 
       setGeneratedSlides((prev) =>
-        prev.map((s, i) => (i === activeSlideIndex ? { ...s, html: data.html || s.html } : s)),
+        prev.map((s, i) =>
+          i === activeSlideIndex ? { ...s, html: data.html || s.html } : s,
+        ),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Redraw failed");
@@ -1302,7 +1412,9 @@ export function HtmlSlideViewer({
       if (e.key === "ArrowLeft") {
         setActiveSlideIndex((prev) => Math.max(0, prev - 1));
       } else if (e.key === "ArrowRight") {
-        setActiveSlideIndex((prev) => Math.min(generatedSlides.length - 1, prev + 1));
+        setActiveSlideIndex((prev) =>
+          Math.min(generatedSlides.length - 1, prev + 1),
+        );
       } else if (e.key === "Escape") {
         onClose();
       }
@@ -1319,88 +1431,138 @@ export function HtmlSlideViewer({
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState("");
 
-  const renderSlideToPng = useCallback(async (html: string): Promise<string> => {
-    // Use iframe with Tailwind CDN for reliable rendering
-    const container = document.createElement("div");
-    container.style.cssText =
-      "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-    document.body.appendChild(container);
+  const renderSlideToPng = useCallback(
+    async (html: string, title: string): Promise<string> => {
+      // Use iframe with Tailwind CDN for reliable rendering
+      const container = document.createElement("div");
+      container.style.cssText =
+        "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
+      document.body.appendChild(container);
 
-    const fullHtml = `<!DOCTYPE html>
+      const fullHtml = `<!DOCTYPE html>
 <html><head>${SLIDE_CDN_HEAD}</head>
 <body style="margin:0;padding:0;width:1280px;height:720px;overflow:hidden;">
 ${html}
 <script>lucide.createIcons();<\/script>
 </body></html>`;
 
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "width:1280px;height:720px;border:none;";
-    container.appendChild(iframe);
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "width:1280px;height:720px;border:none;";
+      container.appendChild(iframe);
 
-    await new Promise<void>((resolve) => {
-      iframe.onload = () => resolve();
-      iframe.srcdoc = fullHtml;
-    });
-
-    // Wait for Tailwind CDN + fonts + icons to process
-    await new Promise((r) => setTimeout(r, 2000));
-
-    try {
-      // Clone iframe content with inlined computed styles for html2canvas
-      const iframeDoc = iframe.contentDocument!;
-      const iframeWin = iframe.contentWindow!;
-      const sourceBody = iframeDoc.body;
-
-      const wrapper = document.createElement("div");
-      wrapper.style.cssText =
-        "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-
-      const bodyComputed = iframeWin.getComputedStyle(sourceBody);
-      wrapper.style.background = bodyComputed.background;
-      wrapper.style.fontFamily = bodyComputed.fontFamily;
-      wrapper.innerHTML = sourceBody.innerHTML;
-      document.body.appendChild(wrapper);
-
-      // Inline computed styles for every element
-      const sourceEls = sourceBody.querySelectorAll("*");
-      const cloneEls = wrapper.querySelectorAll("*");
-      const styleProps = [
-        "display", "position", "top", "right", "bottom", "left",
-        "width", "height", "min-width", "min-height", "max-width", "max-height",
-        "margin", "padding", "border", "border-radius",
-        "background", "background-color", "background-image",
-        "color", "font-size", "font-weight", "font-family", "line-height",
-        "text-align", "text-decoration", "text-transform", "letter-spacing",
-        "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
-        "align-items", "justify-content", "gap",
-        "grid-template-columns", "grid-template-rows", "grid-column", "grid-row",
-        "overflow", "opacity", "z-index", "box-shadow",
-        "transform", "transform-origin", "white-space", "word-break", "vertical-align",
-      ];
-      for (let j = 0; j < sourceEls.length; j++) {
-        const computed = iframeWin.getComputedStyle(sourceEls[j]);
-        const el = cloneEls[j] as HTMLElement;
-        if (!el?.style) continue;
-        for (const prop of styleProps) {
-          const val = computed.getPropertyValue(prop);
-          if (val) el.style.setProperty(prop, val);
-        }
-      }
-
-      const canvas = await html2canvas(wrapper, {
-        width: SLIDE_W,
-        height: SLIDE_H,
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
+      await new Promise<void>((resolve) => {
+        iframe.onload = () => resolve();
+        iframe.srcdoc = fullHtml;
       });
-      const dataUrl = canvas.toDataURL("image/png");
-      document.body.removeChild(wrapper);
-      return dataUrl;
-    } finally {
-      document.body.removeChild(container);
-    }
-  }, []);
+
+      // Wait for Tailwind CDN + fonts + icons to process
+      await new Promise((r) => setTimeout(r, 2000));
+
+      try {
+        const iframeDoc = iframe.contentDocument!;
+        const renderIssue = getRenderedSlideIssue(iframeDoc);
+        if (renderIssue) {
+          console.warn(`[slides/html] Blank slide fallback: ${renderIssue}`);
+          return createFallbackSlidePng(title);
+        }
+
+        // Clone iframe content with inlined computed styles for html2canvas
+        const iframeWin = iframe.contentWindow!;
+        const sourceBody = iframeDoc.body;
+
+        const wrapper = document.createElement("div");
+        wrapper.style.cssText =
+          "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
+
+        const bodyComputed = iframeWin.getComputedStyle(sourceBody);
+        wrapper.style.background = bodyComputed.background;
+        wrapper.style.fontFamily = bodyComputed.fontFamily;
+        wrapper.innerHTML = sourceBody.innerHTML;
+        document.body.appendChild(wrapper);
+
+        // Inline computed styles for every element
+        const sourceEls = sourceBody.querySelectorAll("*");
+        const cloneEls = wrapper.querySelectorAll("*");
+        const styleProps = [
+          "display",
+          "position",
+          "top",
+          "right",
+          "bottom",
+          "left",
+          "width",
+          "height",
+          "min-width",
+          "min-height",
+          "max-width",
+          "max-height",
+          "margin",
+          "padding",
+          "border",
+          "border-radius",
+          "background",
+          "background-color",
+          "background-image",
+          "color",
+          "font-size",
+          "font-weight",
+          "font-family",
+          "line-height",
+          "text-align",
+          "text-decoration",
+          "text-transform",
+          "letter-spacing",
+          "flex-direction",
+          "flex-wrap",
+          "flex-grow",
+          "flex-shrink",
+          "flex-basis",
+          "align-items",
+          "justify-content",
+          "gap",
+          "grid-template-columns",
+          "grid-template-rows",
+          "grid-column",
+          "grid-row",
+          "overflow",
+          "opacity",
+          "z-index",
+          "box-shadow",
+          "transform",
+          "transform-origin",
+          "white-space",
+          "word-break",
+          "vertical-align",
+        ];
+        for (let j = 0; j < sourceEls.length; j++) {
+          const computed = iframeWin.getComputedStyle(sourceEls[j]);
+          const el = cloneEls[j] as HTMLElement;
+          if (!el?.style) continue;
+          for (const prop of styleProps) {
+            const val = computed.getPropertyValue(prop);
+            if (val) el.style.setProperty(prop, val);
+          }
+        }
+
+        const canvas = await html2canvas(wrapper, {
+          width: SLIDE_W,
+          height: SLIDE_H,
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+        });
+        const dataUrl = canvas.toDataURL("image/png");
+        document.body.removeChild(wrapper);
+        return dataUrl;
+      } catch (err) {
+        console.warn("[slides/html] Export render failed, using fallback", err);
+        return createFallbackSlidePng(title);
+      } finally {
+        document.body.removeChild(container);
+      }
+    },
+    [],
+  );
 
   const handleExport = useCallback(async () => {
     if (generatedSlides.length === 0) return;
@@ -1413,7 +1575,10 @@ ${html}
       const pngs: string[] = [];
       for (let i = 0; i < generatedSlides.length; i++) {
         setExportProgress(`画像化中 ${i + 1}/${generatedSlides.length}`);
-        const png = await renderSlideToPng(generatedSlides[i].html);
+        const png = await renderSlideToPng(
+          generatedSlides[i].html,
+          generatedSlides[i].title,
+        );
         pngs.push(png);
       }
 
@@ -1468,7 +1633,10 @@ ${html}
 
       for (let i = 0; i < generatedSlides.length; i++) {
         setPdfProgress(`画像化中 ${i + 1}/${generatedSlides.length}`);
-        const png = await renderSlideToPng(generatedSlides[i].html);
+        const png = await renderSlideToPng(
+          generatedSlides[i].html,
+          generatedSlides[i].title,
+        );
         if (i > 0) doc.addPage([SLIDE_W_MM, SLIDE_H_MM], "landscape");
         const base64 = png.includes(",") ? png.split(",")[1] : png;
         doc.addImage(base64, "PNG", 0, 0, SLIDE_W_MM, SLIDE_H_MM);
@@ -1569,7 +1737,8 @@ ${html}
             )}
             {phase === "done" && generatedSlides.some((s) => s.fallback) && (
               <span className="text-xs text-teal-500 bg-teal-50 px-2 py-0.5 rounded-full">
-                {generatedSlides.filter((s) => s.fallback).length}枚 フォールバック
+                {generatedSlides.filter((s) => s.fallback).length}枚
+                フォールバック
               </span>
             )}
           </div>
@@ -1636,7 +1805,9 @@ ${html}
                   >
                     <Minus className="w-3 h-3" />
                   </button>
-                  <span className="text-[10px] text-muted-foreground px-0.5">文字サイズ</span>
+                  <span className="text-[10px] text-muted-foreground px-0.5">
+                    文字サイズ
+                  </span>
                   <button
                     onMouseDown={(e) => {
                       e.preventDefault();
@@ -1728,7 +1899,8 @@ ${html}
                 { key: "middle", label: "途中ページ" },
                 { key: "last", label: "最終ページ" },
               ];
-              const tplByPos = (pos: string) => templateList.find((t) => t.position === pos);
+              const tplByPos = (pos: string) =>
+                templateList.find((t) => t.position === pos);
 
               return (
                 <div className="max-w-2xl mx-auto space-y-5 py-4">
@@ -1779,7 +1951,10 @@ ${html}
                       {POSITIONS.map(({ key, label }) => {
                         const tpl = tplByPos(key);
                         return (
-                          <div key={key} className="flex items-center gap-2 text-xs">
+                          <div
+                            key={key}
+                            className="flex items-center gap-2 text-xs"
+                          >
                             {tpl ? (
                               <CheckCircle2 className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
                             ) : (
@@ -1790,19 +1965,25 @@ ${html}
                             </span>
                             {tpl ? (
                               <span className="text-foreground flex items-center gap-1 truncate">
-                                {tpl.html?.includes('data-image-template="true"') && (
+                                {tpl.html?.includes(
+                                  'data-image-template="true"',
+                                ) && (
                                   <Image className="w-3 h-3 text-violet-500 flex-shrink-0" />
                                 )}
                                 {tpl.name}
                                 {tpl.header_color && (
                                   <span
                                     className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-border"
-                                    style={{ backgroundColor: tpl.header_color }}
+                                    style={{
+                                      backgroundColor: tpl.header_color,
+                                    }}
                                   />
                                 )}
                               </span>
                             ) : (
-                              <span className="text-muted-foreground/50">未設定</span>
+                              <span className="text-muted-foreground/50">
+                                未設定
+                              </span>
                             )}
                           </div>
                         );
@@ -1840,28 +2021,39 @@ ${html}
                       {(
                         [
                           {
-                            icon: <Layers className="w-3.5 h-3.5 text-violet-500" />,
+                            icon: (
+                              <Layers className="w-3.5 h-3.5 text-violet-500" />
+                            ),
                             label: "産業",
                             value: styleOptions.industry,
                           },
                           {
-                            icon: <Sparkles className="w-3.5 h-3.5 text-blue-500" />,
+                            icon: (
+                              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                            ),
                             label: "職種",
                             value: styleOptions.profession,
                           },
                           {
-                            icon: <Type className="w-3.5 h-3.5 text-amber-500" />,
+                            icon: (
+                              <Type className="w-3.5 h-3.5 text-amber-500" />
+                            ),
                             label: "年代層",
                             value: styleOptions.ageGroup,
                           },
                           {
-                            icon: <Palette className="w-3.5 h-3.5 text-pink-500" />,
+                            icon: (
+                              <Palette className="w-3.5 h-3.5 text-pink-500" />
+                            ),
                             label: "色スタイル",
                             value: styleOptions.colorStyle,
                           },
                         ] as const
                       ).map(({ icon, label, value }) => (
-                        <div key={label} className="flex items-center gap-2 min-w-0">
+                        <div
+                          key={label}
+                          className="flex items-center gap-2 min-w-0"
+                        >
                           <span className="flex-shrink-0">{icon}</span>
                           <span className="text-[11px] text-muted-foreground flex-shrink-0">
                             {label}:
@@ -1869,7 +2061,9 @@ ${html}
                           <span
                             className={cn(
                               "text-[11px] font-semibold truncate",
-                              value ? "text-foreground" : "text-muted-foreground/40",
+                              value
+                                ? "text-foreground"
+                                : "text-muted-foreground/40",
                             )}
                           >
                             {value || "未選択"}
@@ -1882,7 +2076,9 @@ ${html}
                         <Image
                           className={cn(
                             "w-3.5 h-3.5 flex-shrink-0",
-                            useTemplates ? "text-teal-500" : "text-muted-foreground/40",
+                            useTemplates
+                              ? "text-teal-500"
+                              : "text-muted-foreground/40",
                           )}
                         />
                         <span className="text-[11px] text-muted-foreground flex-shrink-0">
@@ -1891,7 +2087,9 @@ ${html}
                         <span
                           className={cn(
                             "text-[11px] font-semibold truncate",
-                            useTemplates ? "text-teal-600" : "text-muted-foreground/40",
+                            useTemplates
+                              ? "text-teal-600"
+                              : "text-muted-foreground/40",
                           )}
                         >
                           {useTemplates
@@ -1920,10 +2118,17 @@ ${html}
                     {/* Editable note */}
                     <textarea
                       placeholder="追加の指示やメモがあれば入力..."
-                      value={(styleOptions as Record<string, string | undefined>)._note ?? ""}
+                      value={
+                        (styleOptions as Record<string, string | undefined>)
+                          ._note ?? ""
+                      }
                       onChange={(e) =>
                         setStyleOptions(
-                          (prev) => ({ ...prev, _note: e.target.value }) as StyleOptions,
+                          (prev) =>
+                            ({
+                              ...prev,
+                              _note: e.target.value,
+                            }) as StyleOptions,
                         )
                       }
                       rows={2}
@@ -1949,7 +2154,9 @@ ${html}
           {phase === "planning" && (
             <div className="flex flex-col items-center justify-center h-full gap-3">
               <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
-              <p className="text-sm text-muted-foreground">スライド構成を計画中...</p>
+              <p className="text-sm text-muted-foreground">
+                スライド構成を計画中...
+              </p>
             </div>
           )}
 
@@ -1991,9 +2198,13 @@ ${html}
                     </span>
                     {planDiag.model && <span>model: {planDiag.model}</span>}
                     {planDiag.time != null && <span>{planDiag.time}s</span>}
-                    {planDiag.prompt_len != null && <span>prompt: {planDiag.prompt_len}文字</span>}
+                    {planDiag.prompt_len != null && (
+                      <span>prompt: {planDiag.prompt_len}文字</span>
+                    )}
                     {planDiag.source === "fallback" && planDiag.error && (
-                      <span className="text-red-600">err: {planDiag.error}</span>
+                      <span className="text-red-600">
+                        err: {planDiag.error}
+                      </span>
                     )}
                   </div>
                 )}
@@ -2014,16 +2225,23 @@ ${html}
                           <span
                             className={cn(
                               "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                              section.type === "cover" && "bg-teal-100 text-teal-700",
-                              section.type === "back-cover" && "bg-teal-100 text-teal-700",
-                              section.type === "content" && "bg-secondary text-muted-foreground",
+                              section.type === "cover" &&
+                                "bg-teal-100 text-teal-700",
+                              section.type === "back-cover" &&
+                                "bg-teal-100 text-teal-700",
+                              section.type === "content" &&
+                                "bg-secondary text-muted-foreground",
                             )}
                           >
                             {section.type}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                          {section.plan_text.trim().split("\n").slice(0, 2).join(" ")}
+                          {section.plan_text
+                            .trim()
+                            .split("\n")
+                            .slice(0, 2)
+                            .join(" ")}
                         </p>
                       </div>
                     </div>
@@ -2043,7 +2261,10 @@ ${html}
 
               {/* Style Options + Template Toggle */}
               <div className="flex justify-center items-center gap-2">
-                <StyleOptionsPanel value={styleOptions} onChange={setStyleOptions} />
+                <StyleOptionsPanel
+                  value={styleOptions}
+                  onChange={setStyleOptions}
+                />
                 <button
                   onClick={toggleTemplates}
                   className={cn(
@@ -2114,16 +2335,23 @@ ${html}
               </div>
 
               {/* Grid of generated slides (thumbnail preview) */}
-              <div ref={thumbGridRef} className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div
+                ref={thumbGridRef}
+                className="grid grid-cols-2 md:grid-cols-3 gap-3"
+              >
                 {slideSections.map((section, idx) => {
-                  const generated = generatedSlides.find((s) => s.index === idx);
+                  const generated = generatedSlides.find(
+                    (s) => s.index === idx,
+                  );
                   return (
                     <div
                       key={idx}
                       data-thumb-cell
                       className={cn(
                         "relative aspect-video rounded-lg border overflow-hidden",
-                        generated ? "border-teal-300" : "border-border bg-secondary/30",
+                        generated
+                          ? "border-teal-300"
+                          : "border-border bg-secondary/30",
                       )}
                     >
                       {generated ? (
@@ -2147,7 +2375,9 @@ ${html}
                       ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
                           <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-                          <span className="text-[10px] text-muted-foreground">{section.title}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {section.title}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -2221,7 +2451,9 @@ ${html}
                 <button
                   onClick={() => {
                     if (editing) persistCurrentSlide();
-                    setActiveSlideIndex((prev) => Math.min(generatedSlides.length - 1, prev + 1));
+                    setActiveSlideIndex((prev) =>
+                      Math.min(generatedSlides.length - 1, prev + 1),
+                    );
                   }}
                   disabled={activeSlideIndex === generatedSlides.length - 1}
                   className="absolute right-2 z-10 p-2 rounded-full bg-card/80 border border-border shadow-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -2233,13 +2465,17 @@ ${html}
               {/* Slide title + editing hint */}
               {activeSlide && (
                 <p className="text-center text-sm font-medium text-foreground">
-                  {activeSlideIndex + 1}/{generatedSlides.length} - {activeSlide.title}
+                  {activeSlideIndex + 1}/{generatedSlides.length} -{" "}
+                  {activeSlide.title}
                   {activeSlide.fallback && (
-                    <span className="ml-2 text-xs text-teal-500">(フォールバック)</span>
+                    <span className="ml-2 text-xs text-teal-500">
+                      (フォールバック)
+                    </span>
                   )}
                   {editing && (
                     <span className="ml-2 text-xs text-teal-500">
-                      (編集中 - テキスト編集 / ⋮⋮ 移動 / 角・辺リサイズ / Shift+クリックで複数選択)
+                      (編集中 - テキスト編集 / ⋮⋮ 移動 / 角・辺リサイズ /
+                      Shift+クリックで複数選択)
                     </span>
                   )}
                 </p>
@@ -2281,7 +2517,10 @@ ${html}
         </div>
 
         {/* Template Manager modal */}
-        <TemplateManager open={templateManagerOpen} onClose={() => setTemplateManagerOpen(false)} />
+        <TemplateManager
+          open={templateManagerOpen}
+          onClose={() => setTemplateManagerOpen(false)}
+        />
       </div>
     </div>
   );

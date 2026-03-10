@@ -1,6 +1,13 @@
 import { generateText } from "ai";
 import { getSlideModel } from "@/lib/slide-provider";
-import { STYLE_PRESETS, extractHtmlFromResponse, isValidSlideHtml } from "@/lib/slide-prompts";
+import {
+  STYLE_PRESETS,
+  extractHtmlFromResponse,
+  getSlideHtmlValidationIssue,
+  generateFallbackHtml,
+  isValidSlideHtml,
+  shouldRetryInvalidSlideHtml,
+} from "@/lib/slide-prompts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -9,6 +16,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { slide, style_preset = "corporate", deck_title, backend } = body;
+    const fallbackHtml = generateFallbackHtml(
+      slide?.title || "スライド",
+      slide?.type || "content",
+      Array.isArray(slide?.text_elements) ? slide.text_elements : [],
+      deck_title || "Slides",
+    );
 
     if (!slide) {
       return Response.json({ error: "slide is required" }, { status: 400 });
@@ -44,27 +57,42 @@ Use inline styles. Make text elements have data-editable="true".
 Use Japanese text. No external images (inline SVG ok).
 Font: 'Noto Sans JP', 'Inter', sans-serif.`;
 
-    try {
+    const generateHtml = async (retry = false) => {
       const result = await generateText({
         model,
-        prompt,
+        prompt: retry
+          ? `${prompt}\n\nRetry instruction: The previous HTML was truncated or structurally invalid. Return a simpler but fully closed single <div> only, and end with </div>.`
+          : prompt,
         temperature: 0.2,
-        maxOutputTokens: 3000,
+        maxOutputTokens: 4000,
       });
 
-      const html = extractHtmlFromResponse(result.text);
+      return extractHtmlFromResponse(result.text);
+    };
+
+    try {
+      let html = await generateHtml();
+
+      if (!isValidSlideHtml(html) && shouldRetryInvalidSlideHtml(html)) {
+        const issue = getSlideHtmlValidationIssue(html);
+        console.warn(
+          `[slides/visual/renderhtml] Invalid HTML for slide ${slide.slide_number} (${issue}), retrying once`,
+        );
+        html = await generateHtml(true);
+      }
 
       if (!isValidSlideHtml(html)) {
+        const issue = getSlideHtmlValidationIssue(html);
         console.warn(
-          `[slides/visual/renderhtml] Invalid HTML for slide ${slide.slide_number}, returning fallback`,
+          `[slides/visual/renderhtml] Invalid HTML for slide ${slide.slide_number} (${issue}), returning fallback`,
         );
-        return Response.json({ html: "", fallback: true });
+        return Response.json({ html: fallbackHtml, fallback: true });
       }
 
       return Response.json({ html, fallback: false });
     } catch (err) {
       console.error(`[slides/visual/renderhtml] LLM error:`, err);
-      return Response.json({ html: "", fallback: true });
+      return Response.json({ html: fallbackHtml, fallback: true });
     }
   } catch (err) {
     console.error("[slides/visual/renderhtml] Unexpected error:", err);

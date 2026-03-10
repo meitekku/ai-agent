@@ -17,6 +17,7 @@ import html2canvas from "html2canvas";
 import { useSlideStore } from "@/lib/slide-store";
 import { useChatSettingsStore } from "@/lib/store";
 import { calcMaxSlides } from "@/lib/slide-prompts";
+import { getRenderedSlideIssue } from "@/lib/slide-render-sanity";
 
 // ---------------------------------------------------------------------------
 // Shared CDN head for slide iframes
@@ -70,7 +71,11 @@ function useSlidePipeline() {
         const res = await fetch("/api/slides/plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question, answer, maxSlides: calcMaxSlides(answer) }),
+          body: JSON.stringify({
+            question,
+            answer,
+            maxSlides: calcMaxSlides(answer),
+          }),
           signal: controller.signal,
         });
 
@@ -95,7 +100,12 @@ function useSlidePipeline() {
   const renderTriggeredRef = useRef(false);
 
   useEffect(() => {
-    if (phase !== "plan_ready" || slides.length === 0 || renderTriggeredRef.current) return;
+    if (
+      phase !== "plan_ready" ||
+      slides.length === 0 ||
+      renderTriggeredRef.current
+    )
+      return;
 
     renderTriggeredRef.current = true;
     const controller = new AbortController();
@@ -183,7 +193,10 @@ function useRegenerateSlide() {
         const data = await res.json();
         setRenderedSlide(index, data.html);
       } catch (err) {
-        console.error(`[slide-viewer] Regenerate error for slide ${index}:`, err);
+        console.error(
+          `[slide-viewer] Regenerate error for slide ${index}:`,
+          err,
+        );
       }
     },
     [slides, deckTitle, setRenderedSlide],
@@ -285,7 +298,8 @@ function cloneWithInlinedStyles(iframe: HTMLIFrameElement): HTMLDivElement {
 }
 
 function useExportPptx() {
-  const { slides, renderedHtml, deckTitle, question, answer, setExporting } = useSlideStore();
+  const { slides, renderedHtml, deckTitle, question, answer, setExporting } =
+    useSlideStore();
 
   async function downloadPptx(payload: object, filenameBase: string) {
     const res = await fetch("/api/slides/pptx", {
@@ -312,7 +326,8 @@ function useExportPptx() {
 
   return useCallback(async () => {
     const totalRendered = Object.keys(renderedHtml).length;
-    const canStructuredExport = question.trim().length > 0 && answer.trim().length > 0;
+    const canStructuredExport =
+      question.trim().length > 0 && answer.trim().length > 0;
     if (!canStructuredExport && totalRendered === 0) return;
 
     setExporting(true);
@@ -333,7 +348,11 @@ function useExportPptx() {
           if (generateRes.ok) {
             const data = await generateRes.json();
             if (data?.deck?.slides?.length > 0) {
-              const safeTitle = (data.deck.title as string) || deckTitle || question || "slides";
+              const safeTitle =
+                (data.deck.title as string) ||
+                deckTitle ||
+                question ||
+                "slides";
               await downloadPptx(
                 {
                   title: safeTitle,
@@ -391,6 +410,11 @@ ${html}
         await new Promise((r) => setTimeout(r, 3000));
 
         try {
+          const renderIssue = getRenderedSlideIssue(iframe.contentDocument!);
+          if (renderIssue) {
+            throw new Error(renderIssue);
+          }
+
           // Clone iframe content with inlined computed styles → regular div
           const captureDiv = cloneWithInlinedStyles(iframe);
 
@@ -405,7 +429,10 @@ ${html}
 
           document.body.removeChild(captureDiv);
         } catch (screenshotErr) {
-          console.warn(`[pptx] Screenshot failed for slide ${i}, using fallback`, screenshotErr);
+          console.warn(
+            `[pptx] Screenshot failed for slide ${i}, using fallback`,
+            screenshotErr,
+          );
           const fallbackCanvas = document.createElement("canvas");
           fallbackCanvas.width = 1280;
           fallbackCanvas.height = 720;
@@ -423,7 +450,10 @@ ${html}
       }
 
       if (images.length === 0) return;
-      await downloadPptx({ pngs: images, title: deckTitle }, deckTitle || "slides");
+      await downloadPptx(
+        { pngs: images, title: deckTitle },
+        deckTitle || "slides",
+      );
     } catch (err) {
       console.error("[pptx] Export error:", err);
       alert(`PPTX出力に失敗しました: ${(err as Error).message}`);
@@ -479,7 +509,9 @@ function SlideThumbnail({
           {isRendering ? (
             <Spinner className="size-4 mx-auto" />
           ) : (
-            <span className="text-[10px] text-zinc-500 mx-auto">{index + 1}</span>
+            <span className="text-[10px] text-zinc-500 mx-auto">
+              {index + 1}
+            </span>
           )}
         </div>
       )}
@@ -551,7 +583,9 @@ function PhaseProgress() {
   const phase = useSlideStore((s) => s.phase);
   const slides = useSlideStore((s) => s.slides);
   const renderingIndex = useSlideStore((s) => s.renderingIndex);
-  const renderedCount = Object.keys(useSlideStore((s) => s.renderedHtml)).length;
+  const renderedCount = Object.keys(
+    useSlideStore((s) => s.renderedHtml),
+  ).length;
 
   if (phase === "done") return null;
 
@@ -646,7 +680,9 @@ export function SlideViewer() {
         <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-3">
             <PresentationIcon className="size-4 text-blue-400" />
-            <span className="text-sm font-medium text-zinc-200">スライドビューア</span>
+            <span className="text-sm font-medium text-zinc-200">
+              スライドビューア
+            </span>
             {slides.length > 0 && (
               <Badge variant="secondary" className="text-[11px] rounded-full">
                 {currentSlide + 1} / {slides.length}
@@ -698,7 +734,10 @@ export function SlideViewer() {
                 index={i}
                 html={renderedHtml[i]}
                 isActive={i === currentSlide}
-                isRendering={phase === "rendering" && useSlideStore.getState().renderingIndex === i}
+                isRendering={
+                  phase === "rendering" &&
+                  useSlideStore.getState().renderingIndex === i
+                }
                 onClick={() => setCurrentSlide(i)}
               />
             ))}
@@ -716,12 +755,20 @@ export function SlideViewer() {
               {error ? (
                 <div className="text-center text-red-400">
                   <p className="text-sm">エラー: {error}</p>
-                  <Button variant="outline" size="sm" onClick={handleClose} className="mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClose}
+                    className="mt-4"
+                  >
                     閉じる
                   </Button>
                 </div>
               ) : (
-                <div className="w-full max-w-5xl" style={{ aspectRatio: "16/9" }}>
+                <div
+                  className="w-full max-w-5xl"
+                  style={{ aspectRatio: "16/9" }}
+                >
                   <SlidePreview html={renderedHtml[currentSlide]} />
                 </div>
               )}
