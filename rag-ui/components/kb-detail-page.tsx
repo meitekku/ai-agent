@@ -27,6 +27,9 @@ import {
   SparklesIcon,
   SaveIcon,
   ArrowLeftIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +145,7 @@ export const KBDetailPage = memo(function KBDetailPage({
 
   // KB config editing
   const [editingConfig, setEditingConfig] = useState(false);
+  const [editingHeaderName, setEditingHeaderName] = useState(false);
   const [kbName, setKbName] = useState("");
   const [kbTitle, setKbTitle] = useState("");
   const [kbDescription, setKbDescription] = useState("");
@@ -382,11 +386,61 @@ export const KBDetailPage = memo(function KBDetailPage({
             >
               <ArrowLeftIcon className="size-4" />
             </button>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-semibold tracking-tight truncate">
-                {kb?.name ?? slug}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">{slug}</p>
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              {editingHeaderName ? (
+                <form
+                  className="flex items-center gap-1.5 flex-1 min-w-0"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setEditingHeaderName(false);
+                    setEditingConfig(false);
+                    saveMutation.mutate();
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    value={kbName}
+                    onChange={(e) => setKbName(e.target.value)}
+                    className="h-8 text-base font-semibold flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setKbName(kb?.name ?? "");
+                        setEditingHeaderName(false);
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <CheckIcon className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    onClick={() => {
+                      setKbName(kb?.name ?? "");
+                      setEditingHeaderName(false);
+                    }}
+                  >
+                    <XIcon className="size-3.5" />
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <h2 className="text-lg font-semibold tracking-tight truncate">
+                    {kb?.name ?? slug}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setEditingHeaderName(true)}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    aria-label="名前を編集"
+                  >
+                    <PencilIcon className="size-3.5" />
+                  </button>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {displayDocs.length > 0 && (
@@ -464,15 +518,6 @@ export const KBDetailPage = memo(function KBDetailPage({
                 </Button>
               </div>
             </div>
-            <Input
-              placeholder="表示名（例: 社内規定集）"
-              value={kbName}
-              onChange={(e) => {
-                setKbName(e.target.value);
-                setEditingConfig(true);
-              }}
-              className="h-8 text-sm"
-            />
             <Input
               placeholder="タイトル（例: 社内規定集）"
               value={kbTitle}
