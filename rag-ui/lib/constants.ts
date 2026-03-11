@@ -23,6 +23,10 @@ export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || "local";
 // Tavily web search (optional — enables webSearch tool in chat)
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 
+// Auth
+export const AUTH_COOKIE_NAME = "pw";
+export const REDIRECT_URL_COOKIE = "redirect_url";
+
 // Slide LLM configuration (optional — falls back to chat model if not set)
 export const SLIDE_LLM_BASE_URL = process.env.SLIDE_LLM_BASE_URL || "";
 export const SLIDE_LLM_API_KEY = process.env.SLIDE_LLM_API_KEY || "";

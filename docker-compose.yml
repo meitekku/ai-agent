@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: raguser
       POSTGRES_PASSWORD: ragpass
@@ -31,6 +31,7 @@ services:
     restart: unless-stopped
 
   lightrag:
+    image: rag-deploy-lightrag:latest
     build: ./lightrag-service
     environment:
       LLM_PROVIDER: gemini
@@ -61,6 +62,7 @@ services:
     restart: unless-stopped
 
   rag-ui:
+    image: rag-deploy-ui:latest
     build: ./rag-ui
     profiles: ["prod"]
     environment:
@@ -71,6 +73,7 @@ services:
       GEMINI_EMBEDDING_MODEL: gemini-embedding-001
       EMBEDDING_PROVIDER: gemini
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      PW: ${PW:-}
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
     ports:
       - "4002:3000"

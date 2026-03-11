@@ -1,0 +1,68 @@
+name: Deploy to Orange Pi
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: docker compose --profile prod build
+
+      - name: Save images
+        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest
+
+      - name: Sync files to Orange Pi
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          # Write deploy key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key
+          chmod 600 ~/.ssh/rag-deploy-key
+          SSH_OPTS="-i ~/.ssh/rag-deploy-key -o StrictHostKeyChecking=no"
+          REMOTE="${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+          REMOTE_DIR="/home/${{ secrets.SSH_USER }}/rag-deploy"
+
+          # Create remote dir
+          ssh $SSH_OPTS "$REMOTE" "mkdir -p $REMOTE_DIR/seed-data"
+
+          # Sync project files (compose, init.sql, seed-data)
+          rsync -avz -e "ssh $SSH_OPTS" \
+            docker-compose.yml init.sql \
+            "$REMOTE:$REMOTE_DIR/"
+          rsync -avz -e "ssh $SSH_OPTS" \
+            seed-data/ \
+            "$REMOTE:$REMOTE_DIR/seed-data/"
+
+          # Write .env on remote
+          ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/.env << 'EOF'
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
+          PW=${{ secrets.PW }}
+          EOF
+          sed -i 's/^[[:space:]]*//' $REMOTE_DIR/.env"
+
+          # Transfer images
+          scp $SSH_OPTS /tmp/rag-images.tar "$REMOTE:$REMOTE_DIR/"
+
+          # Deploy
+          ssh $SSH_OPTS "$REMOTE" "
+            cd $REMOTE_DIR
+            docker load -i rag-images.tar
+            rm rag-images.tar
+            docker compose --profile prod pull postgres valkey
+            docker compose --profile prod up -d
+            echo ''
+            docker compose --profile prod ps
+          "
+
+          # Cleanup
+          rm -f /tmp/rag-images.tar ~/.ssh/rag-deploy-key
