@@ -33,6 +33,27 @@ import {
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
+// Concurrency control
+// ---------------------------------------------------------------------------
+
+/** 限制並行数で非同期タスクを実行（worker pool） */
+async function runWithConcurrency(
+  tasks: (() => Promise<void>)[],
+  concurrency: number,
+): Promise<void> {
+  let index = 0;
+  async function worker() {
+    while (index < tasks.length) {
+      const i = index++;
+      await tasks[i]();
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, tasks.length) }, worker),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -257,32 +278,30 @@ export const KBDetailPage = memo(function KBDetailPage({
       const names = fileList.map((f) => f.name.replace(/\.pdf$/i, ""));
       setUploadingNames((prev) => [...names, ...prev]);
 
-      const uploads = fileList.map((file) => {
+      const tasks = fileList.map((file) => async () => {
         const name = file.name.replace(/\.pdf$/i, "");
         const formData = new FormData();
         formData.append("file", file);
-        return fetch(`/api/documents/upload?kb=${encodeURIComponent(slug)}`, {
-          method: "POST",
-          body: formData,
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              const data = await res.json().catch(() => ({}));
-              throw new Error(data.error || "Upload failed");
-            }
-            queryClient.invalidateQueries({ queryKey: ["documents", slug] });
-          })
-          .catch((err) => {
-            setError(
-              err instanceof Error ? err.message : "アップロードに失敗しました",
-            );
-          })
-          .finally(() => {
-            setUploadingNames((prev) => prev.filter((n) => n !== name));
-          });
+        try {
+          const res = await fetch(
+            `/api/documents/upload?kb=${encodeURIComponent(slug)}`,
+            { method: "POST", body: formData },
+          );
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Upload failed");
+          }
+          queryClient.invalidateQueries({ queryKey: ["documents", slug] });
+        } catch (err) {
+          setError(
+            err instanceof Error ? err.message : "アップロードに失敗しました",
+          );
+        } finally {
+          setUploadingNames((prev) => prev.filter((n) => n !== name));
+        }
       });
 
-      Promise.allSettled(uploads).then(() => {
+      runWithConcurrency(tasks, 2).then(() => {
         fetch(`/api/kbs/${slug}/generate`, { method: "POST" })
           .then(() => {
             syncedRef.current = false;
