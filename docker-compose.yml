@@ -8,7 +8,7 @@ services:
     ports:
       - "${PG_PORT:-127.0.0.1:5433}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U raguser -d lightrag"]
