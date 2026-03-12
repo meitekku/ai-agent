@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import type { FileUIPart } from "ai";
+import { isToolUIPart, getToolName } from "ai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { useQueryClient } from "@tanstack/react-query";
@@ -53,6 +54,17 @@ export interface ChatPageProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function getClientTime(): string {
+  return new Date().toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function generateTitle(text: string): string {
   // Take first 50 chars, cut at last word boundary
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -75,6 +87,19 @@ export function ChatPage({
   const setActiveKb = useChatSettingsStore((s) => s.setActiveKb);
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
   const queryClient = useQueryClient();
+
+  // Chat title (for document.title)
+  const [chatTitle, setChatTitle] = useState(
+    initialData?.conversation.title ?? "",
+  );
+
+  // Sync document.title
+  useEffect(() => {
+    document.title = chatTitle ? `${chatTitle} | Stella` : "Stella";
+    return () => {
+      document.title = "Stella";
+    };
+  }, [chatTitle]);
 
   // Tree store
   const treeStore = useChatTreeStore();
@@ -122,6 +147,13 @@ export function ChatPage({
   const isLoading = status === "submitted" || status === "streaming";
   const submitTimeRef = useRef(0);
 
+  // Slide panel (declared early so effects can reference it)
+  const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
+
+  // Refs for slide tool detection (must be before both effects that use them)
+  const sessionActiveRef = useRef(false);
+  const justFinishedRef = useRef(false);
+
   // Persist messages when streaming finishes
   const prevStatusRef = useRef(status);
   useEffect(() => {
@@ -131,6 +163,10 @@ export function ChatPage({
     prevStatusRef.current = status;
 
     if (!wasLoading || status !== "ready") return;
+
+    // Signal the slide tool detection effect
+    justFinishedRef.current = true;
+
     if (messages.length === 0) return;
 
     const convId = convIdRef.current;
@@ -187,14 +223,51 @@ export function ChatPage({
           fetch(`/api/history/chats/${convId}/generate-title`, {
             method: "POST",
           })
-            .then(() =>
-              queryClient.invalidateQueries({ queryKey: ["chat-history"] }),
-            )
+            .then(async (res) => {
+              if (res.ok) {
+                const { title } = await res.json();
+                if (title) setChatTitle(title);
+              }
+              queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+            })
             .catch(() => {});
         }
       })
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
+
+  // Detect generateSlides tool result and auto-open slide panel
+  useEffect(() => {
+    if (!sessionActiveRef.current) return;
+    if (!justFinishedRef.current) return;
+    justFinishedRef.current = false;
+
+    const lastAssistant = messages.filter((m) => m.role === "assistant").pop();
+    if (!lastAssistant) return;
+
+    for (const part of lastAssistant.parts) {
+      if (
+        isToolUIPart(part) &&
+        getToolName(part) === "generateSlides" &&
+        part.state === "output-available"
+      ) {
+        const result = (("result" in part ? part.result : part.output) ?? {}) as {
+          triggered?: boolean;
+          topic?: string;
+          content?: string;
+          instructions?: string | null;
+        };
+        if (result?.triggered) {
+          openSlidePanel(
+            result.topic ?? "",
+            result.content ?? "",
+            result.instructions,
+          );
+          break;
+        }
+      }
+    }
+  }, [status, messages, openSlidePanel]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -203,6 +276,7 @@ export function ChatPage({
       const id = nanoid();
       convIdRef.current = id;
       const title = generateTitle(firstText);
+      setChatTitle(title);
 
       // Create in DB (URL stays at /new to avoid Next.js re-mount)
       fetch("/api/history/chats", {
@@ -224,6 +298,7 @@ export function ChatPage({
 
   const handleSend = useCallback(
     async (text: string, files?: FileUIPart[]) => {
+      sessionActiveRef.current = true;
       submitTimeRef.current = Date.now();
       await ensureConversation(text || "ファイル添付");
 
@@ -232,7 +307,7 @@ export function ChatPage({
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
-      const body = { service, kb: activeKb };
+      const body = { service, kb: activeKb, clientTime: getClientTime() };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
       } else {
@@ -258,7 +333,7 @@ export function ChatPage({
       lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
-    regenerate({ body: { service, kb: activeKb, skipCache: true } });
+    regenerate({ body: { service, kb: activeKb, skipCache: true, clientTime: getClientTime() } });
   }, [regenerate, service, activeKb, messages]);
 
   // Edit message: create new branch
@@ -287,7 +362,7 @@ export function ChatPage({
       knownCountRef.current = truncated.length;
 
       // Send new message (creates new user+assistant pair as siblings of the edited message)
-      sendMessage({ text: newText }, { body: { service, kb: activeKb } });
+      sendMessage({ text: newText }, { body: { service, kb: activeKb, clientTime: getClientTime() } });
     },
     [treeStore, setMessages, sendMessage, service, activeKb],
   );
@@ -329,7 +404,6 @@ export function ChatPage({
   const openSlideViewer = useSlideStore((s) => s.openSlideViewer);
 
   // --- SlidePanel (right panel for HTML slides) ---
-  const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
   const slidePanelOpen = useSlidePanelStore((s) => s.open);
 
   // --- VisualSlideViewer state ---

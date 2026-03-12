@@ -87,24 +87,13 @@ async function resolveServerFiles(
   }
 }
 
-function buildSystemPrompt(hasKb: boolean): string {
+function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   const hasWeb = hasTavily || hasGoogleSearch;
 
-  const now = new Date();
-  const currentTime = now.toLocaleString("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   let prompt = `あなたはナレッジベースを活用する AI アシスタントです。ユーザーの質問に対し、内部ドキュメントとウェブの情報を組み合わせて正確に回答します。
 
-現在の日時: ${currentTime}
+現在の日時: ${clientTime ?? new Date().toISOString()}
 
 ## 回答ルール
 - ユーザーの質問と同じ言語で回答。デフォルトは日本語
@@ -138,6 +127,14 @@ function buildSystemPrompt(hasKb: boolean): string {
 - **${webSearchToolName}**: 最新情報やウェブ上の情報が必要な場合、ユーザーが「検索して」「最新の」等と指示した場合`;
     }
   }
+
+  // generateSlides ツール説明
+  prompt += `
+- **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合。
+  呼び出す前に以下を会話で確認（ユーザーの依頼が明確な場合は確認せず直接生成可）:
+  - テーマと内容（明確でない場合）
+  - 追加の要望（枚数、対象者、スタイル、トーンなど、ユーザーが指定した場合のみ）
+  ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。`;
 
   // 情報の信頼度ヒエラルキー
   if (hasKb) {
@@ -177,12 +174,14 @@ export async function POST(req: Request) {
   let service: "lightrag" | "pageindex";
   let skipCache = false;
   let kb: string | null = null;
+  let clientTime: string | undefined;
   try {
     const body = await req.json();
     messages = body.messages;
     service = body.service === "pageindex" ? "pageindex" : "lightrag";
     skipCache = !!body.skipCache;
     kb = body.kb ?? null;
+    clientTime = body.clientTime;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -527,12 +526,34 @@ export async function POST(req: Request) {
     );
   }
 
+  // generateSlides: signal tool for conversational slide generation
+  tools.generateSlides = tool({
+    description:
+      "ユーザーの依頼に基づいてプレゼンテーションスライドを生成します。" +
+      "ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合に使用。" +
+      "呼び出す前に、テーマ・内容・対象者・スタイルなど必要な情報を会話で確認してください。",
+    inputSchema: z.object({
+      topic: z.string().describe("スライドのテーマ/タイトル"),
+      content: z.string().describe("スライドに含めるべき内容の要約（ナレッジベースの検索結果があれば含める）"),
+      instructions: z.string().optional().describe("ユーザーからの追加指示（スタイル、枚数、対象者、トーンなど）"),
+    }),
+    execute: async ({ topic, content, instructions }) => {
+      console.log(`[chat] 🎨 generateSlides: "${topic}"`);
+      return {
+        triggered: true,
+        topic,
+        content,
+        instructions: instructions ?? null,
+      };
+    },
+  });
+
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
     let firstTokenTime = 0;
 
-    let systemPrompt = buildSystemPrompt(!!kb);
+    let systemPrompt = buildSystemPrompt(!!kb, clientTime);
 
     // Inject enabled skills into system prompt (non-fatal)
     try {

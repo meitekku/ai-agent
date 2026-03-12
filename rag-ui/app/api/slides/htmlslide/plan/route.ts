@@ -19,12 +19,14 @@ export async function POST(req: Request) {
       answer,
       max_slides = 12,
       style_options,
+      instructions,
       backend,
     } = body as {
       question: string;
       answer: string;
       max_slides?: number;
       style_options?: StyleOptions;
+      instructions?: string | null;
       backend?: "ollama" | "gemini" | "mlx";
     };
 
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
     }
 
     const model = getSlideModel();
-    const prompt = buildPlanPrompt(question, answer, max_slides, style_options);
+    const prompt = buildPlanPrompt(question, answer, max_slides, style_options, instructions);
     const startTime = Date.now();
 
     let planMd: string;

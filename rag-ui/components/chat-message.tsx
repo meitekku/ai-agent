@@ -152,6 +152,17 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "generateSlides") {
+    return (
+      <StepIndicator
+        icon={PresentationIcon}
+        activeLabel="スライドを準備中..."
+        completedLabel="スライド生成を開始しました"
+        active={!isComplete}
+      />
+    );
+  }
+
   return (
     <StepIndicator
       icon={SearchIcon}

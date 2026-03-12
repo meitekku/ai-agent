@@ -541,6 +541,7 @@ export function buildPlanPrompt(
   answer: string,
   maxSlides: number,
   styleOptions?: StyleOptions,
+  instructions?: string | null,
 ): string {
   let styleInstruction = "";
   if (styleOptions) {
@@ -569,6 +570,11 @@ export function buildPlanPrompt(
       styleInstruction = `\n## スタイル指定（必ず全スライドに反映すること）\n${parts.join("\n")}\n`;
   }
 
+  let instructionBlock = "";
+  if (instructions) {
+    instructionBlock = `\n## ユーザーの追加指示\n${instructions}\n`;
+  }
+
   return `以下の情報をもとに、プレゼンテーションスライドの構成計画をMarkdown形式で作成してください。
 
 ## 質問
@@ -576,7 +582,7 @@ ${question}
 
 ## 回答内容（これをスライドにまとめる）
 ${answer || "（なし）"}
-${styleInstruction}
+${styleInstruction}${instructionBlock}
 ## 制約
 - スライド枚数: 最大${maxSlides}枚（内容に応じて3〜${maxSlides}枚）
 - 最初はcoverスライド（タイトル・日付・発表者欄）

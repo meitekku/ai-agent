@@ -49,6 +49,11 @@ export async function POST(_req: Request, { params }: Params) {
         : "You are a concise title generator. Output only the title text, nothing else.\n\n/no_think",
       prompt,
       maxOutputTokens: 60,
+      ...(useGemini && {
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 0 } },
+        },
+      }),
     });
 
     // Clean up: remove quotes, trim

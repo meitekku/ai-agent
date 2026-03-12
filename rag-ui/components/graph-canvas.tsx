@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Vector3 } from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { GraphData } from "@/lib/rag-client";
 import type { SimNode, SimLink } from "@/lib/force-simulation";
 import { createSimulation } from "@/lib/force-simulation";
@@ -12,27 +13,44 @@ import { GraphEdges } from "./graph-edges";
 import { GraphEffects } from "./graph-effects";
 
 // ---------------------------------------------------------------------------
-// Camera animation helper
+// Camera + OrbitControls animation
 // ---------------------------------------------------------------------------
 
 function CameraAnimator({
   targetPosition,
+  controlsRef,
 }: {
   targetPosition: Vector3 | null;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
 }) {
   const { camera } = useThree();
   const targetRef = useRef<Vector3 | null>(null);
+  const orbitTarget = useRef(new Vector3());
 
   useEffect(() => {
-    targetRef.current = targetPosition;
+    if (targetPosition) {
+      targetRef.current = targetPosition.clone();
+      orbitTarget.current.copy(targetPosition);
+    }
   }, [targetPosition]);
 
   useFrame(() => {
     if (!targetRef.current) return;
-    const target = targetRef.current;
-    const desired = new Vector3(target.x, target.y, target.z + 50);
-    camera.position.lerp(desired, 0.04);
-    if (camera.position.distanceTo(desired) < 0.5) {
+
+    const nodePos = targetRef.current;
+    // Camera goes behind the node (offset on Z)
+    const desiredCam = new Vector3(nodePos.x, nodePos.y, nodePos.z + 50);
+
+    camera.position.lerp(desiredCam, 0.05);
+
+    // Also lerp OrbitControls target to the node position
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.target.lerp(orbitTarget.current, 0.05);
+      controls.update();
+    }
+
+    if (camera.position.distanceTo(desiredCam) < 0.5) {
       targetRef.current = null;
     }
   });
@@ -63,8 +81,8 @@ export function GraphCanvas({
   const [simLinks, setSimLinks] = useState<SimLink[]>([]);
   const [cameraTarget, setCameraTarget] = useState<Vector3 | null>(null);
   const simRef = useRef<ReturnType<typeof createSimulation> | null>(null);
+  const controlsRef = useRef<OrbitControlsImpl>(null);
 
-  // Scale camera distance based on node count
   const cameraZ = Math.max(150, Math.sqrt(data.nodes.length) * 8);
 
   useEffect(() => {
@@ -124,9 +142,10 @@ export function GraphCanvas({
       />
       <GraphEdges nodes={simNodes} links={simLinks} hoveredId={hoveredId} />
       <GraphEffects />
-      <CameraAnimator targetPosition={cameraTarget} />
+      <CameraAnimator targetPosition={cameraTarget} controlsRef={controlsRef} />
 
       <OrbitControls
+        ref={controlsRef}
         enableDamping
         dampingFactor={0.12}
         rotateSpeed={0.5}

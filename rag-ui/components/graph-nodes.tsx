@@ -204,6 +204,18 @@ export function GraphNodes({
             lockX={false}
             lockY={false}
             lockZ={false}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(n.id);
+            }}
+            onPointerOver={() => {
+              onHover(n.id);
+              document.body.style.cursor = "pointer";
+            }}
+            onPointerOut={() => {
+              onHover(null);
+              document.body.style.cursor = "auto";
+            }}
           >
             <Text
               fontSize={3.2}
