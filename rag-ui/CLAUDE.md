@@ -29,8 +29,10 @@ Browser useChat → /api/chat Route Handler → Valkey cache check
 - マルチモーダル対応：画像・テキスト・PDF を添付可能（サーバーアップロード → URL 参照 → DB 軽量化）
 - ファイルはドラッグ&ドロップ / クリップボード貼り付け / ボタン選択で添付
 - ファイルアップロード: 添付時に即座に `/api/files/upload` → ディスク保存 → DB には URL 参照のみ保存
-- チャット送信時: `resolveFileUrls()` がサーバー URL → data URL 変換 → Gemini API へ送信
-- 画像表示: `<img src="/api/files/{id}">` でサーバーから直接配信（immutable cache）
+- チャット送信時: `resolveServerFiles()` がモデルメッセージ内のサーバー URL / data URL → `Uint8Array` バイナリ変換 → Gemini API へ送信
+- 画像表示: `<img src="/api/files/{id}">` でサーバーから直接配信（immutable cache）、クリックで shadcn Dialog ライトボックス拡大
+- 孤立ファイル自動削除: 起動時 + 6時間ごとに未参照ファイル（60分以上）をクリーンアップ
+- 会話削除時にファイルもカスケード削除（DB + ディスク）
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
 - `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入
 - 一般的な挨拶・雑談はツールを使わず直接回答（不要な RAG 検索をスキップ）
@@ -167,9 +169,9 @@ rag-ui/
 ├── components/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
-│   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D対応）
-│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、画像ライトボックス、4モードドロップダウン）
-│   ├── image-lightbox.tsx     # 画像拡大表示オーバーレイ
+│   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D、リトライ対応）
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、正方形サムネイル、shadcn Dialog ライトボックス、4モードドロップダウン）
+│   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示
 │   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
 │   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
 │   ├── html-slide-viewer.tsx  # HTML スライドビューア（DB保存、テンプレート、ドラッグ）
@@ -202,7 +204,11 @@ rag-ui/
 │   ├── slide-types.ts     # スライド共有型定義
 │   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
-│   └── chat-files-db.ts   # chat_files テーブル CRUD
+│   ├── chat-files-db.ts   # chat_files テーブル CRUD
+│   └── file-cleanup.ts    # 孤立ファイル自動削除
+├── hooks/
+│   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
+├── instrumentation.ts     # 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ
 ├── next.config.ts         # output: "standalone" + env.NEXT_PUBLIC_LLM_BACKEND
 ├── CLAUDE.md
 └── README.md
@@ -230,7 +236,7 @@ rag-ui/
 
 | メソッド             | パス                             | 説明                                                       |
 | -------------------- | -------------------------------- | ---------------------------------------------------------- |
-| POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache + resolveFileUrls） |
+| POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache + resolveServerFiles） |
 | POST                 | /api/files/upload                | ファイルアップロード（multipart/form-data → ディスク保存 + DB 記録） |
 | GET                  | /api/files/[id]                  | ファイル配信（immutable cache、Content-Type 付き）         |
 | GET/POST             | /api/kbs                         | ナレッジベース一覧 / 新規作成                              |
@@ -378,12 +384,13 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL テーブル（8表）
+### PostgreSQL テーブル（9表）
 
 | テーブル             | 用途                                                                                                       |
 | -------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `chat_conversations` | チャット会話（id, title, active_leaf_id, timestamps）                                                      |
 | `chat_messages`      | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
+| `chat_files`         | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
 | `slide_decks`        | デッキメタデータ（title, question, answer, plan_md, style_options JSONB）                                  |
 | `slide_pages`        | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）                                    |
 | `slide_templates`    | テンプレート（name, position, html, UNIQUE(name, position)）                                               |
@@ -391,7 +398,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | `ui_config`          | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { XIcon } from "lucide-react";
 
 export function ImageLightbox({
@@ -12,37 +18,29 @@ export function ImageLightbox({
   alt?: string;
   onClose: () => void;
 }) {
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
-
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose}
-    >
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
-        aria-label="閉じる"
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[95vw] sm:max-w-[95vw] w-auto border-none bg-black/90 shadow-2xl ring-0 p-2 gap-0 rounded-2xl"
       >
-        <XIcon className="size-5" />
-      </button>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt ?? "image"}
-        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
+        <DialogTitle className="sr-only">
+          {alt ?? "画像プレビュー"}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          画像の拡大表示
+        </DialogDescription>
+        <DialogClose className="absolute top-3 right-3 z-10 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white">
+          <XIcon className="size-4" />
+          <span className="sr-only">閉じる</span>
+        </DialogClose>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt ?? "image"}
+          className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain"
+        />
+      </DialogContent>
+    </Dialog>
   );
 }

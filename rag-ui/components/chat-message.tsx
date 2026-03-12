@@ -31,10 +31,12 @@ import {
   ImageIcon,
   PencilIcon,
   FileTextIcon,
+  FileIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   XIcon,
   SendIcon,
+  Maximize2Icon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -370,28 +372,36 @@ export const ChatMessage = memo(function ChatMessage({
                   : undefined) ?? "file";
               if (mediaType.startsWith("image/")) {
                 return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <div
                     key={key}
-                    src={part.url}
-                    alt={filename}
-                    className="max-h-80 max-w-full cursor-pointer rounded-lg border border-border object-contain transition-opacity hover:opacity-90"
+                    className="group/img relative inline-block cursor-pointer overflow-hidden rounded-lg border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
                     onClick={() => setLightboxSrc(part.url)}
-                  />
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={part.url}
+                      alt={filename}
+                      className="block size-14 object-cover"
+                    />
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
+                      <Maximize2Icon className="size-4 text-white opacity-0 drop-shadow-md transition-opacity group-hover/img:opacity-90" />
+                    </div>
+                  </div>
                 );
               }
-              // PDF / text / other files — show as a badge
+              // PDF / text / other files — square with icon
               return (
                 <div
                   key={key}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+                  className="inline-flex size-14 items-center justify-center rounded-lg border border-border/60 bg-muted/20 shadow-sm"
+                  title={filename}
                 >
                   {mediaType === "application/pdf" ? (
-                    <FileTextIcon className="size-3.5 text-red-400" />
+                    <FileIcon className="size-6 text-red-400" />
                   ) : (
-                    <FileTextIcon className="size-3.5" />
+                    <FileTextIcon className="size-6 text-muted-foreground" />
                   )}
-                  <span className="max-w-[200px] truncate">{filename}</span>
                 </div>
               );
             }

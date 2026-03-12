@@ -28,50 +28,63 @@ const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 
 /**
- * Resolve server file URLs (/api/files/{id}) to data URLs for Gemini.
- * Only processes the last 3 user messages for performance.
- * Passes through legacy data URLs and external URLs unchanged.
+ * Post-process model messages to resolve file data to binary Uint8Array.
+ * Handles both server file URLs (/api/files/{id}) and legacy data: URLs.
+ * This avoids the provider trying to fetch() these URLs (which fails in Node.js).
  */
-async function resolveFileUrls(messages: UIMessage[]): Promise<UIMessage[]> {
+async function resolveServerFiles(
+  modelMessages: Awaited<ReturnType<typeof convertToModelMessages>>,
+) {
   const FILE_URL_RE = /^\/api\/files\/(.+)$/;
-  const result = [...messages];
 
-  // Find indices of user messages with file parts (last 3 only)
-  const userIndices: number[] = [];
-  for (let i = result.length - 1; i >= 0 && userIndices.length < 3; i--) {
-    if (
-      result[i].role === "user" &&
-      result[i].parts.some((p) => p.type === "file")
-    ) {
-      userIndices.push(i);
-    }
-  }
+  for (const msg of modelMessages) {
+    if (msg.role !== "user" || typeof msg.content === "string") continue;
 
-  for (const idx of userIndices) {
-    const msg = result[idx];
-    const resolvedParts = await Promise.all(
-      msg.parts.map(async (part) => {
-        if (part.type !== "file") return part;
-        const match = part.url.match(FILE_URL_RE);
-        if (!match) return part; // data URL or external — pass through
+    for (const part of msg.content) {
+      if (part.type !== "file") continue;
+
+      const dataStr = typeof part.data === "string" ? part.data : null;
+      if (!dataStr) continue;
+
+      // Server file URL → read from disk
+      const match = dataStr.match(FILE_URL_RE);
+      if (match) {
         const fileId = match[1];
         try {
           const row = await getChatFile(fileId);
-          if (!row) return part;
+          if (!row) continue;
           const buffer = await readStoredFile(row.stored_path);
-          const base64 = buffer.toString("base64");
-          const dataUrl = `data:${row.media_type};base64,${base64}`;
-          return { ...part, url: dataUrl };
+          (part as unknown as Record<string, unknown>).data = new Uint8Array(buffer);
+          (part as unknown as Record<string, unknown>).mimeType = row.media_type;
         } catch (err) {
-          console.error(`[chat] resolveFileUrls failed for ${fileId}:`, err);
-          return part;
+          console.error(
+            `[chat] resolveServerFiles failed for ${fileId}:`,
+            err,
+          );
         }
-      }),
-    );
-    result[idx] = { ...msg, parts: resolvedParts };
-  }
+        continue;
+      }
 
-  return result;
+      // data: URL → parse base64 to binary
+      if (dataStr.startsWith("data:")) {
+        try {
+          const commaIdx = dataStr.indexOf(",");
+          if (commaIdx === -1) continue;
+          const header = dataStr.slice(0, commaIdx);
+          const base64 = dataStr.slice(commaIdx + 1);
+          const mimeType = header.slice(5).split(";")[0];
+          const binary = Buffer.from(base64, "base64");
+          (part as unknown as Record<string, unknown>).data = new Uint8Array(binary);
+          (part as unknown as Record<string, unknown>).mimeType = mimeType;
+        } catch (err) {
+          console.error(
+            "[chat] resolveServerFiles data URL parse failed:",
+            err,
+          );
+        }
+      }
+    }
+  }
 }
 
 function buildSystemPrompt(hasKb: boolean): string {
@@ -214,8 +227,14 @@ export async function POST(req: Request) {
       "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
     try {
       const kbInfo = await getKB(kb);
-      if (kbInfo?.title) {
+      if (kbInfo?.title && kbInfo?.description) {
         kbDescription = `ナレッジベース「${kbInfo.title}」を検索: ${kbInfo.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
+      } else {
+        // title が空 → バックグラウンドで自動生成（次回以降に反映）
+        const origin = req.headers.get("origin") || req.headers.get("host") || "";
+        const base = origin.startsWith("http") ? origin : `http://${origin}`;
+        fetch(`${base}/api/kbs/${kb}/generate`, { method: "POST" }).catch(() => {});
+        console.log("[chat] KB title empty, triggered background generate");
       }
     } catch (e) {
       console.error("[chat] kb fetch failed:", e);
@@ -525,11 +544,12 @@ export async function POST(req: Request) {
       maxOutputTokens: 8192,
     });
 
-    // Resolve server file URLs to data URLs for the model
-    const resolvedMessages = await resolveFileUrls(messages);
+    // Convert to model messages, then resolve file URLs to binary data
+    const modelMessages = await convertToModelMessages(messages);
+    await resolveServerFiles(modelMessages);
 
     const result = await agent.stream({
-      messages: await convertToModelMessages(resolvedMessages),
+      messages: modelMessages,
       experimental_onStepStart() {
         if (!firstTokenTime) {
           firstTokenTime = Date.now();

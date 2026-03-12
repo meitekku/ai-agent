@@ -19,12 +19,12 @@ const VIEW_CONFIG: Record<
 > = {
   "/chat": {
     icon: MessageSquareIcon,
-    title: "RAG Chat",
+    title: "Stella",
     subtitle: "ナレッジベースに基づいて回答します",
   },
   "/new": {
     icon: BotIcon,
-    title: "RAG Chat",
+    title: "Stella",
     subtitle: "ナレッジベースに基づいて回答します",
   },
   "/documents": {

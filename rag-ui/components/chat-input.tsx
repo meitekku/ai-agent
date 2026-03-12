@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
 import type { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
@@ -23,8 +23,8 @@ import {
   FileIcon,
   DatabaseIcon,
   XCircleIcon,
-  AlertCircleIcon,
   Loader2Icon,
+  RotateCcwIcon,
 } from "lucide-react";
 import { useChatSettingsStore } from "@/lib/store";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -46,7 +46,7 @@ interface KBListItem {
 
 function AttachmentPreviewHeader() {
   const attachments = usePromptInputAttachments();
-  const { uploadState } = useFileUpload(
+  const { uploadState, retryUpload } = useFileUpload(
     attachments.files,
     attachments.updateUrl,
   );
@@ -62,16 +62,11 @@ function AttachmentPreviewHeader() {
           const progress = state?.progress ?? (file.url?.startsWith("blob:") ? 0 : 100);
           const hasError = progress === -1;
           const isUploading = progress >= 0 && progress < 100;
-          const sizeLabel = state?.sizeLabel;
 
           return (
             <div
               key={file.id}
-              className={`group relative flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
-                hasError
-                  ? "border-destructive/40 bg-destructive/5"
-                  : "border-border bg-muted/40"
-              }`}
+              className="group/att relative"
             >
               {/* Thumbnail / icon */}
               {isImage && file.url ? (
@@ -79,52 +74,60 @@ function AttachmentPreviewHeader() {
                 <img
                   src={file.url}
                   alt={file.filename ?? "image"}
-                  className="size-12 rounded object-cover"
+                  className={`size-14 rounded-lg object-cover border ${
+                    hasError ? "border-destructive/40" : "border-border"
+                  }`}
                 />
-              ) : file.mediaType === "application/pdf" ? (
-                <FileIcon className="size-5 text-red-400" />
               ) : (
-                <FileTextIcon className="size-5 text-muted-foreground" />
+                <div
+                  className={`flex size-14 items-center justify-center rounded-lg border ${
+                    hasError
+                      ? "border-destructive/40 bg-destructive/5"
+                      : "border-border bg-muted/40"
+                  }`}
+                >
+                  {file.mediaType === "application/pdf" ? (
+                    <FileIcon className="size-6 text-red-400" />
+                  ) : (
+                    <FileTextIcon className="size-6 text-muted-foreground" />
+                  )}
+                </div>
               )}
-
-              {/* File info */}
-              <div className="flex flex-col gap-0.5">
-                <span className="max-w-[120px] truncate text-muted-foreground">
-                  {file.filename ?? "file"}
-                </span>
-                {sizeLabel && (
-                  <span className="text-[10px] text-muted-foreground/60">
-                    {sizeLabel}
-                  </span>
-                )}
-                {hasError && (
-                  <span className="flex items-center gap-1 text-[10px] text-destructive">
-                    <AlertCircleIcon className="size-2.5" />
-                    {state?.error ?? "エラー"}
-                  </span>
-                )}
-              </div>
 
               {/* Upload progress overlay */}
               {isUploading && (
-                <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-lg bg-muted">
+                <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-lg bg-black/20">
                   <div
-                    className="h-full bg-primary/60 transition-all duration-300"
+                    className="h-full bg-primary/80 transition-all duration-300"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
               )}
 
-              {/* Upload spinner */}
+              {/* Upload spinner overlay */}
               {isUploading && (
-                <Loader2Icon className="size-3 animate-spin text-primary/60" />
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/20">
+                  <Loader2Icon className="size-4 animate-spin text-white" />
+                </div>
               )}
 
-              {/* Remove button */}
+              {/* Error retry overlay */}
+              {hasError && (
+                <button
+                  type="button"
+                  onClick={() => retryUpload(file.id)}
+                  className="absolute inset-0 flex items-center justify-center rounded-lg bg-destructive/10 transition-colors hover:bg-destructive/20"
+                  aria-label="再試行"
+                >
+                  <RotateCcwIcon className="size-4 text-destructive" />
+                </button>
+              )}
+
+              {/* Remove button — visible on hover */}
               <button
                 type="button"
                 onClick={() => attachments.remove(file.id)}
-                className="ml-0.5 rounded-full p-0.5 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="absolute -top-1.5 -right-1.5 hidden rounded-full bg-background border border-border p-0.5 text-muted-foreground shadow-sm transition-colors hover:bg-destructive/10 hover:text-destructive group-hover/att:block"
                 aria-label="削除"
               >
                 <XIcon className="size-3" />
@@ -151,12 +154,12 @@ function ChatSubmitButton({
   onStop: () => void;
 }) {
   const attachments = usePromptInputAttachments();
-  const { allUploaded } = useFileUpload(
-    attachments.files,
-    attachments.updateUrl,
-  );
   const isLoading = status === "submitted" || status === "streaming";
   const hasContent = !!inputText.trim() || attachments.files.length > 0;
+  // Check if all files are uploaded (non-blob URLs)
+  const allUploaded = attachments.files.every(
+    (f) => !f.url?.startsWith("blob:"),
+  );
 
   return (
     <PromptInputSubmit
@@ -290,7 +293,38 @@ export function ChatInput({
   onStop: () => void;
 }) {
   const [input, setInput] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCountRef = useRef(0);
   const isLoading = status === "submitted" || status === "streaming";
+
+  // Global drag enter/leave tracking for drop zone highlight
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes("Files")) {
+        dragCountRef.current++;
+        setIsDragging(true);
+      }
+    };
+    const onDragLeave = () => {
+      dragCountRef.current--;
+      if (dragCountRef.current <= 0) {
+        dragCountRef.current = 0;
+        setIsDragging(false);
+      }
+    };
+    const onDrop = () => {
+      dragCountRef.current = 0;
+      setIsDragging(false);
+    };
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   const handleSubmit = useCallback(
     ({ text, files }: { text: string; files: FileUIPart[] }) => {
@@ -326,7 +360,11 @@ export function ChatInput({
         onError={handleError}
         multiple
         globalDrop
-        className="transition-shadow duration-300 focus-within:glow-ring rounded-xl"
+        className={`transition-all duration-300 rounded-xl ${
+          isDragging
+            ? "ring-2 ring-primary/50 border-primary/40 bg-primary/5"
+            : "focus-within:glow-ring"
+        }`}
       >
         <AttachmentPreviewHeader />
         <PromptInputTextarea

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
@@ -24,8 +23,6 @@ import {
   UploadIcon,
   Loader2Icon,
   AlertCircleIcon,
-  SparklesIcon,
-  SaveIcon,
   ArrowLeftIcon,
   PencilIcon,
   CheckIcon,
@@ -164,12 +161,9 @@ export const KBDetailPage = memo(function KBDetailPage({
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // KB config editing
-  const [editingConfig, setEditingConfig] = useState(false);
+  // KB header name editing
   const [editingHeaderName, setEditingHeaderName] = useState(false);
   const [kbName, setKbName] = useState("");
-  const [kbTitle, setKbTitle] = useState("");
-  const [kbDescription, setKbDescription] = useState("");
   const syncedRef = useRef(false);
 
   // Fetch KB info
@@ -178,12 +172,10 @@ export const KBDetailPage = memo(function KBDetailPage({
     queryFn: () => fetchKB(slug),
   });
 
-  // Sync KB config into editing state
-  if (kb && !syncedRef.current && !editingConfig) {
+  // Sync KB name into editing state
+  if (kb && !syncedRef.current) {
     syncedRef.current = true;
     setKbName(kb.name);
-    setKbTitle(kb.title);
-    setKbDescription(kb.description);
   }
 
   // Fetch documents
@@ -211,46 +203,22 @@ export const KBDetailPage = memo(function KBDetailPage({
     ...documents,
   ];
 
-  // Save KB config
+  // Save KB name
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/kbs/${slug}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: kbName,
-          title: kbTitle,
-          description: kbDescription,
-        }),
+        body: JSON.stringify({ name: kbName }),
       });
       if (!res.ok) throw new Error("保存に失敗しました");
     },
     onSuccess: () => {
-      setEditingConfig(false);
       queryClient.invalidateQueries({ queryKey: ["kb", slug] });
       queryClient.invalidateQueries({ queryKey: ["kbs"] });
     },
     onError: (err) =>
       setError(err instanceof Error ? err.message : "保存に失敗しました"),
-  });
-
-  // Auto-generate title + description
-  const generateMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/kbs/${slug}/generate`, { method: "POST" });
-      if (!res.ok) throw new Error("自動生成に失敗しました");
-      return res.json() as Promise<{ title: string; description: string }>;
-    },
-    onSuccess: (data) => {
-      setKbTitle(data.title);
-      setKbDescription(data.description);
-      setEditingConfig(false);
-      syncedRef.current = false;
-      queryClient.invalidateQueries({ queryKey: ["kb", slug] });
-      queryClient.invalidateQueries({ queryKey: ["kbs"] });
-    },
-    onError: (err) =>
-      setError(err instanceof Error ? err.message : "自動生成に失敗しました"),
   });
 
   // Delete KB
@@ -354,9 +322,6 @@ export const KBDetailPage = memo(function KBDetailPage({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents", slug] });
-      syncedRef.current = false;
-      setKbTitle("");
-      setKbDescription("");
       queryClient.invalidateQueries({ queryKey: ["kb", slug] });
       queryClient.invalidateQueries({ queryKey: ["kbs"] });
     },
@@ -396,7 +361,7 @@ export const KBDetailPage = memo(function KBDetailPage({
       {/* Header */}
       <div className="shrink-0 border-b border-border px-6 py-5">
         <div className="mx-auto max-w-3xl">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => router.push("/documents")}
@@ -412,7 +377,6 @@ export const KBDetailPage = memo(function KBDetailPage({
                   onSubmit={(e) => {
                     e.preventDefault();
                     setEditingHeaderName(false);
-                    setEditingConfig(false);
                     saveMutation.mutate();
                   }}
                 >
@@ -493,79 +457,19 @@ export const KBDetailPage = memo(function KBDetailPage({
                 <UploadIcon className="size-4" />
                 アップロード
               </Button>
-            </div>
-          </div>
-
-          {/* KB config section */}
-          <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                AI がツール判断に使用する情報
-              </p>
-              <div className="flex items-center gap-1.5">
-                {editingConfig && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="gap-1.5 h-7 text-xs"
-                    onClick={() => saveMutation.mutate()}
-                    disabled={saveMutation.isPending}
-                  >
-                    {saveMutation.isPending ? (
-                      <Loader2Icon className="size-3 animate-spin" />
-                    ) : (
-                      <SaveIcon className="size-3" />
-                    )}
-                    保存
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 h-7 text-xs"
-                  onClick={() => generateMutation.mutate()}
-                  disabled={
-                    generateMutation.isPending || displayDocs.length === 0
-                  }
-                >
-                  {generateMutation.isPending ? (
-                    <Loader2Icon className="size-3 animate-spin" />
-                  ) : (
-                    <SparklesIcon className="size-3" />
-                  )}
-                  AI で自動生成
-                </Button>
-              </div>
-            </div>
-            <Input
-              placeholder="タイトル（例: 社内規定集）"
-              value={kbTitle}
-              onChange={(e) => {
-                setKbTitle(e.target.value);
-                setEditingConfig(true);
-              }}
-              className="h-8 text-sm"
-            />
-            <Textarea
-              placeholder="概要（例: 社内規定、就業規則、各種手続きガイドラインを含むドキュメント集）"
-              value={kbDescription}
-              onChange={(e) => {
-                setKbDescription(e.target.value);
-                setEditingConfig(true);
-              }}
-              className="min-h-[60px] resize-none text-sm"
-              rows={2}
-            />
-            <div className="flex justify-end">
               <Button
-                size="sm"
                 variant="outline"
-                className="gap-1.5 h-7 text-xs text-destructive hover:text-destructive"
+                size="sm"
+                className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => setShowDeleteKb(true)}
                 disabled={deleteKbMutation.isPending}
               >
-                <TrashIcon className="size-3" />
-                ナレッジベースを削除
+                {deleteKbMutation.isPending ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <TrashIcon className="size-3.5" />
+                )}
+                KB 削除
               </Button>
             </div>
           </div>

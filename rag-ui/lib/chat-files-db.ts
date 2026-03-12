@@ -108,11 +108,19 @@ export async function deleteChatFiles(
 /**
  * Find orphan files: uploaded over `maxAgeMinutes` ago but not referenced
  * in any chat_messages parts.
+ * Returns empty array if chat_messages table doesn't exist yet.
  */
 export async function getOrphanFiles(
   maxAgeMinutes = 60,
 ): Promise<ChatFileRow[]> {
   await ensureChatFilesTables();
+  // Check if chat_messages table exists (created lazily on first chat)
+  const tableCheck = await getPool().query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_name = 'chat_messages' LIMIT 1`,
+  );
+  if (tableCheck.rows.length === 0) return [];
+
   const res = await getPool().query(
     `SELECT cf.*
      FROM chat_files cf

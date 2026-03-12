@@ -35,6 +35,9 @@ RUN chown bun:bun .next
 COPY --from=builder --chown=bun:bun /app/.next/standalone ./
 COPY --from=builder --chown=bun:bun /app/.next/static ./.next/static
 
+# Chat file uploads directory (volume mount point)
+RUN mkdir -p /app/data/chat-files && chown -R bun:bun /app/data
+
 USER bun
 EXPOSE 3000
 CMD ["bun", "server.js"]

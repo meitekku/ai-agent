@@ -101,8 +101,10 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/chat-files-db.ts` | 同上 | 一致 | chat_files テーブル CRUD |
 | `rag-ui/app/api/files/upload/route.ts` | 同上 | 一致 | POST ファイルアップロード |
 | `rag-ui/app/api/files/[id]/route.ts` | 同上 | 一致 | GET ファイル配信 |
-| `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック |
-| `rag-ui/components/image-lightbox.tsx` | 同上 | 一致 | 画像拡大表示オーバーレイ |
+| `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック（リトライ対応） |
+| `rag-ui/components/image-lightbox.tsx` | 同上 | 一致 | shadcn Dialog ベース画像拡大表示 |
+| `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
+| `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
 ### 同期コマンド
@@ -144,8 +146,11 @@ cp ~/Desktop/uiForAI/rag-ui/lib/semantic-cache.ts ~/Desktop/uiForAI/rag-deploy/r
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/file-storage.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/file-storage.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-files-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-files-db.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/file-cleanup.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/file-cleanup.ts
 # ファイル API
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/files ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/files
+# instrumentation
+cp ~/Desktop/uiForAI/rag-ui/instrumentation.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/instrumentation.ts
 
 # lightrag-service の変更を rag-deploy に反映（config.py は除外）
 cp ~/Desktop/ai/rag-system/lightrag-service/app/rag.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/rag.py
@@ -230,7 +235,7 @@ docker compose --profile prod build --no-cache
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages, chat_files）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## 踩坑記録

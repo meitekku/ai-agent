@@ -161,6 +161,21 @@ export function useFileUpload(
     });
   }, [files]);
 
+  const retryUpload = useCallback(
+    (fileId: string) => {
+      const file = files.find((f) => f.id === fileId);
+      if (!file) return;
+      uploadingRef.current.delete(fileId);
+      setUploadState((prev) => {
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+      uploadFile(file);
+    },
+    [files, uploadFile],
+  );
+
   const allUploaded =
     files.length === 0 ||
     files.every((f) => {
@@ -169,5 +184,5 @@ export function useFileUpload(
       return state?.progress === 100;
     });
 
-  return { uploadState, allUploaded };
+  return { uploadState, allUploaded, retryUpload };
 }

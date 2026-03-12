@@ -18,8 +18,35 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAG Chat",
-  description: "ナレッジベース チャット",
+  title: {
+    default: "Stella",
+    template: "%s | Stella",
+  },
+  description:
+    "ドキュメントをアップロードして知識グラフを構築し、AI とチャットで対話。ナレッジベース検索・ウェブ検索・マルチモーダル対応の統合 AI アシスタント。",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "Stella",
+    description:
+      "ドキュメントから知識グラフを構築し、AI と対話するナレッジベースチャット",
+    type: "website",
+    locale: "ja_JP",
+    siteName: "Stella",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Stella",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default async function RootLayout({

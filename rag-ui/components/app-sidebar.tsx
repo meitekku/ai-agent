@@ -20,11 +20,11 @@ import {
   MessageSquareIcon,
   FileTextIcon,
   SparklesIcon,
-  BotIcon,
   XIcon,
   Trash2Icon,
   PlusIcon,
 } from "lucide-react";
+import { AppLogo } from "@/components/icons/app-logo";
 
 // ---------------------------------------------------------------------------
 // Persist sidebar state to cookie + DB (fire-and-forget)
@@ -134,10 +134,10 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
       {/* Header */}
       <div className="flex h-13 shrink-0 items-center gap-2.5 px-4">
         <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
-          <BotIcon className="size-3.5 text-primary" />
+          <AppLogo className="size-4 text-foreground" />
         </div>
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
-          RAG Chat
+          Stella
         </h2>
         {onClose && (
           <button
