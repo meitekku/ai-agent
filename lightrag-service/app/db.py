@@ -186,3 +186,12 @@ async def get_processing_jobs() -> list[dict]:
         "SELECT doc_id, name, kb_slug, track_id FROM ingest_jobs WHERE status = 'processing'"
     )
     return [dict(r) for r in rows]
+
+
+async def get_stale_jobs() -> list[dict]:
+    """Find all non-terminal jobs (anything not processed/failed)."""
+    rows = await _pool.fetch(
+        "SELECT doc_id, name, kb_slug, track_id, status FROM ingest_jobs "
+        "WHERE status NOT IN ('processed', 'failed')"
+    )
+    return [dict(r) for r in rows]

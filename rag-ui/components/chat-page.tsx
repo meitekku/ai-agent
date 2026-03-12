@@ -17,11 +17,13 @@ import { SlideViewer } from "@/components/slide-viewer";
 import { VisualSlideViewer } from "@/components/visual-slide-viewer";
 import { HtmlSlideViewer } from "@/components/html-slide-viewer";
 import { SlideStudio } from "@/components/slide-studio";
+import { SlidePanel } from "@/components/slide-panel";
 import type { SlideDeck } from "@/lib/slide-types";
 import { BookOpenIcon, ZapIcon, AlertCircleIcon } from "lucide-react";
 import { StepIndicator } from "@/components/step-indicator";
 import { useChatSettingsStore } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
+import { useSlidePanelStore } from "@/lib/slide-panel-store";
 import { useChatTreeStore } from "@/lib/chat-tree";
 import type { MessageRow, ConversationRow } from "@/lib/chat-db";
 
@@ -326,6 +328,10 @@ export function ChatPage({
   // --- Simple SlideViewer (existing) ---
   const openSlideViewer = useSlideStore((s) => s.openSlideViewer);
 
+  // --- SlidePanel (right panel for HTML slides) ---
+  const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
+  const slidePanelOpen = useSlidePanelStore((s) => s.open);
+
   // --- VisualSlideViewer state ---
   const [visualOpen, setVisualOpen] = useState(false);
   const [visualQuestion, setVisualQuestion] = useState("");
@@ -369,9 +375,7 @@ export function ChatPage({
           setVisualOpen(true);
           break;
         case "html":
-          setHtmlSlideQuestion(question);
-          setHtmlSlideAnswer(answerText);
-          setHtmlSlideOpen(true);
+          openSlidePanel(question, answerText);
           break;
         case "studio": {
           setStudioBusy(true);
@@ -404,7 +408,7 @@ export function ChatPage({
         }
       }
     },
-    [getQuestion, openSlideViewer],
+    [getQuestion, openSlideViewer, openSlidePanel],
   );
 
   const handleStudioRefine = useCallback(
@@ -442,8 +446,8 @@ export function ChatPage({
   );
 
   return (
-    <>
-      <Conversation className="flex-1">
+    <div className="flex flex-1 overflow-hidden">
+      <Conversation className="flex-1 min-w-0">
         <ConversationContent className="min-h-full !gap-0 !p-0">
           {messages.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center bg-radial-glow">
@@ -512,7 +516,10 @@ export function ChatPage({
         <ConversationScrollButton />
       </Conversation>
 
-      {/* Slide Viewers */}
+      {/* Slide Panel (right side) */}
+      {slidePanelOpen && <SlidePanel />}
+
+      {/* Modal Slide Viewers (non-html modes) */}
       <SlideViewer />
       <VisualSlideViewer
         open={visualOpen}
@@ -535,6 +542,6 @@ export function ChatPage({
         onDeckChange={setStudioDeck}
         onRequestRefine={handleStudioRefine}
       />
-    </>
+    </div>
   );
 }

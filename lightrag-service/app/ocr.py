@@ -32,7 +32,7 @@ async def _ocr_pdf_gemini(file_bytes: bytes, filename: str) -> list[dict]:
         pix = page.get_pixmap(dpi=200)
         img_bytes = pix.tobytes("png")
 
-        resp = client.models.generate_content(
+        resp = await client.aio.models.generate_content(
             model=config.GEMINI_MODEL,
             contents=[
                 types.Part.from_bytes(data=img_bytes, mime_type="image/png"),

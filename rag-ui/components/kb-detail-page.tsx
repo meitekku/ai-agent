@@ -19,7 +19,6 @@ import {
 import {
   FileTextIcon,
   TrashIcon,
-  Trash2Icon,
   UploadIcon,
   Loader2Icon,
   AlertCircleIcon,
@@ -156,7 +155,6 @@ export const KBDetailPage = memo(function KBDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
-  const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [showDeleteKb, setShowDeleteKb] = useState(false);
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -192,14 +190,17 @@ export const KBDetailPage = memo(function KBDetailPage({
     },
   });
 
-  // Merge with uploading placeholders
+  // Merge with uploading placeholders (dedup: skip if backend already has it)
+  const backendNames = new Set(documents.map((d) => d.name));
   const displayDocs: DocumentInfo[] = [
-    ...uploadingNames.map((name, i) => ({
-      id: `uploading-${i}`,
-      name,
-      page_count: 0,
-      status: "uploading" as const,
-    })),
+    ...uploadingNames
+      .filter((name) => !backendNames.has(name))
+      .map((name, i) => ({
+        id: `uploading-${i}`,
+        name,
+        page_count: 0,
+        status: "uploading" as const,
+      })),
     ...documents,
   ];
 
@@ -221,9 +222,14 @@ export const KBDetailPage = memo(function KBDetailPage({
       setError(err instanceof Error ? err.message : "保存に失敗しました"),
   });
 
-  // Delete KB
+  // Delete KB (deletes all documents first, then the KB itself)
   const deleteKbMutation = useMutation({
     mutationFn: async () => {
+      // 1. Delete all documents (LightRAG knowledge graph + vectors)
+      await fetch(`/api/documents?kb=${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+      });
+      // 2. Delete the KB record
       const res = await fetch(`/api/kbs/${slug}`, { method: "DELETE" });
       if (!res.ok) throw new Error("削除に失敗しました");
     },
@@ -269,7 +275,7 @@ export const KBDetailPage = memo(function KBDetailPage({
         }
       });
 
-      runWithConcurrency(tasks, 2).then(() => {
+      runWithConcurrency(tasks, tasks.length).then(() => {
         fetch(`/api/kbs/${slug}/generate`, { method: "POST" })
           .then(() => {
             syncedRef.current = false;
@@ -305,28 +311,6 @@ export const KBDetailPage = memo(function KBDetailPage({
     onError: (err) =>
       setError(err instanceof Error ? err.message : "削除に失敗しました"),
     onSettled: () => setDeletingId(null),
-  });
-
-  // Delete all documents
-  const deleteAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/documents?kb=${encodeURIComponent(slug)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Delete all failed");
-      await fetch(`/api/kbs/${slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "", description: "" }),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["documents", slug] });
-      queryClient.invalidateQueries({ queryKey: ["kb", slug] });
-      queryClient.invalidateQueries({ queryKey: ["kbs"] });
-    },
-    onError: (err) =>
-      setError(err instanceof Error ? err.message : "全削除に失敗しました"),
   });
 
   const confirmDelete = useCallback(
@@ -426,22 +410,6 @@ export const KBDetailPage = memo(function KBDetailPage({
               )}
             </div>
             <div className="flex items-center gap-2">
-              {displayDocs.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => setShowDeleteAll(true)}
-                  disabled={deleteAllMutation.isPending}
-                >
-                  {deleteAllMutation.isPending ? (
-                    <Loader2Icon className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2Icon className="size-3.5" />
-                  )}
-                  全削除
-                </Button>
-              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -591,32 +559,6 @@ export const KBDetailPage = memo(function KBDetailPage({
               onClick={() => deleteTarget && confirmDelete(deleteTarget)}
             >
               削除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete all documents confirmation */}
-      <AlertDialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>全ドキュメントを削除</AlertDialogTitle>
-            <AlertDialogDescription>
-              {displayDocs.length}{" "}
-              件のドキュメントを全て削除しますか？ナレッジグラフとベクトルデータも完全に削除されます。この操作は取り消せません。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setShowDeleteAll(false);
-                setError(null);
-                deleteAllMutation.mutate();
-              }}
-            >
-              全て削除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

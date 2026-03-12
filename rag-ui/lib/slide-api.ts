@@ -91,6 +91,14 @@ export async function deleteSlideDeck(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete slide deck");
 }
 
+export async function duplicateSlideDeck(id: number): Promise<{ id: number }> {
+  const res = await fetch(`/api/history/slides/${id}/duplicate`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to duplicate slide deck");
+  return res.json();
+}
+
 // ============================================================
 // Slide Template API
 // ============================================================

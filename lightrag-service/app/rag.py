@@ -118,7 +118,7 @@ async def get_rag(kb_slug: str) -> LightRAG:
         default_llm_timeout=3600 if config.LLM_PROVIDER == "local" else 120,
         addon_params={"language": "Japanese"},
         # Use kb_slug as workspace to isolate PG table data per KB
-        namespace=kb_slug,
+        workspace=kb_slug,
     )
     await rag.initialize_storages()
 

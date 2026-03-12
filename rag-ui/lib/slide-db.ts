@@ -204,7 +204,8 @@ export async function getSlideDeckHistory(
   await ensureSlideTables();
   const res = await getPool().query(
     `SELECT d.id, d.title, d.question, d.style_options, d.created_at, d.updated_at,
-            COUNT(p.id)::int as slide_count
+            COUNT(p.id)::int as slide_count,
+            (SELECT p2.html FROM slide_pages p2 WHERE p2.deck_id = d.id ORDER BY p2.slide_index LIMIT 1) as first_slide_html
      FROM slide_decks d
      LEFT JOIN slide_pages p ON p.deck_id = d.id
      GROUP BY d.id
@@ -261,6 +262,36 @@ export async function renameSlideDeck(
 export async function deleteSlideDeck(deckId: number): Promise<void> {
   await ensureSlideTables();
   await getPool().query(`DELETE FROM slide_decks WHERE id = $1`, [deckId]);
+}
+
+export async function duplicateSlideDeck(deckId: number): Promise<number> {
+  await ensureSlideTables();
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      `INSERT INTO slide_decks (title, question, answer, plan_md, style_options)
+       SELECT 'コピー - ' || title, question, answer, plan_md, style_options
+       FROM slide_decks WHERE id = $1
+       RETURNING id`,
+      [deckId],
+    );
+    if (res.rows.length === 0) throw new Error("Deck not found");
+    const newId = res.rows[0].id as number;
+    await client.query(
+      `INSERT INTO slide_pages (deck_id, slide_index, title, slide_type, html, plan_text)
+       SELECT $1, slide_index, title, slide_type, html, plan_text
+       FROM slide_pages WHERE deck_id = $2 ORDER BY slide_index`,
+      [newId, deckId],
+    );
+    await client.query("COMMIT");
+    return newId;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ============================================================

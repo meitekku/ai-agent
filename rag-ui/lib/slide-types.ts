@@ -102,6 +102,7 @@ export type SlideHistoryItem = {
   question?: string;
   slide_count: number;
   style_options?: Record<string, string>;
+  first_slide_html?: string;
   created_at: string;
   updated_at: string;
 };
