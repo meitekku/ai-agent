@@ -469,7 +469,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                 ) : (
                   <TrashIcon className="size-3.5" />
                 )}
-                KB 削除
+                ナレッジベースを削除
               </Button>
             </div>
           </div>
