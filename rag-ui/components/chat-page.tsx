@@ -172,12 +172,25 @@ export function ChatPage({
 
     // Persist to DB
     const leafId = toSave[toSave.length - 1].id;
+    const isFirstExchange = known === 0;
     fetch(`/api/history/chats/${convId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: toSave, active_leaf_id: leafId }),
     })
-      .then(() => queryClient.invalidateQueries({ queryKey: ["chat-history"] }))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+        // Generate AI title after first exchange
+        if (isFirstExchange) {
+          fetch(`/api/history/chats/${convId}/generate-title`, {
+            method: "POST",
+          })
+            .then(() =>
+              queryClient.invalidateQueries({ queryKey: ["chat-history"] }),
+            )
+            .catch(() => {});
+        }
+      })
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
