@@ -9,6 +9,7 @@ import {
   FileTextIcon,
   SparklesIcon,
   MessageSquareIcon,
+  NetworkIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useChatSettingsStore } from "@/lib/store";
@@ -36,6 +37,11 @@ const VIEW_CONFIG: Record<
     icon: SparklesIcon,
     title: "スキル",
     subtitle: "AI の回答をカスタマイズ",
+  },
+  "/graph": {
+    icon: NetworkIcon,
+    title: "ナレッジグラフ",
+    subtitle: "エンティティ関係の3D可視化",
   },
 };
 

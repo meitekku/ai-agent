@@ -216,6 +216,50 @@ export async function deleteDocument(docId: string, kb: string): Promise<void> {
   if (!res.ok) throw buildError("Delete failed", res.status, await res.text());
 }
 
+// ---------------------------------------------------------------------------
+// Graph API
+// ---------------------------------------------------------------------------
+
+export interface GraphNode {
+  id: string;
+  entity_type: string;
+  description: string;
+  community: number;
+  degree: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  description: string;
+  weight: number;
+}
+
+export interface GraphStats {
+  node_count: number;
+  edge_count: number;
+  community_count: number;
+  is_truncated: boolean;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  links: GraphEdge[];
+  stats: GraphStats;
+}
+
+export async function getGraph(
+  kb: string,
+  maxNodes = 2000,
+): Promise<GraphData> {
+  const res = await fetchWithTimeout(
+    `${LIGHTRAG_URL}/graph?kb=${encodeURIComponent(kb)}&max_nodes=${maxNodes}`,
+  );
+  if (!res.ok)
+    throw buildError("Get graph failed", res.status, await res.text());
+  return res.json();
+}
+
 export async function deleteAllDocuments(
   kb: string,
 ): Promise<{ deleted: number }> {

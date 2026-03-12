@@ -19,9 +19,11 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Edit3Icon,
-  MaximizeIcon,
   RefreshCwIcon,
   FileDownIcon,
+  SquareIcon,
+  AlertTriangleIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 
 // ============================================================
@@ -30,6 +32,9 @@ import {
 
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
+const PLAN_TIMEOUT_MS = 60_000;
+const RENDER_TIMEOUT_MS = 90_000;
+const MAX_RETRIES = 3;
 
 const SLIDE_CDN_HEAD = `<meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,6 +52,14 @@ ${html}
 </body></html>`;
 }
 
+function failedSlideHtml(title: string, errorMsg: string) {
+  return `<div style="width:1280px;height:720px;display:flex;align-items:center;justify-content:center;background:#1e293b;color:#94a3b8;font-family:'Noto Sans JP',sans-serif;flex-direction:column;gap:16px;">
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+<p style="font-size:20px;color:#e2e8f0;margin:0;">${title}</p>
+<p style="font-size:14px;color:#64748b;margin:0;max-width:600px;text-align:center;">${errorMsg}</p>
+</div>`;
+}
+
 // ============================================================
 // Types
 // ============================================================
@@ -62,6 +75,7 @@ type GeneratedSlide = {
   title: string;
   html: string;
   type: string;
+  failed?: boolean;
 };
 
 type Phase =
@@ -71,6 +85,81 @@ type Phase =
   | "done"
   | "error"
   | "loading";
+
+// ============================================================
+// fetchWithRetry — exponential backoff for 429/503
+// ============================================================
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Combine user abort signal with timeout
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+    const userSignal = options.signal;
+
+    // If user already aborted, throw immediately
+    if (userSignal?.aborted) {
+      clearTimeout(timeoutId);
+      throw new DOMException("Aborted", "AbortError");
+    }
+
+    // Listen for user abort to also abort timeout controller
+    const onUserAbort = () => timeoutController.abort();
+    userSignal?.addEventListener("abort", onUserAbort, { once: true });
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: timeoutController.signal,
+      });
+
+      clearTimeout(timeoutId);
+      userSignal?.removeEventListener("abort", onUserAbort);
+
+      // Retry on rate limit or server overload
+      if ((res.status === 429 || res.status === 503) && attempt < MAX_RETRIES) {
+        const delay = Math.min(1000 * 2 ** attempt, 16000);
+        console.warn(
+          `[slide-panel] ${res.status} on ${url}, retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      return res;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      userSignal?.removeEventListener("abort", onUserAbort);
+
+      // User abort — don't retry
+      if (userSignal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+
+      // Timeout — treat as retryable on first attempts
+      if (
+        e instanceof DOMException &&
+        e.name === "AbortError" &&
+        attempt < MAX_RETRIES
+      ) {
+        const delay = Math.min(1000 * 2 ** attempt, 16000);
+        console.warn(
+          `[slide-panel] timeout on ${url}, retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      throw e;
+    }
+  }
+
+  throw new Error("Max retries exceeded");
+}
 
 // ============================================================
 // parsePlanMd (same logic as html-slide-viewer)
@@ -170,6 +259,8 @@ export function SlidePanel() {
   const [scale, setScale] = useState(0.5);
   const initiatedRef = useRef(false);
 
+  const failedCount = generatedSlides.filter((s) => s.failed).length;
+
   // ============================================================
   // Scale calculation
   // ============================================================
@@ -192,6 +283,24 @@ export function SlidePanel() {
   }, [phase, updateScale]);
 
   // ============================================================
+  // Cancel handler
+  // ============================================================
+
+  const handleCancel = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    // If we have partial results, show them
+    if (generatedSlides.length > 0) {
+      setPhase("done");
+      setActiveIndex(0);
+    } else {
+      closePanel();
+    }
+  }, [generatedSlides.length, closePanel]);
+
+  // ============================================================
   // Init: load deck from DB or start plan generation
   // ============================================================
 
@@ -200,7 +309,6 @@ export function SlidePanel() {
     initiatedRef.current = true;
 
     if (deckId) {
-      // Load from DB
       setPhase("loading");
       fetchSlideDeckDetail(deckId)
         .then((detail) => {
@@ -227,7 +335,6 @@ export function SlidePanel() {
           setPhase("error");
         });
     } else if (question && answer) {
-      // Start planning
       fetchPlanFromApi();
     }
   }, [open, deckId, question, answer]);
@@ -258,19 +365,27 @@ export function SlidePanel() {
   }, [open]);
 
   // ============================================================
-  // Phase 1: Plan
+  // Phase 1: Plan (with retry + timeout)
   // ============================================================
 
   const fetchPlanFromApi = useCallback(async () => {
     setPhase("planning");
     setError(null);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const res = await fetch("/api/slides/htmlslide/plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, answer }),
-      });
+      const res = await fetchWithRetry(
+        "/api/slides/htmlslide/plan",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, answer }),
+          signal: controller.signal,
+        },
+        PLAN_TIMEOUT_MS,
+      );
 
       if (!res.ok) {
         const text = await res.text();
@@ -292,83 +407,155 @@ export function SlidePanel() {
       setSlideSections(parsed.slides);
       setPhase("plan_ready");
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Failed to generate plan");
-      setPhase("error");
-    }
-  }, [question, answer]);
-
-  // ============================================================
-  // Phase 2: Render slides
-  // ============================================================
-
-  const startGeneration = useCallback(async () => {
-    if (slideSections.length === 0) return;
-
-    setPhase("generating");
-    setError(null);
-    setGeneratedSlides([]);
-    setGeneratingCompleted(0);
-    setGeneratingTotal(slideSections.length);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const slides: GeneratedSlide[] = [];
-
-      for (let i = 0; i < slideSections.length; i++) {
-        if (controller.signal.aborted) return;
-
-        const section = slideSections[i];
-        const res = await fetch("/api/slides/htmlslide/render", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slide_plan_section: section.plan_text,
-            slide_title: section.title,
-            slide_index: i,
-            total_slides: slideSections.length,
-            deck_title: deckTitle,
-            slide_type: section.type,
-          }),
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          let detail = `HTTP ${res.status}`;
-          try {
-            detail = JSON.parse(text).detail || detail;
-          } catch {
-            /* ignore */
-          }
-          throw new Error(`Slide ${i + 1}: ${detail}`);
-        }
-
-        const data = await res.json();
-        slides.push({
-          index: i,
-          title: section.title,
-          html: data.html || "",
-          type: section.type,
-        });
-        setGeneratedSlides([...slides]);
-        setGeneratingCompleted(i + 1);
-      }
-
-      setPhase("done");
-      setActiveIndex(0);
-
-      // Auto-save
-      autoSave(slides);
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      setError(e instanceof Error ? e.message : "Generation failed");
       setPhase("error");
     } finally {
       abortRef.current = null;
     }
-  }, [slideSections, deckTitle]);
+  }, [question, answer]);
+
+  // ============================================================
+  // Phase 2: Render slides (per-slide error tolerance + retry)
+  // ============================================================
+
+  const renderSlides = useCallback(
+    async (
+      sections: SlideSection[],
+      title: string,
+      existingSlides?: GeneratedSlide[],
+    ) => {
+      if (sections.length === 0) return;
+
+      setPhase("generating");
+      setError(null);
+
+      // If retrying failed slides, keep existing successful ones
+      const slides: GeneratedSlide[] = existingSlides
+        ? [...existingSlides]
+        : [];
+      const startCount = slides.filter((s) => !s.failed).length;
+      setGeneratedSlides([...slides]);
+      setGeneratingCompleted(startCount);
+      setGeneratingTotal(sections.length);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      let newFailCount = 0;
+
+      try {
+        for (let i = 0; i < sections.length; i++) {
+          if (controller.signal.aborted) return;
+
+          // Skip already-successful slides (for retry mode)
+          if (slides[i] && !slides[i].failed) continue;
+
+          const section = sections[i];
+
+          try {
+            const res = await fetchWithRetry(
+              "/api/slides/htmlslide/render",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  slide_plan_section: section.plan_text,
+                  slide_title: section.title,
+                  slide_index: i,
+                  total_slides: sections.length,
+                  deck_title: title,
+                  slide_type: section.type,
+                }),
+                signal: controller.signal,
+              },
+              RENDER_TIMEOUT_MS,
+            );
+
+            if (!res.ok) {
+              const text = await res.text();
+              let detail = `HTTP ${res.status}`;
+              try {
+                detail = JSON.parse(text).detail || detail;
+              } catch {
+                /* ignore */
+              }
+              throw new Error(detail);
+            }
+
+            const data = await res.json();
+            slides[i] = {
+              index: i,
+              title: section.title,
+              html: data.html || "",
+              type: section.type,
+            };
+          } catch (e) {
+            // User abort — stop immediately
+            if (e instanceof DOMException && e.name === "AbortError") return;
+
+            // Per-slide failure — use fallback, continue
+            const errMsg =
+              e instanceof Error ? e.message : "Generation failed";
+            console.error(`[slide-panel] Slide ${i + 1} failed:`, errMsg);
+            slides[i] = {
+              index: i,
+              title: section.title,
+              html: failedSlideHtml(section.title, errMsg),
+              type: section.type,
+              failed: true,
+            };
+            newFailCount++;
+          }
+
+          setGeneratedSlides([...slides]);
+          setGeneratingCompleted(
+            slides.filter((s) => s && !s.failed).length + newFailCount,
+          );
+        }
+
+        setPhase("done");
+        setActiveIndex(0);
+
+        // Auto-save (only successful slides)
+        const successSlides = slides.filter((s) => !s.failed);
+        if (successSlides.length > 0) {
+          autoSave(slides);
+        }
+
+        if (newFailCount > 0) {
+          setError(
+            `${newFailCount}枚のスライド生成に失敗しました。再試行できます。`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+
+        // If we have any slides, show partial results
+        if (slides.some((s) => s && !s.failed)) {
+          setPhase("done");
+          setActiveIndex(0);
+          setError(e instanceof Error ? e.message : "Generation failed");
+        } else {
+          setError(e instanceof Error ? e.message : "Generation failed");
+          setPhase("error");
+        }
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const startGeneration = useCallback(() => {
+    setGeneratedSlides([]);
+    renderSlides(slideSections, deckTitle);
+  }, [slideSections, deckTitle, renderSlides]);
+
+  // Retry only failed slides
+  const retryFailed = useCallback(() => {
+    renderSlides(slideSections, deckTitle, generatedSlides);
+  }, [slideSections, deckTitle, generatedSlides, renderSlides]);
 
   // ============================================================
   // Auto-save after generation
@@ -377,13 +564,17 @@ export function SlidePanel() {
   const autoSave = useCallback(
     async (slides: GeneratedSlide[]) => {
       try {
-        const slidesData = slides.map((s, i) => ({
-          slide_index: i,
-          title: s.title,
-          slide_type: s.type,
-          html: s.html,
-          plan_text: slideSections[i]?.plan_text,
-        }));
+        const slidesData = slides
+          .filter((s) => !s.failed)
+          .map((s, i) => ({
+            slide_index: i,
+            title: s.title,
+            slide_type: s.type,
+            html: s.html,
+            plan_text: slideSections[s.index]?.plan_text,
+          }));
+
+        if (slidesData.length === 0) return;
 
         const result = await saveSlideDeck({
           title: deckTitle || question,
@@ -410,13 +601,15 @@ export function SlidePanel() {
     setSaving(true);
 
     try {
-      const slidesData = generatedSlides.map((s, i) => ({
-        slide_index: i,
-        title: s.title,
-        slide_type: s.type,
-        html: s.html,
-        plan_text: slideSections[i]?.plan_text,
-      }));
+      const slidesData = generatedSlides
+        .filter((s) => !s.failed)
+        .map((s, i) => ({
+          slide_index: i,
+          title: s.title,
+          slide_type: s.type,
+          html: s.html,
+          plan_text: slideSections[s.index]?.plan_text,
+        }));
 
       if (currentDeckId) {
         await updateSlideDeck(currentDeckId, { slides: slidesData });
@@ -436,22 +629,30 @@ export function SlidePanel() {
     } finally {
       setSaving(false);
     }
-  }, [generatedSlides, currentDeckId, deckTitle, question, answer, planMd, slideSections]);
+  }, [
+    generatedSlides,
+    currentDeckId,
+    deckTitle,
+    question,
+    answer,
+    planMd,
+    slideSections,
+  ]);
 
   // ============================================================
   // PPTX Export
   // ============================================================
 
   const handleExport = useCallback(async () => {
-    if (generatedSlides.length === 0) return;
+    const validSlides = generatedSlides.filter((s) => !s.failed);
+    if (validSlides.length === 0) return;
     setExporting(true);
 
     try {
       const html2canvas = (await import("html2canvas")).default;
       const pngs: string[] = [];
 
-      for (let i = 0; i < generatedSlides.length; i++) {
-        // Render slide in hidden iframe, capture as PNG
+      for (let i = 0; i < validSlides.length; i++) {
         const container = document.createElement("div");
         container.style.cssText =
           "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
@@ -460,7 +661,7 @@ export function SlidePanel() {
         const iframe = document.createElement("iframe");
         iframe.style.cssText = "width:1280px;height:720px;border:none;";
         container.appendChild(iframe);
-        iframe.srcdoc = slideSrcDoc(generatedSlides[i].html);
+        iframe.srcdoc = slideSrcDoc(validSlides[i].html);
 
         await new Promise<void>((resolve) => {
           iframe.onload = () => resolve();
@@ -486,10 +687,10 @@ export function SlidePanel() {
           const styleProps = [
             "display", "position", "top", "right", "bottom", "left",
             "width", "height", "margin", "padding", "border", "border-radius",
-            "background", "background-color", "color", "font-size", "font-weight",
-            "font-family", "line-height", "text-align", "flex-direction",
-            "align-items", "justify-content", "gap", "overflow", "opacity",
-            "box-shadow", "transform",
+            "background", "background-color", "color", "font-size",
+            "font-weight", "font-family", "line-height", "text-align",
+            "flex-direction", "align-items", "justify-content", "gap",
+            "overflow", "opacity", "box-shadow", "transform",
           ];
           for (let j = 0; j < sourceEls.length && j < cloneEls.length; j++) {
             const computed = iframeWin.getComputedStyle(sourceEls[j]);
@@ -511,7 +712,6 @@ export function SlidePanel() {
           pngs.push(canvas.toDataURL("image/png"));
           document.body.removeChild(wrapper);
         } catch {
-          // Fallback: simple colored slide
           const canvas = document.createElement("canvas");
           canvas.width = 1280;
           canvas.height = 720;
@@ -522,13 +722,12 @@ export function SlidePanel() {
           ctx.font = "bold 40px sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(generatedSlides[i].title || "Slide", 640, 360);
+          ctx.fillText(validSlides[i].title || "Slide", 640, 360);
           pngs.push(canvas.toDataURL("image/png"));
         }
         document.body.removeChild(container);
       }
 
-      // Send PNGs to PPTX API
       const res = await fetch("/api/slides/pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -557,7 +756,8 @@ export function SlidePanel() {
   // ============================================================
 
   const handlePdfExport = useCallback(async () => {
-    if (generatedSlides.length === 0) return;
+    const validSlides = generatedSlides.filter((s) => !s.failed);
+    if (validSlides.length === 0) return;
     setExporting(true);
 
     try {
@@ -571,7 +771,7 @@ export function SlidePanel() {
         format: [SLIDE_W_MM, SLIDE_H_MM],
       });
 
-      for (let i = 0; i < generatedSlides.length; i++) {
+      for (let i = 0; i < validSlides.length; i++) {
         const container = document.createElement("div");
         container.style.cssText =
           "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
@@ -580,7 +780,7 @@ export function SlidePanel() {
         const iframe = document.createElement("iframe");
         iframe.style.cssText = "width:1280px;height:720px;border:none;";
         container.appendChild(iframe);
-        iframe.srcdoc = slideSrcDoc(generatedSlides[i].html);
+        iframe.srcdoc = slideSrcDoc(validSlides[i].html);
 
         await new Promise<void>((resolve) => {
           iframe.onload = () => resolve();
@@ -646,7 +846,6 @@ export function SlidePanel() {
     if (phase !== "done" || !open) return;
 
     const handleKey = (e: KeyboardEvent) => {
-      // Don't capture when editing
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -708,7 +907,6 @@ export function SlidePanel() {
     };
   }, [editing, phase, activeIndex]);
 
-  // Sync edits back to generatedSlides
   const syncEdit = useCallback(() => {
     const container = slideContainerRef.current;
     if (!container || !editing) return;
@@ -733,6 +931,7 @@ export function SlidePanel() {
   // ============================================================
 
   const activeSlide = generatedSlides[activeIndex];
+  const isWorking = phase === "planning" || phase === "generating";
 
   return (
     <>
@@ -751,8 +950,30 @@ export function SlidePanel() {
             {deckTitle || "スライド"}
           </h2>
 
+          {/* Cancel button during work */}
+          {isWorking && (
+            <button
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              title="中止"
+            >
+              <SquareIcon className="size-3" />
+              中止
+            </button>
+          )}
+
           {phase === "done" && (
             <div className="flex items-center gap-1">
+              {failedCount > 0 && (
+                <button
+                  onClick={retryFailed}
+                  className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
+                  title="失敗したスライドを再試行"
+                >
+                  <RotateCcwIcon className="size-3" />
+                  {failedCount}枚再試行
+                </button>
+              )}
               <button
                 onClick={() => setFullscreen(true)}
                 className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
@@ -884,7 +1105,7 @@ export function SlidePanel() {
                   <span className="text-muted-foreground">
                     スライド生成中{" "}
                     <span className="font-medium text-foreground">
-                      {generatingCompleted}/{generatingTotal}
+                      {generatedSlides.length}/{generatingTotal}
                     </span>
                   </span>
                 </div>
@@ -892,7 +1113,7 @@ export function SlidePanel() {
                   <div
                     className="h-full rounded-full bg-primary transition-all duration-300"
                     style={{
-                      width: `${generatingTotal ? (generatingCompleted / generatingTotal) * 100 : 0}%`,
+                      width: `${generatingTotal ? (generatedSlides.length / generatingTotal) * 100 : 0}%`,
                     }}
                   />
                 </div>
@@ -904,26 +1125,41 @@ export function SlidePanel() {
                     return (
                       <div
                         key={i}
-                        className="relative aspect-video rounded-md border border-border/60 overflow-hidden bg-muted/30"
+                        className={cn(
+                          "relative aspect-video rounded-md border overflow-hidden bg-muted/30",
+                          slide?.failed
+                            ? "border-amber-500/40"
+                            : "border-border/60",
+                        )}
                       >
                         {slide ? (
-                          <iframe
-                            srcDoc={slideSrcDoc(slide.html)}
-                            className="pointer-events-none"
-                            style={{
-                              width: SLIDE_W,
-                              height: SLIDE_H,
-                              transform: `scale(${240 / SLIDE_W})`,
-                              transformOrigin: "top left",
-                            }}
-                            tabIndex={-1}
-                          />
+                          <>
+                            <iframe
+                              srcDoc={slideSrcDoc(slide.html)}
+                              className="pointer-events-none"
+                              style={{
+                                width: SLIDE_W,
+                                height: SLIDE_H,
+                                transform: `scale(${240 / SLIDE_W})`,
+                                transformOrigin: "top left",
+                              }}
+                              tabIndex={-1}
+                            />
+                            {slide.failed && (
+                              <div className="absolute top-1 right-1">
+                                <AlertTriangleIcon className="size-3.5 text-amber-500" />
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground/50">
-                            {i === generatingCompleted ? (
+                            {i ===
+                            generatedSlides.filter((s) => s).length ? (
                               <Loader2Icon className="size-4 animate-spin" />
                             ) : null}
-                            <span className="text-[10px]">{section.title}</span>
+                            <span className="text-[10px]">
+                              {section.title}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -937,6 +1173,20 @@ export function SlidePanel() {
           {/* Done — viewer */}
           {phase === "done" && activeSlide && (
             <div className="flex flex-1 flex-col overflow-hidden">
+              {/* Error banner (partial failure) */}
+              {error && (
+                <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangleIcon className="size-3.5 shrink-0" />
+                  <span className="flex-1">{error}</span>
+                  <button
+                    onClick={() => setError(null)}
+                    className="shrink-0 p-0.5 hover:bg-amber-500/10 rounded"
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </div>
+              )}
+
               {/* Main slide view */}
               <div
                 ref={mainAreaRef}
@@ -1001,7 +1251,9 @@ export function SlidePanel() {
                         "relative shrink-0 rounded border overflow-hidden transition-all",
                         i === activeIndex
                           ? "border-primary ring-1 ring-primary/30"
-                          : "border-border/60 hover:border-foreground/30",
+                          : slide.failed
+                            ? "border-amber-500/50"
+                            : "border-border/60 hover:border-foreground/30",
                       )}
                       style={{ width: 96, height: 54 }}
                     >
@@ -1016,6 +1268,11 @@ export function SlidePanel() {
                         }}
                         tabIndex={-1}
                       />
+                      {slide.failed && (
+                        <div className="absolute top-0.5 right-0.5">
+                          <AlertTriangleIcon className="size-2.5 text-amber-500" />
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1023,10 +1280,10 @@ export function SlidePanel() {
             </div>
           )}
 
-          {/* Error */}
+          {/* Error (full failure) */}
           {phase === "error" && (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive max-w-full">
                 {error || "エラーが発生しました"}
               </div>
               <button
@@ -1044,11 +1301,16 @@ export function SlidePanel() {
       {/* Fullscreen presenter */}
       {fullscreen && phase === "done" && (
         <FullscreenPresenter
-          slides={generatedSlides.map((s) => ({
-            html: slideSrcDoc(s.html),
-            title: s.title,
-          }))}
-          initialIndex={activeIndex}
+          slides={generatedSlides
+            .filter((s) => !s.failed)
+            .map((s) => ({
+              html: slideSrcDoc(s.html),
+              title: s.title,
+            }))}
+          initialIndex={Math.min(
+            activeIndex,
+            generatedSlides.filter((s) => !s.failed).length - 1,
+          )}
           onExit={() => setFullscreen(false)}
         />
       )}

@@ -10,17 +10,22 @@ interface SlidePanelState {
   closePanel: () => void;
 }
 
-export const useSlidePanelStore = create<SlidePanelState>((set) => ({
+export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
   open: false,
   question: "",
   answer: "",
   deckId: null,
 
-  openPanel: (question, answer) =>
-    set({ open: true, question, answer, deckId: null }),
+  openPanel: (question, answer) => {
+    // Prevent duplicate trigger while panel is already open and working
+    if (get().open) return;
+    set({ open: true, question, answer, deckId: null });
+  },
 
-  openDeck: (deckId) =>
-    set({ open: true, question: "", answer: "", deckId }),
+  openDeck: (deckId) => {
+    if (get().open) return;
+    set({ open: true, question: "", answer: "", deckId });
+  },
 
   closePanel: () =>
     set({ open: false, question: "", answer: "", deckId: null }),

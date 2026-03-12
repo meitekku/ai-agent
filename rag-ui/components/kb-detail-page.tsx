@@ -26,7 +26,9 @@ import {
   PencilIcon,
   CheckIcon,
   XIcon,
+  NetworkIcon,
 } from "lucide-react";
+import Link from "next/link";
 
 // ---------------------------------------------------------------------------
 // Concurrency control
@@ -422,6 +424,17 @@ export const KBDetailPage = memo(function KBDetailPage({
                 className="hidden"
                 onChange={handleUpload}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                asChild
+              >
+                <Link href={`/graph/${slug}`}>
+                  <NetworkIcon className="size-3.5" />
+                  グラフ
+                </Link>
+              </Button>
               <Button
                 className="gap-2"
                 onClick={() => fileInputRef.current?.click()}

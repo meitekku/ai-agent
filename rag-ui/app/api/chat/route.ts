@@ -91,7 +91,20 @@ function buildSystemPrompt(hasKb: boolean): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   const hasWeb = hasTavily || hasGoogleSearch;
 
+  const now = new Date();
+  const currentTime = now.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
   let prompt = `あなたはナレッジベースを活用する AI アシスタントです。ユーザーの質問に対し、内部ドキュメントとウェブの情報を組み合わせて正確に回答します。
+
+現在の日時: ${currentTime}
 
 ## 回答ルール
 - ユーザーの質問と同じ言語で回答。デフォルトは日本語

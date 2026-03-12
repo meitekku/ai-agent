@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import PORT
 from . import db
-from .routers import ingest, query, documents, doc_status, kbs
+from .routers import ingest, query, documents, doc_status, kbs, graph
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ app.include_router(ingest.router)
 app.include_router(query.router)
 app.include_router(documents.router)
 app.include_router(doc_status.router)
+app.include_router(graph.router)
 
 
 @app.get("/health")
