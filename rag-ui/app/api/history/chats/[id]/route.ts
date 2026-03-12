@@ -4,6 +4,11 @@ import {
   updateConversation,
   deleteConversation,
 } from "@/lib/chat-db";
+import {
+  getFileIdsByConversation,
+  deleteChatFiles,
+} from "@/lib/chat-files-db";
+import { deleteStoredFile } from "@/lib/file-storage";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -45,7 +50,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
+    // Collect file IDs before deleting messages (CASCADE will remove them)
+    const fileIds = await getFileIdsByConversation(id);
+
     await deleteConversation(id);
+
+    // Clean up files from DB + disk (non-blocking, best-effort)
+    if (fileIds.length > 0) {
+      deleteChatFiles(fileIds)
+        .then((paths) =>
+          Promise.allSettled(paths.map((p) => deleteStoredFile(p))),
+        )
+        .catch((e) =>
+          console.error("[delete-conversation] file cleanup error:", e),
+        );
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("DELETE /api/history/chats/[id] error:", e);

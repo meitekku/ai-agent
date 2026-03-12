@@ -17,4 +17,7 @@ lightrag-service/data/
 # OS
 .DS_Store
 
+# Chat file uploads
+data/
+
 temp

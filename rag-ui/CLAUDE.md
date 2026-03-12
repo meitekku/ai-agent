@@ -26,8 +26,11 @@ Browser useChat → /api/chat Route Handler → Valkey cache check
                                           → Valkey cache write
 ```
 
-- マルチモーダル対応：画像・テキストファイル・PDF を添付可能（data URL → `convertToModelMessages` → Gemini）
+- マルチモーダル対応：画像・テキスト・PDF を添付可能（サーバーアップロード → URL 参照 → DB 軽量化）
 - ファイルはドラッグ&ドロップ / クリップボード貼り付け / ボタン選択で添付
+- ファイルアップロード: 添付時に即座に `/api/files/upload` → ディスク保存 → DB には URL 参照のみ保存
+- チャット送信時: `resolveFileUrls()` がサーバー URL → data URL 変換 → Gemini API へ送信
+- 画像表示: `<img src="/api/files/{id}">` でサーバーから直接配信（immutable cache）
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
 - `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入
 - 一般的な挨拶・雑談はツールを使わず直接回答（不要な RAG 検索をスキップ）
@@ -164,8 +167,9 @@ rag-ui/
 ├── components/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
-│   ├── chat-input.tsx         # チャット入力（ファイル添付、プレビュー、D&D対応）
-│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、4モードドロップダウン）
+│   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D対応）
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、画像ライトボックス、4モードドロップダウン）
+│   ├── image-lightbox.tsx     # 画像拡大表示オーバーレイ
 │   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
 │   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
 │   ├── html-slide-viewer.tsx  # HTML スライドビューア（DB保存、テンプレート、ドラッグ）
@@ -196,7 +200,9 @@ rag-ui/
 │   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
 │   ├── slide-db.ts        # PostgreSQL スライドCRUD（pg）
 │   ├── slide-types.ts     # スライド共有型定義
-│   └── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
+│   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
+│   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
+│   └── chat-files-db.ts   # chat_files テーブル CRUD
 ├── next.config.ts         # output: "standalone" + env.NEXT_PUBLIC_LLM_BACKEND
 ├── CLAUDE.md
 └── README.md
@@ -224,7 +230,9 @@ rag-ui/
 
 | メソッド             | パス                             | 説明                                                       |
 | -------------------- | -------------------------------- | ---------------------------------------------------------- |
-| POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache） |
+| POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache + resolveFileUrls） |
+| POST                 | /api/files/upload                | ファイルアップロード（multipart/form-data → ディスク保存 + DB 記録） |
+| GET                  | /api/files/[id]                  | ファイル配信（immutable cache、Content-Type 付き）         |
 | GET/POST             | /api/kbs                         | ナレッジベース一覧 / 新規作成                              |
 | GET/PUT/DELETE       | /api/kbs/[slug]                  | ナレッジベース詳細 / 更新 / 削除                           |
 | POST                 | /api/kbs/[slug]/generate         | LLM で title+description 自動生成                          |

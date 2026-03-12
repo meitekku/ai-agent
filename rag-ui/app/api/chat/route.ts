@@ -18,12 +18,61 @@ import { searchOnly, getKB, type SearchResult } from "@/lib/rag-client";
 import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
 import { TAVILY_API_KEY } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
+import { getChatFile } from "@/lib/chat-files-db";
+import { readStoredFile } from "@/lib/file-storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
+
+/**
+ * Resolve server file URLs (/api/files/{id}) to data URLs for Gemini.
+ * Only processes the last 3 user messages for performance.
+ * Passes through legacy data URLs and external URLs unchanged.
+ */
+async function resolveFileUrls(messages: UIMessage[]): Promise<UIMessage[]> {
+  const FILE_URL_RE = /^\/api\/files\/(.+)$/;
+  const result = [...messages];
+
+  // Find indices of user messages with file parts (last 3 only)
+  const userIndices: number[] = [];
+  for (let i = result.length - 1; i >= 0 && userIndices.length < 3; i--) {
+    if (
+      result[i].role === "user" &&
+      result[i].parts.some((p) => p.type === "file")
+    ) {
+      userIndices.push(i);
+    }
+  }
+
+  for (const idx of userIndices) {
+    const msg = result[idx];
+    const resolvedParts = await Promise.all(
+      msg.parts.map(async (part) => {
+        if (part.type !== "file") return part;
+        const match = part.url.match(FILE_URL_RE);
+        if (!match) return part; // data URL or external — pass through
+        const fileId = match[1];
+        try {
+          const row = await getChatFile(fileId);
+          if (!row) return part;
+          const buffer = await readStoredFile(row.stored_path);
+          const base64 = buffer.toString("base64");
+          const dataUrl = `data:${row.media_type};base64,${base64}`;
+          return { ...part, url: dataUrl };
+        } catch (err) {
+          console.error(`[chat] resolveFileUrls failed for ${fileId}:`, err);
+          return part;
+        }
+      }),
+    );
+    result[idx] = { ...msg, parts: resolvedParts };
+  }
+
+  return result;
+}
 
 function buildSystemPrompt(hasKb: boolean): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
@@ -476,8 +525,11 @@ export async function POST(req: Request) {
       maxOutputTokens: 8192,
     });
 
+    // Resolve server file URLs to data URLs for the model
+    const resolvedMessages = await resolveFileUrls(messages);
+
     const result = await agent.stream({
-      messages: await convertToModelMessages(messages),
+      messages: await convertToModelMessages(resolvedMessages),
       experimental_onStepStart() {
         if (!firstTokenTime) {
           firstTokenTime = Date.now();

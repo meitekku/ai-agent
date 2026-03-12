@@ -106,6 +106,7 @@ export interface AttachmentsContext {
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
+  updateUrl: (id: string, newUrl: string) => void;
   openFileDialog: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
 }
@@ -205,17 +206,27 @@ export const PromptInputProvider = ({
   const remove = useCallback((id: string) => {
     setAttachmentFiles((prev) => {
       const found = prev.find((f) => f.id === id);
-      if (found?.url) {
+      if (found?.url?.startsWith("blob:")) {
         URL.revokeObjectURL(found.url);
       }
       return prev.filter((f) => f.id !== id);
     });
   }, []);
 
+  const updateUrl = useCallback((id: string, newUrl: string) => {
+    setAttachmentFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        if (f.url?.startsWith("blob:")) URL.revokeObjectURL(f.url);
+        return { ...f, url: newUrl };
+      }),
+    );
+  }, []);
+
   const clear = useCallback(() => {
     setAttachmentFiles((prev) => {
       for (const f of prev) {
-        if (f.url) {
+        if (f.url?.startsWith("blob:")) {
           URL.revokeObjectURL(f.url);
         }
       }
@@ -254,8 +265,9 @@ export const PromptInputProvider = ({
       files: attachmentFiles,
       openFileDialog,
       remove,
+      updateUrl,
     }),
-    [attachmentFiles, add, remove, clear, openFileDialog],
+    [attachmentFiles, add, remove, clear, updateUrl, openFileDialog],
   );
 
   const __registerFileInput = useCallback(
@@ -503,11 +515,23 @@ export const PromptInput = ({
     [matchesAccept, maxFiles, maxFileSize, onError],
   );
 
+  const updateUrlLocal = useCallback(
+    (id: string, newUrl: string) =>
+      setItems((prev) =>
+        prev.map((f) => {
+          if (f.id !== id) return f;
+          if (f.url?.startsWith("blob:")) URL.revokeObjectURL(f.url);
+          return { ...f, url: newUrl };
+        }),
+      ),
+    [],
+  );
+
   const removeLocal = useCallback(
     (id: string) =>
       setItems((prev) => {
         const found = prev.find((file) => file.id === id);
-        if (found?.url) {
+        if (found?.url?.startsWith("blob:")) {
           URL.revokeObjectURL(found.url);
         }
         return prev.filter((file) => file.id !== id);
@@ -689,6 +713,10 @@ export const PromptInput = ({
     [add],
   );
 
+  const updateFileUrl = usingProvider
+    ? controller.attachments.updateUrl
+    : updateUrlLocal;
+
   const attachmentsCtx = useMemo<AttachmentsContext>(
     () => ({
       add,
@@ -697,8 +725,9 @@ export const PromptInput = ({
       files: files.map((item) => ({ ...item, id: item.id })),
       openFileDialog,
       remove,
+      updateUrl: updateFileUrl,
     }),
-    [files, add, remove, clearAttachments, openFileDialog],
+    [files, add, remove, clearAttachments, updateFileUrl, openFileDialog],
   );
 
   const refsCtx = useMemo<ReferencedSourcesContext>(

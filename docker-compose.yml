@@ -75,8 +75,11 @@ services:
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       PW: ${PW:-}
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      CHAT_FILES_DIR: /app/data/chat-files
     ports:
       - "4002:3000"
+    volumes:
+      - chat-files:/app/data/chat-files
     depends_on:
       lightrag:
         condition: service_healthy
@@ -88,3 +91,4 @@ volumes:
   pgdata:
   valkeydata:
   lightrag-data:
+  chat-files:

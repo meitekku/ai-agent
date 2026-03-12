@@ -23,8 +23,11 @@ import {
   FileIcon,
   DatabaseIcon,
   XCircleIcon,
+  AlertCircleIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { useChatSettingsStore } from "@/lib/store";
+import { useFileUpload } from "@/hooks/use-file-upload";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,11 +41,15 @@ interface KBListItem {
 }
 
 // ---------------------------------------------------------------------------
-// Attachment preview (uses PromptInput's local attachments context)
+// Attachment preview with upload progress
 // ---------------------------------------------------------------------------
 
 function AttachmentPreviewHeader() {
   const attachments = usePromptInputAttachments();
+  const { uploadState } = useFileUpload(
+    attachments.files,
+    attachments.updateUrl,
+  );
 
   if (attachments.files.length === 0) return null;
 
@@ -51,26 +58,69 @@ function AttachmentPreviewHeader() {
       <div className="flex flex-wrap gap-2 px-1">
         {attachments.files.map((file) => {
           const isImage = file.mediaType?.startsWith("image/");
+          const state = uploadState[file.id];
+          const progress = state?.progress ?? (file.url?.startsWith("blob:") ? 0 : 100);
+          const hasError = progress === -1;
+          const isUploading = progress >= 0 && progress < 100;
+          const sizeLabel = state?.sizeLabel;
+
           return (
             <div
               key={file.id}
-              className="group relative flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs"
+              className={`group relative flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                hasError
+                  ? "border-destructive/40 bg-destructive/5"
+                  : "border-border bg-muted/40"
+              }`}
             >
+              {/* Thumbnail / icon */}
               {isImage && file.url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={file.url}
                   alt={file.filename ?? "image"}
-                  className="size-8 rounded object-cover"
+                  className="size-12 rounded object-cover"
                 />
               ) : file.mediaType === "application/pdf" ? (
-                <FileIcon className="size-4 text-red-400" />
+                <FileIcon className="size-5 text-red-400" />
               ) : (
-                <FileTextIcon className="size-4 text-muted-foreground" />
+                <FileTextIcon className="size-5 text-muted-foreground" />
               )}
-              <span className="max-w-[120px] truncate text-muted-foreground">
-                {file.filename ?? "file"}
-              </span>
+
+              {/* File info */}
+              <div className="flex flex-col gap-0.5">
+                <span className="max-w-[120px] truncate text-muted-foreground">
+                  {file.filename ?? "file"}
+                </span>
+                {sizeLabel && (
+                  <span className="text-[10px] text-muted-foreground/60">
+                    {sizeLabel}
+                  </span>
+                )}
+                {hasError && (
+                  <span className="flex items-center gap-1 text-[10px] text-destructive">
+                    <AlertCircleIcon className="size-2.5" />
+                    {state?.error ?? "エラー"}
+                  </span>
+                )}
+              </div>
+
+              {/* Upload progress overlay */}
+              {isUploading && (
+                <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-lg bg-muted">
+                  <div
+                    className="h-full bg-primary/60 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Upload spinner */}
+              {isUploading && (
+                <Loader2Icon className="size-3 animate-spin text-primary/60" />
+              )}
+
+              {/* Remove button */}
               <button
                 type="button"
                 onClick={() => attachments.remove(file.id)}
@@ -101,6 +151,10 @@ function ChatSubmitButton({
   onStop: () => void;
 }) {
   const attachments = usePromptInputAttachments();
+  const { allUploaded } = useFileUpload(
+    attachments.files,
+    attachments.updateUrl,
+  );
   const isLoading = status === "submitted" || status === "streaming";
   const hasContent = !!inputText.trim() || attachments.files.length > 0;
 
@@ -108,7 +162,7 @@ function ChatSubmitButton({
     <PromptInputSubmit
       status={status}
       onStop={onStop}
-      disabled={!hasContent && !isLoading}
+      disabled={(!hasContent && !isLoading) || (!allUploaded && !isLoading)}
     />
   );
 }
@@ -224,6 +278,7 @@ function KBSelector({ disabled }: { disabled: boolean }) {
 // ---------------------------------------------------------------------------
 
 const ACCEPTED_TYPES = ["image/*", "text/*", "application/pdf"].join(",");
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
 export function ChatInput({
   status,
@@ -255,11 +310,20 @@ export function ChatInput({
     [],
   );
 
+  const handleError = useCallback(
+    (err: { code: string; message: string }) => {
+      console.warn("[chat-input] file error:", err.code, err.message);
+    },
+    [],
+  );
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-5">
       <PromptInput
         onSubmit={handleSubmit}
         accept={ACCEPTED_TYPES}
+        maxFileSize={MAX_FILE_SIZE}
+        onError={handleError}
         multiple
         globalDrop
         className="transition-shadow duration-300 focus-within:glow-ring rounded-xl"

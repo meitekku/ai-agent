@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState, useRef, useEffect } from "react";
+import { memo, useCallback, useState, useRef, useEffect, lazy, Suspense } from "react";
 import type { UIMessage } from "ai";
 import { isToolUIPart, getToolName } from "ai";
 import { useChatSettingsStore } from "@/lib/store";
@@ -42,6 +42,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const ImageLightbox = lazy(() =>
+  import("@/components/image-lightbox").then((m) => ({
+    default: m.ImageLightbox,
+  })),
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -221,6 +227,7 @@ export const ChatMessage = memo(function ChatMessage({
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
   const handleCopy = useCallback(() => {
@@ -357,30 +364,27 @@ export const ChatMessage = memo(function ChatMessage({
               );
             case "file": {
               const mediaType = part.mediaType ?? "";
+              const filename =
+                ("filename" in part
+                  ? (part as { filename?: string }).filename
+                  : undefined) ?? "file";
               if (mediaType.startsWith("image/")) {
                 return (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={key}
                     src={part.url}
-                    alt={
-                      ("filename" in part
-                        ? (part as { filename?: string }).filename
-                        : undefined) ?? "image"
-                    }
-                    className="max-h-64 max-w-full rounded-lg border border-border object-contain"
+                    alt={filename}
+                    className="max-h-80 max-w-full cursor-pointer rounded-lg border border-border object-contain transition-opacity hover:opacity-90"
+                    onClick={() => setLightboxSrc(part.url)}
                   />
                 );
               }
               // PDF / text / other files — show as a badge
-              const filename =
-                ("filename" in part
-                  ? (part as { filename?: string }).filename
-                  : undefined) ?? "file";
               return (
                 <div
                   key={key}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
                 >
                   {mediaType === "application/pdf" ? (
                     <FileTextIcon className="size-3.5 text-red-400" />
@@ -514,6 +518,16 @@ export const ChatMessage = memo(function ChatMessage({
           {timings ? <ResponseTimingBadge timestamps={timings} /> : null}
         </MessageActions>
       ) : null}
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <Suspense>
+          <ImageLightbox
+            src={lightboxSrc}
+            onClose={() => setLightboxSrc(null)}
+          />
+        </Suspense>
+      )}
     </Message>
   );
 });

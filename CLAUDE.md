@@ -97,6 +97,12 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/kb-config-db.ts` | 同上 | 一致 | KB Config PostgreSQL CRUD（single-row） |
 | `rag-ui/lib/semantic-cache.ts` | 同上 | 一致 | Valkey 語義キャッシュ（v2 prefix） |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
+| `rag-ui/lib/file-storage.ts` | 同上 | 一致 | ファイルディスク I/O |
+| `rag-ui/lib/chat-files-db.ts` | 同上 | 一致 | chat_files テーブル CRUD |
+| `rag-ui/app/api/files/upload/route.ts` | 同上 | 一致 | POST ファイルアップロード |
+| `rag-ui/app/api/files/[id]/route.ts` | 同上 | 一致 | GET ファイル配信 |
+| `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック |
+| `rag-ui/components/image-lightbox.tsx` | 同上 | 一致 | 画像拡大表示オーバーレイ |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
 ### 同期コマンド
@@ -125,6 +131,9 @@ cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-de
 cp ~/Desktop/uiForAI/rag-ui/components/chat-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/skills-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-page.tsx
+cp ~/Desktop/uiForAI/rag-ui/components/image-lightbox.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/image-lightbox.tsx
+# フック
+cp -r ~/Desktop/uiForAI/rag-ui/hooks ~/Desktop/uiForAI/rag-deploy/rag-ui/hooks
 # ライブラリ
 cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-db.ts
@@ -133,6 +142,10 @@ cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui
 cp ~/Desktop/uiForAI/rag-ui/lib/kb-config-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/kb-config-db.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/semantic-cache.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/semantic-cache.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/file-storage.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/file-storage.ts
+cp ~/Desktop/uiForAI/rag-ui/lib/chat-files-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-files-db.ts
+# ファイル API
+cp -r ~/Desktop/uiForAI/rag-ui/app/api/files ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/files
 
 # lightrag-service の変更を rag-deploy に反映（config.py は除外）
 cp ~/Desktop/ai/rag-system/lightrag-service/app/rag.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/rag.py
@@ -201,6 +214,7 @@ docker compose --profile prod build --no-cache
 | `pgdata` | /var/lib/postgresql/data | PostgreSQL（ベクトル、KV、ドキュメント、スライド） |
 | `valkeydata` | /data | Valkey キャッシュ |
 | `lightrag-data` | /app/data | NetworkX グラフファイル |
+| `chat-files` | /app/data/chat-files | チャット添付ファイル（画像・PDF 等） |
 
 ## リソース使用量
 
