@@ -48,7 +48,7 @@ export async function POST(_req: Request, { params }: Params) {
         ? "You are a concise title generator. Output only the title text, nothing else."
         : "You are a concise title generator. Output only the title text, nothing else.\n\n/no_think",
       prompt,
-      maxTokens: 60,
+      maxOutputTokens: 60,
     });
 
     // Clean up: remove quotes, trim
