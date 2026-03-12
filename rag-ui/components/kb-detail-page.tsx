@@ -265,12 +265,16 @@ export const KBDetailPage = memo(function KBDetailPage({
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || "Upload failed");
           }
+          // Don't remove from uploadingNames here — the dedup logic in
+          // displayDocs will hide the placeholder once the refetch returns
+          // the real document from the backend. This avoids the gap where
+          // the placeholder is gone but the refetch hasn't returned yet.
           queryClient.invalidateQueries({ queryKey: ["documents", slug] });
         } catch (err) {
           setError(
             err instanceof Error ? err.message : "アップロードに失敗しました",
           );
-        } finally {
+          // Only remove placeholder on error (backend won't have it)
           setUploadingNames((prev) => prev.filter((n) => n !== name));
         }
       });
