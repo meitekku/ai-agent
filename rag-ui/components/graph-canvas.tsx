@@ -23,7 +23,7 @@ function CameraAnimator({
   targetPosition: Vector3 | null;
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
 }) {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const targetRef = useRef<Vector3 | null>(null);
   const orbitTarget = useRef(new Vector3());
 
@@ -33,6 +33,20 @@ function CameraAnimator({
       orbitTarget.current.copy(targetPosition);
     }
   }, [targetPosition]);
+
+  // Cancel animation when user interacts (drag, scroll, pinch)
+  useEffect(() => {
+    const cancel = () => {
+      targetRef.current = null;
+    };
+    const el = gl.domElement;
+    el.addEventListener("pointerdown", cancel);
+    el.addEventListener("wheel", cancel);
+    return () => {
+      el.removeEventListener("pointerdown", cancel);
+      el.removeEventListener("wheel", cancel);
+    };
+  }, [gl]);
 
   useFrame(() => {
     if (!targetRef.current) return;

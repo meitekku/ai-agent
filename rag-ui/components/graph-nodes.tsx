@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, memo } from "react";
 import { useFrame, ThreeEvent } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
 import {
@@ -8,6 +8,8 @@ import {
   Color,
   Object3D,
   ShaderMaterial,
+  Group,
+  Vector3,
 } from "three";
 import type { SimNode } from "@/lib/force-simulation";
 
@@ -162,13 +164,6 @@ export function GraphNodes({
     [nodes, onSelect],
   );
 
-  // Labels for top nodes by degree
-  const labelNodes = useMemo(() => {
-    const count = Math.max(5, Math.floor(nodes.length * 0.06));
-    const sorted = [...nodes].sort((a, b) => b.degree - a.degree);
-    return sorted.slice(0, Math.min(count, 60));
-  }, [nodes]);
-
   if (nodes.length === 0) return null;
 
   return (
@@ -189,80 +184,101 @@ export function GraphNodes({
         />
       </instancedMesh>
 
-      {/* Labels for high-degree nodes */}
-      {labelNodes.map((n) => {
+      {/* Labels for all nodes — distance-based visibility */}
+      {nodes.map((n) => {
         const idx = idToIndex.get(n.id) ?? 0;
         return (
-          <Billboard
+          <NodeLabel
             key={n.id}
-            position={[
-              n.x || 0,
-              (n.y || 0) + sizes[idx] + 2,
-              n.z || 0,
-            ]}
-            follow
-            lockX={false}
-            lockY={false}
-            lockZ={false}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(n.id);
-            }}
-            onPointerOver={() => {
-              onHover(n.id);
-              document.body.style.cursor = "pointer";
-            }}
-            onPointerOut={() => {
-              onHover(null);
-              document.body.style.cursor = "auto";
-            }}
-          >
-            <Text
-              fontSize={3.2}
-              color={
-                hoveredId === n.id || selectedId === n.id
-                  ? "#ffffff"
-                  : "#cbd5e1"
-              }
-              anchorX="center"
-              anchorY="bottom"
-              outlineWidth={0.2}
-              outlineColor="#000000"
-            >
-              {n.id.length > 20 ? n.id.slice(0, 20) + "…" : n.id}
-            </Text>
-          </Billboard>
+            node={n}
+            yOffset={sizes[idx] + 2}
+            isHovered={hoveredId === n.id}
+            isSelected={selectedId === n.id}
+            onHover={onHover}
+            onSelect={onSelect}
+          />
         );
       })}
-
-      {/* Hovered label if not already visible */}
-      {hoveredId &&
-        !labelNodes.find((n) => n.id === hoveredId) &&
-        (() => {
-          const idx = idToIndex.get(hoveredId);
-          if (idx === undefined) return null;
-          const n = nodes[idx];
-          return (
-            <Billboard
-              position={[n.x || 0, (n.y || 0) + sizes[idx] + 2, n.z || 0]}
-              follow
-              lockX={false}
-              lockY={false}
-              lockZ={false}
-            >
-              <Text
-                fontSize={3.2}
-                color="#ffffff"
-                anchorX="center"
-                anchorY="bottom"
-                outlineWidth={0.2}
-                outlineColor="#000000"
-              >
-                {n.id.length > 20 ? n.id.slice(0, 20) + "…" : n.id}
-              </Text>
-            </Billboard>
-          );
-        })()}
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// NodeLabel — memo'd, distance-based visibility via useFrame (no React re-render)
+// ---------------------------------------------------------------------------
+
+const LABEL_DISTANCE_THRESHOLD = 300;
+
+const NodeLabel = memo(function NodeLabel({
+  node,
+  yOffset,
+  isHovered,
+  isSelected,
+  onHover,
+  onSelect,
+}: {
+  node: SimNode;
+  yOffset: number;
+  isHovered: boolean;
+  isSelected: boolean;
+  onHover: (id: string | null) => void;
+  onSelect: (id: string) => void;
+}) {
+  const groupRef = useRef<Group>(null);
+  const _pos = useRef(new Vector3());
+
+  useFrame(({ camera }) => {
+    const g = groupRef.current;
+    if (!g) return;
+
+    const nx = node.x || 0;
+    const ny = node.y || 0;
+    const nz = node.z || 0;
+    g.position.set(nx, ny + yOffset, nz);
+
+    if (isHovered || isSelected) {
+      g.visible = true;
+      return;
+    }
+    _pos.current.set(nx, ny, nz);
+    g.visible =
+      camera.position.distanceToSquared(_pos.current) <
+      LABEL_DISTANCE_THRESHOLD * LABEL_DISTANCE_THRESHOLD;
+  });
+
+  const label = node.id.length > 20 ? node.id.slice(0, 20) + "…" : node.id;
+
+  return (
+    <group ref={groupRef}>
+      <Billboard
+        follow
+        lockX={false}
+        lockY={false}
+        lockZ={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(node.id);
+        }}
+        onPointerOver={() => {
+          onHover(node.id);
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          onHover(null);
+          document.body.style.cursor = "auto";
+        }}
+      >
+        <Text
+          fontSize={3.2}
+          color={isHovered || isSelected ? "#ffffff" : "#cbd5e1"}
+          anchorX="center"
+          anchorY="bottom"
+          outlineWidth={0.2}
+          outlineColor="#000000"
+        >
+          {label}
+        </Text>
+      </Billboard>
+    </group>
+  );
+});

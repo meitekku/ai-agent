@@ -238,8 +238,8 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
                 <XIcon className="size-4" />
               </button>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="px-4 py-3 space-y-4">
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="px-4 py-3 space-y-4 break-words">
                 {/* Meta */}
                 <div className="space-y-2">
                   {selectedNode.entity_type && (

@@ -116,7 +116,7 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
       prompt += `
 4. **${webSearchToolName}**: KB の検索結果が不十分な場合、最新情報・時事・リアルタイム情報が必要な場合、ユーザーが「検索して」「最新の」等と指示した場合
 
-ツールの組み合わせ可: KB 検索 → 不十分 → ウェブ検索 → 重要ページを readUrl で深掘り`;
+ツールを積極的に組み合わせること: KB 検索 → 不十分なら → ウェブ検索 → 重要な結果を${hasTavily ? "readPage" : "readUrl"}で全文取得 → 情報を統合して回答`;
     }
   } else {
     prompt += `
@@ -124,8 +124,23 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
 - **readUrl**: ユーザーが URL を提示した場合に使用`;
     if (hasWeb) {
       prompt += `
-- **${webSearchToolName}**: 最新情報やウェブ上の情報が必要な場合、ユーザーが「検索して」「最新の」等と指示した場合`;
+- **${webSearchToolName}**: 最新情報やウェブ上の情報が必要な場合、ユーザーが「検索して」「最新の」等と指示した場合。検索後は重要な結果を${hasTavily ? "readPage" : "readUrl"}で全文取得してから回答する`;
     }
+  }
+
+  // ツール連鎖の原則
+  prompt += `
+
+## ツール使用の原則（重要）
+- **研究員のように行動する**: 1回の検索で終わらず、十分な情報が集まるまで複数ステップで調査を続ける。ユーザーの質問の本質を理解し、必要な情報を自分で判断して能動的に集める
+- **回答前に自問する**: 「この情報だけで正確で包括的な回答ができるか？」— できないなら追加ツールを使う
+- **判断をユーザーに丸投げしない**: 「検索しましょうか？」「もっと調べますか？」と聞かず、自分で判断して行動する。検索結果が不十分なら、自分でキーワードや時間範囲を変えて再検索する
+- **既に得た情報を活用する**: 前のステップで取得した情報（KB の財務データ等）を踏まえて次の調査や回答を組み立てる。情報を割裂して扱わない`;
+
+  if (hasWeb) {
+    prompt += `
+- **ウェブ検索後は必ず詳細を確認する**: ${webSearchToolName}の結果はサマリーのみ。関連性の高い結果は${hasTavily ? "readPage" : "readUrl"}で全文を取得してから回答する。サマリーだけで回答を書かない
+- **検索キーワードは自分で最適化する**: ユーザーの発言をそのまま検索クエリにしない。質問の意図を理解し、効果的なキーワードを自分で組み立てる。1つのキーワードで不十分なら、別の角度から複数回検索する（例: 会社名+業績、会社名+不祥事、会社名+株価 など）`;
   }
 
   // generateSlides ツール説明
@@ -158,12 +173,18 @@ KB の情報とウェブの情報が矛盾する場合は、両方の情報を�
 - 検索結果にない情報を「ドキュメントによると」と偽って引用しないこと。出典が不明な場合は推測・捏造せず省略する`;
 
   // 検索クエリの最適化
-  if (hasKb && hasTavily) {
+  if (hasKb) {
     prompt += `
 
 ## 検索クエリのコツ
-- searchKnowledgeBase: ユーザーの質問をそのまま使用（意味検索なので自然言語が最適）
-- webSearch: 簡潔なキーワード形式に変換（1〜6語）。トピックに最適な言語で検索（例: 「2024年の日本のGDP成長率は？」→ "Japan GDP growth 2024"）`;
+- searchKnowledgeBase: ユーザーの質問をそのまま使用（意味検索なので自然言語が最適）`;
+  }
+  if (hasWeb) {
+    prompt += `${hasKb ? "" : "\n\n## 検索クエリのコツ"}
+- ${webSearchToolName}: ユーザーの発言をそのままクエリにしない。質問の本質を分析し、最も効果的なキーワードを自分で組み立てる
+  - トピックに最適な言語で検索（例: 日本企業の情報→日本語、技術情報→英語）
+  - 1回で見つからなければ、角度を変えて再検索（例: 「この会社大丈夫？」→ ①「社名 業績 決算」②「社名 不祥事」③「社名 株価」のように多角的に）
+  - 簡潔なキーワード形式（1〜6語）が効果的`;
   }
 
   return prompt;
@@ -304,7 +325,7 @@ export async function POST(req: Request) {
   // readUrl: fetch any URL and extract text content (always available)
   tools.readUrl = tool({
     description:
-      "Fetch a web page by URL and extract its text content. Use when: (1) the user provides a specific URL, (2) a web search result looks highly relevant and you need the full content beyond the summary, (3) you need to verify or get details from a specific source.",
+      "Fetch a web page by URL and extract its text content. Use when: (1) the user provides a specific URL, (2) after web search, to get full content of the most relevant results — do NOT skip this step, (3) you need to verify or get details from a specific source.",
     inputSchema: z.object({
       url: z.string().url().describe("The URL to fetch"),
     }),
@@ -368,7 +389,7 @@ export async function POST(req: Request) {
   if (hasTavily) {
     tools.webSearch = tool({
       description:
-        "Search the web and get a list of results with summaries. Use when the knowledge base results are insufficient or the user requests web search. Follow up with readPage to get full content of specific results.",
+        "Search the web and get a list of results with brief summaries. This returns ONLY summaries, not full content. After calling this, you MUST call readPage with the top relevant URLs to get detailed content before answering.",
       inputSchema: z.object({
         query: z
           .string()
@@ -460,13 +481,19 @@ export async function POST(req: Request) {
           );
         }
 
-        return { answer, results };
+        return {
+          answer,
+          results,
+          next_step: results.length > 0
+            ? "IMPORTANT: These are only summaries. You MUST now call readPage with the most relevant URLs (up to 3) to get full content before writing your answer."
+            : undefined,
+        };
       },
     });
 
     tools.readPage = tool({
       description:
-        "Extract full content from specific URLs. Use after webSearch to read pages that look most relevant from the search results. Can read up to 3 URLs at once.",
+        "Extract full content from specific URLs. You MUST call this after webSearch to read the most relevant results before answering. Do NOT answer based on search summaries alone. Can read up to 3 URLs at once.",
       inputSchema: z.object({
         urls: z
           .array(z.string())
