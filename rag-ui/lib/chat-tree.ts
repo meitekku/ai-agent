@@ -13,6 +13,7 @@ export interface TreeNode {
   parts: unknown[];
   childIds: string[];
   createdAt?: string;
+  stopped?: boolean;
 }
 
 interface ChatTreeState {
@@ -32,6 +33,7 @@ interface ChatTreeState {
       parentId: string | null;
       role: string;
       parts: unknown[];
+      stopped?: boolean;
     }[],
   ) => void;
   getActivePath: () => UIMessage[];
@@ -111,6 +113,7 @@ export const useChatTreeStore = create<ChatTreeState>((set, get) => ({
         parts: msg.parts as unknown[],
         childIds: [],
         createdAt: msg.created_at,
+        stopped: msg.stopped,
       };
     }
 
@@ -154,6 +157,7 @@ export const useChatTreeStore = create<ChatTreeState>((set, get) => ({
         role: msg.role,
         parts: msg.parts,
         childIds: [],
+        stopped: msg.stopped,
       };
 
       if (msg.parentId && newNodes[msg.parentId]) {

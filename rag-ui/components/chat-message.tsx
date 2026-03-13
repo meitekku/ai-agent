@@ -37,6 +37,7 @@ import {
   XIcon,
   SendIcon,
   Maximize2Icon,
+  OctagonIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -209,6 +210,7 @@ export const ChatMessage = memo(function ChatMessage({
   isActiveStreaming,
   submitTime,
   createdAt,
+  stopped,
   onCopy,
   onRegenerate,
   onGenerateSlides,
@@ -221,6 +223,7 @@ export const ChatMessage = memo(function ChatMessage({
   isActiveStreaming?: boolean;
   submitTime?: number;
   createdAt?: string;
+  stopped?: boolean;
   onCopy: (text: string) => void;
   onRegenerate: () => void;
   onGenerateSlides?: (
@@ -431,6 +434,12 @@ export const ChatMessage = memo(function ChatMessage({
         })}
         {showThinking ? <ThinkingIndicator /> : null}
         {showGenerating ? <GeneratingIndicator /> : null}
+        {stopped && message.role === "assistant" && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 mt-1">
+            <OctagonIcon className="size-3" />
+            <span>回答が中断されました</span>
+          </div>
+        )}
       </MessageContent>
 
       {/* User message actions: edit + timestamp + branch selector — always rendered, visible on hover */}

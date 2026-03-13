@@ -60,6 +60,10 @@ export async function ensureChatTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_chat_msg_parent
         ON chat_messages(parent_id)
     `);
+    // Add stopped column if missing (existing deployments)
+    await client.query(`
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS stopped BOOLEAN DEFAULT FALSE
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -92,6 +96,7 @@ export interface MessageRow {
   parent_id: string | null;
   role: string;
   parts: unknown[];
+  stopped: boolean;
   created_at: string;
 }
 
@@ -169,6 +174,7 @@ export async function saveMessages(
     parent_id: string | null;
     role: string;
     parts: unknown[];
+    stopped?: boolean;
   }[],
 ): Promise<void> {
   if (messages.length === 0) return;
@@ -178,15 +184,16 @@ export async function saveMessages(
     await client.query("BEGIN");
     for (const msg of messages) {
       await client.query(
-        `INSERT INTO chat_messages (id, conversation_id, parent_id, role, parts)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (id) DO UPDATE SET parts = $5`,
+        `INSERT INTO chat_messages (id, conversation_id, parent_id, role, parts, stopped)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET parts = $5, stopped = $6`,
         [
           msg.id,
           conversationId,
           msg.parent_id,
           msg.role,
           JSON.stringify(msg.parts),
+          msg.stopped ?? false,
         ],
       );
     }

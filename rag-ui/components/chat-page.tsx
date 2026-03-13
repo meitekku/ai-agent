@@ -109,6 +109,8 @@ export function ChatPage({
   const pendingParentRef = useRef<string | null>(null);
   // Track count of messages known before sending, to find new ones
   const knownCountRef = useRef(0);
+  // Track whether the user stopped the response
+  const stoppedRef = useRef(false);
 
   const {
     messages,
@@ -145,6 +147,11 @@ export function ChatPage({
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 
   const isLoading = status === "submitted" || status === "streaming";
+
+  const handleStop = useCallback(() => {
+    stoppedRef.current = true;
+    stop();
+  }, [stop]);
   const submitTimeRef = useRef(0);
 
   // Slide panel (declared early so effects can reference it)
@@ -180,21 +187,29 @@ export function ChatPage({
     const parentId = pendingParentRef.current;
     pendingParentRef.current = null;
 
+    // Check if the response was stopped by the user
+    const wasStopped = stoppedRef.current;
+    stoppedRef.current = false;
+
     // Build save list with parent chain
     const toSave: {
       id: string;
       parent_id: string | null;
       role: string;
       parts: unknown[];
+      stopped?: boolean;
     }[] = [];
     for (let i = 0; i < newMsgs.length; i++) {
       const msg = newMsgs[i];
       const pid = i === 0 ? parentId : newMsgs[i - 1].id;
+      const isLastAssistant =
+        wasStopped && i === newMsgs.length - 1 && msg.role === "assistant";
       toSave.push({
         id: msg.id,
         parent_id: pid,
         role: msg.role,
         parts: msg.parts as unknown[],
+        ...(isLastAssistant ? { stopped: true } : {}),
       });
     }
 
@@ -205,6 +220,7 @@ export function ChatPage({
         parentId: m.parent_id,
         role: m.role,
         parts: m.parts as unknown[],
+        stopped: m.stopped,
       })),
     );
 
@@ -549,6 +565,7 @@ export function ChatPage({
                     isActiveStreaming={isActive}
                     submitTime={isActive ? submitTimeRef.current : undefined}
                     createdAt={treeStore.nodes[message.id]?.createdAt}
+                    stopped={treeStore.nodes[message.id]?.stopped}
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
                     onGenerateSlides={handleGenerateSlides}
@@ -583,7 +600,7 @@ export function ChatPage({
           <div className="sticky bottom-0 z-30 mt-auto">
             <div className="pointer-events-none h-8 bg-gradient-to-t from-background to-transparent" />
             <div className="bg-background">
-              <ChatInput status={status} onSend={handleSend} onStop={stop} />
+              <ChatInput status={status} onSend={handleSend} onStop={handleStop} />
             </div>
           </div>
         </ConversationContent>

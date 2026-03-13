@@ -295,7 +295,6 @@ export function ChatInput({
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const dragCountRef = useRef(0);
-  const isLoading = status === "submitted" || status === "streaming";
 
   // Global drag enter/leave tracking for drop zone highlight
   useEffect(() => {
@@ -371,7 +370,6 @@ export function ChatInput({
           value={input}
           onChange={handleChange}
           placeholder="メッセージを入力..."
-          disabled={isLoading}
         />
         <PromptInputFooter>
           <PromptInputTools>
@@ -381,7 +379,7 @@ export function ChatInput({
                 <PromptInputActionAddAttachments label="画像・ファイルを追加" />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
-            <KBSelector disabled={isLoading} />
+            <KBSelector disabled={false} />
           </PromptInputTools>
           <ChatSubmitButton status={status} inputText={input} onStop={onStop} />
         </PromptInputFooter>
