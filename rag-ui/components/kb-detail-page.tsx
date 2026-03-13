@@ -243,18 +243,45 @@ export const KBDetailPage = memo(function KBDetailPage({
       setError(err instanceof Error ? err.message : "削除に失敗しました"),
   });
 
-  // Upload
-  const handleUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const fileList = Array.from(e.target.files ?? []);
-      if (fileList.length === 0) return;
-      if (fileInputRef.current) fileInputRef.current.value = "";
+  // Drag & drop state
+  const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.types.includes("Files")) setDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  // Shared upload logic
+  const processFiles = useCallback(
+    (fileList: File[]) => {
+      const pdfFiles = fileList.filter((f) =>
+        f.name.toLowerCase().endsWith(".pdf"),
+      );
+      if (pdfFiles.length === 0) {
+        setError("PDF ファイルのみアップロードできます");
+        return;
+      }
       setError(null);
 
-      const names = fileList.map((f) => f.name.replace(/\.pdf$/i, ""));
+      const names = pdfFiles.map((f) => f.name.replace(/\.pdf$/i, ""));
       setUploadingNames((prev) => [...names, ...prev]);
 
-      const tasks = fileList.map((file) => async () => {
+      const tasks = pdfFiles.map((file) => async () => {
         const name = file.name.replace(/\.pdf$/i, "");
         const formData = new FormData();
         formData.append("file", file);
@@ -267,16 +294,11 @@ export const KBDetailPage = memo(function KBDetailPage({
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || "Upload failed");
           }
-          // Don't remove from uploadingNames here — the dedup logic in
-          // displayDocs will hide the placeholder once the refetch returns
-          // the real document from the backend. This avoids the gap where
-          // the placeholder is gone but the refetch hasn't returned yet.
           queryClient.invalidateQueries({ queryKey: ["documents", slug] });
         } catch (err) {
           setError(
             err instanceof Error ? err.message : "アップロードに失敗しました",
           );
-          // Only remove placeholder on error (backend won't have it)
           setUploadingNames((prev) => prev.filter((n) => n !== name));
         }
       });
@@ -292,6 +314,29 @@ export const KBDetailPage = memo(function KBDetailPage({
       });
     },
     [queryClient, slug],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current = 0;
+      setDragging(false);
+      const fileList = Array.from(e.dataTransfer.files);
+      processFiles(fileList);
+    },
+    [processFiles],
+  );
+
+  // Upload (click)
+  const handleUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const fileList = Array.from(e.target.files ?? []);
+      if (fileList.length === 0) return;
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      processFiles(fileList);
+    },
+    [processFiles],
   );
 
   // Delete single document
@@ -347,7 +392,26 @@ export const KBDetailPage = memo(function KBDetailPage({
   ).length;
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div
+      className="flex flex-1 flex-col min-h-0 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {dragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary rounded-xl">
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/20">
+              <UploadIcon className="size-8 text-primary" />
+            </div>
+            <p className="text-sm font-medium text-primary">
+              PDF をドロップしてアップロード
+            </p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 border-b border-border px-6 py-5">
         <div className="mx-auto max-w-3xl">
@@ -494,7 +558,7 @@ export const KBDetailPage = memo(function KBDetailPage({
               <div className="space-y-1">
                 <p className="text-sm font-medium">ドキュメントがありません</p>
                 <p className="text-sm text-muted-foreground">
-                  PDF をアップロードしてナレッジベースを構築しましょう
+                  PDF をドラッグ&ドロップ、またはボタンからアップロード
                 </p>
               </div>
             </div>
