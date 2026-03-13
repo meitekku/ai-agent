@@ -16,14 +16,14 @@ export interface StyleOptions {
 // Option definitions
 // ============================================================
 
-type CategoryDef = {
+export type CategoryDef = {
   key: keyof StyleOptions;
   label: string;
   options: string[];
   hasOther: boolean;
 };
 
-const CATEGORIES: CategoryDef[] = [
+export const CATEGORIES: CategoryDef[] = [
   {
     key: "industry",
     label: "産業",
@@ -420,7 +420,7 @@ const PROFESSION_RULES: KeywordRule[] = [
 ];
 
 // Industry → recommended color mapping
-const INDUSTRY_COLOR_MAP: Record<string, string> = {
+export const INDUSTRY_COLOR_MAP: Record<string, string> = {
   "IT・通信": "ブルー",
   "医療・ヘルスケア": "グリーン",
   教育: "イエロー",

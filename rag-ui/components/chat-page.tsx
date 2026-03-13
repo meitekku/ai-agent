@@ -19,7 +19,9 @@ import { VisualSlideViewer } from "@/components/visual-slide-viewer";
 import { HtmlSlideViewer } from "@/components/html-slide-viewer";
 import { SlideStudio } from "@/components/slide-studio";
 import { SlidePanel } from "@/components/slide-panel";
+import { SlideSetupWizard, type WizardConfig } from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
+import { AnimatePresence } from "motion/react";
 import { BookOpenIcon, ZapIcon, AlertCircleIcon } from "lucide-react";
 import { StepIndicator } from "@/components/step-indicator";
 import { useChatSettingsStore } from "@/lib/store";
@@ -252,7 +254,7 @@ export function ChatPage({
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
-  // Detect generateSlides tool result and auto-open slide panel
+  // Detect generateSlides tool result and show wizard
   useEffect(() => {
     if (!sessionActiveRef.current) return;
     if (!justFinishedRef.current) return;
@@ -274,16 +276,16 @@ export function ChatPage({
           instructions?: string | null;
         };
         if (result?.triggered) {
-          openSlidePanel(
-            result.topic ?? "",
-            result.content ?? "",
-            result.instructions,
-          );
+          setWizardData({
+            topic: result.topic ?? "",
+            content: result.content ?? "",
+            instructions: result.instructions ?? null,
+          });
           break;
         }
       }
     }
-  }, [status, messages, openSlidePanel]);
+  }, [status, messages]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -349,7 +351,7 @@ export function ChatPage({
       lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
-    regenerate({ body: { service, kb: activeKb, skipCache: true, clientTime: getClientTime() } });
+    regenerate({ body: { service, kb: activeKb, clientTime: getClientTime() } });
   }, [regenerate, service, activeKb, messages]);
 
   // Edit message: create new branch
@@ -418,6 +420,65 @@ export function ChatPage({
 
   // --- Simple SlideViewer (existing) ---
   const openSlideViewer = useSlideStore((s) => s.openSlideViewer);
+
+  // --- Slide Setup Wizard ---
+  const [wizardData, setWizardData] = useState<{
+    topic: string;
+    content: string;
+    instructions: string | null;
+  } | null>(null);
+
+  const handleWizardComplete = useCallback(
+    (config: WizardConfig) => {
+      const styleOptions: import("@/components/style-options-panel").StyleOptions = {};
+      if (config.industries.length > 0) styleOptions.industry = config.industries[0];
+      if (config.audience.length > 0) {
+        // Check if it's a profession or age group
+        const professions = config.audience.filter((a) =>
+          ["人事", "営業", "経営企画", "マーケティング", "管理・経理", "設計・開発", "研究・R&D", "カスタマーサポート", "コンサルティング"].includes(a),
+        );
+        const ages = config.audience.filter((a) =>
+          ["10代〜20代", "30代〜40代", "50代以上", "全年代"].includes(a),
+        );
+        if (professions.length > 0) styleOptions.profession = professions[0];
+        if (ages.length > 0) styleOptions.ageGroup = ages[0];
+      }
+      if (config.colorStyle) styleOptions.colorStyle = config.colorStyle;
+
+      // Build instructions with wizard selections
+      const parts: string[] = [];
+      if (config.industries.length > 0)
+        parts.push(`産業: ${config.industries.join(", ")}`);
+      if (config.audience.length > 0)
+        parts.push(`対象者: ${config.audience.join(", ")}`);
+      if (config.colorStyle)
+        parts.push(`配色: ${config.colorStyle}`);
+      if (config.slideCount)
+        parts.push(`枚数: ${config.slideCount}枚`);
+      if (config.additionalNotes)
+        parts.push(config.additionalNotes);
+
+      const mergedInstructions = [
+        wizardData?.instructions,
+        ...parts,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      openSlidePanel(
+        config.topic || wizardData?.topic || "",
+        wizardData?.content || "",
+        mergedInstructions || null,
+        Object.keys(styleOptions).length > 0 ? styleOptions : null,
+      );
+      setWizardData(null);
+    },
+    [wizardData, openSlidePanel],
+  );
+
+  const handleWizardCancel = useCallback(() => {
+    setWizardData(null);
+  }, []);
 
   // --- SlidePanel (right panel for HTML slides) ---
   const slidePanelOpen = useSlidePanelStore((s) => s.open);
@@ -600,6 +661,17 @@ export function ChatPage({
           <div className="sticky bottom-0 z-30 mt-auto">
             <div className="pointer-events-none h-8 bg-gradient-to-t from-background to-transparent" />
             <div className="bg-background">
+              <AnimatePresence>
+                {wizardData && (
+                  <SlideSetupWizard
+                    topic={wizardData.topic}
+                    content={wizardData.content}
+                    instructions={wizardData.instructions}
+                    onComplete={handleWizardComplete}
+                    onCancel={handleWizardCancel}
+                  />
+                )}
+              </AnimatePresence>
               <ChatInput status={status} onSend={handleSend} onStop={handleStop} />
             </div>
           </div>

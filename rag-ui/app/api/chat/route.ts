@@ -14,8 +14,8 @@ import {
   backendName,
   geminiGoogleSearch,
 } from "@/lib/ollama-provider";
-import { searchOnly, getKB, type SearchResult } from "@/lib/rag-client";
-import { getCachedResponse, cacheResponse } from "@/lib/semantic-cache";
+import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } from "@/lib/rag-client";
+
 import { TAVILY_API_KEY } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
 import { getChatFile } from "@/lib/chat-files-db";
@@ -87,7 +87,7 @@ async function resolveServerFiles(
   }
 }
 
-function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
+function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: boolean): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   const hasWeb = hasTavily || hasGoogleSearch;
 
@@ -108,10 +108,17 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
 ## ツール使用判断（優先順位順）`;
 
   if (hasKb) {
-    prompt += `
+    if (autoDiscovery) {
+      prompt += `
+1. **直接回答**（ツール不要）: 挨拶、雑談、一般知識、プログラミングなどナレッジベースに無関係な質問
+2. **searchKnowledgeBase**: 複数のナレッジベースが利用可能。質問に最も関連する KB を選んで検索する。迷ったら検索する — 不要な検索のコストは低く、検索漏れのコストは高い。複数の KB が関連する場合は複数回検索してよい
+3. **readUrl**: ユーザーが URL を提示した場合、または検索結果で詳細が必要なページがある場合`;
+    } else {
+      prompt += `
 1. **直接回答**（ツール不要）: 挨拶、雑談、一般知識、プログラミングなど KB に無関係な質問
 2. **searchKnowledgeBase**: KB のトピックに関連する可能性がある質問。迷ったら検索する — 不要な検索のコストは低く、検索漏れのコストは高い
 3. **readUrl**: ユーザーが URL を提示した場合、または検索結果で詳細が必要なページがある場合`;
+    }
     if (hasWeb) {
       prompt += `
 4. **${webSearchToolName}**: KB の検索結果が不十分な場合、最新情報・時事・リアルタイム情報が必要な場合、ユーザーが「検索して」「最新の」等と指示した場合
@@ -145,10 +152,7 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string): string {
 
   // generateSlides ツール説明
   prompt += `
-- **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合。
-  呼び出す前に以下を会話で確認（ユーザーの依頼が明確な場合は確認せず直接生成可）:
-  - テーマと内容（明確でない場合）
-  - 追加の要望（枚数、対象者、スタイル、トーンなど、ユーザーが指定した場合のみ）
+- **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で質問せず直接呼び出す。ユーザーが指定したテーマ・内容・追加要望を topic/content/instructions にまとめて渡す。
   ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。`;
 
   // 情報の信頼度ヒエラルキー
@@ -167,7 +171,7 @@ KB の情報とウェブの情報が矛盾する場合は、両方の情報を�
   prompt += `
 
 ## 出典の記載
-- KB 出典: 段落末尾に「（出典: ドキュメント名, p.X）」形式。複数は「（出典: Doc A, p.3; Doc B, p.7）」
+- KB 出典: ナレッジベース名を明示して引用する（例:「XXXナレッジベースによると…」）。段落末尾に「（出典: ドキュメント名, p.X）」形式。複数は「（出典: Doc A, p.3; Doc B, p.7）」
 - ウェブ出典: [タイトル](URL) 形式のインラインリンク
 - 自身の知識: 出典タグ不要
 - 検索結果にない情報を「ドキュメントによると」と偽って引用しないこと。出典が不明な場合は推測・捏造せず省略する`;
@@ -193,14 +197,12 @@ KB の情報とウェブの情報が矛盾する場合は、両方の情報を�
 export async function POST(req: Request) {
   let messages: UIMessage[];
   let service: "lightrag" | "pageindex";
-  let skipCache = false;
   let kb: string | null = null;
   let clientTime: string | undefined;
   try {
     const body = await req.json();
     messages = body.messages;
     service = body.service === "pageindex" ? "pageindex" : "lightrag";
-    skipCache = !!body.skipCache;
     kb = body.kb ?? null;
     clientTime = body.clientTime;
   } catch {
@@ -214,39 +216,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const t = { start: Date.now(), cache: 0, prompt: 0, stream: 0 };
+  const t = { start: Date.now(), prompt: 0, stream: 0 };
 
-  // Extract last user message text for cache key
-  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-  const queryText =
-    lastUserMsg?.parts
-      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join(" ") || "";
-
-  // Check semantic cache first (skip on regenerate)
-  if (queryText && !skipCache && kb) {
-    const cached = await getCachedResponse(queryText, kb);
-    t.cache = Date.now() - t.start;
-    if (cached.hit) {
-      console.log(
-        `[chat] ⚡ cache hit (${t.cache}ms):`,
-        queryText.slice(0, 50),
-      );
-      const partId = crypto.randomUUID();
-      return createUIMessageStreamResponse({
-        stream: createUIMessageStream({
-          async execute({ writer }) {
-            writer.write({ type: "text-start", id: partId });
-            writer.write({
-              type: "text-delta",
-              id: partId,
-              delta: cached.response,
-            });
-            writer.write({ type: "text-end", id: partId });
-          },
-        }),
-      });
+  // Auto-discovery: when no KB is manually selected, fetch all KBs
+  let kbList: KnowledgeBase[] = [];
+  let autoDiscovery = false;
+  if (!kb) {
+    try {
+      const allKbs = await listKBs();
+      kbList = allKbs.filter(k => k.doc_count > 0);
+      autoDiscovery = kbList.length > 0;
+      if (autoDiscovery) {
+        console.log(`[chat] 🔍 auto-discovery: ${kbList.length} KBs available`);
+      }
+    } catch (e) {
+      console.error("[chat] listKBs for auto-discovery failed:", e);
     }
   }
 
@@ -254,12 +238,17 @@ export async function POST(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools: Record<string, any> = {};
 
-  // Only inject searchKnowledgeBase when a KB is selected
+  // Inject searchKnowledgeBase: single-KB mode (manual) or auto-discovery mode
   if (kb) {
+    // Single-KB mode: search only the selected KB
     let kbDescription =
       "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
+    let kbTitle = kb;
+    let kbName = kb;
     try {
       const kbInfo = await getKB(kb);
+      kbTitle = kbInfo?.title || kbInfo?.name || kb;
+      kbName = kbInfo?.name || kb;
       if (kbInfo?.title && kbInfo?.description) {
         kbDescription = `ナレッジベース「${kbInfo.title}」を検索: ${kbInfo.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
       } else {
@@ -307,6 +296,70 @@ export async function POST(req: Request) {
 
           return {
             found: true,
+            knowledge_base: kbName,
+            results: contexts,
+            knowledge_graph: searchRes.knowledge_graph ?? "",
+            source_documents: searchRes.source_documents ?? [],
+          };
+        } catch (err) {
+          console.error(`[chat] search failed (${Date.now() - t0}ms):`, err);
+          return {
+            found: false,
+            message: "ナレッジベース検索に失敗しました。",
+          };
+        }
+      },
+    });
+  } else if (autoDiscovery) {
+    // Auto-discovery mode: AI chooses which KB to search
+    const kbDescriptions = kbList.map(k => {
+      const label = k.description
+        ? `${k.name} — ${k.description}`
+        : k.name;
+      return `- \`${k.slug}\`: ${label}（${k.doc_count}件）`;
+    }).join('\n');
+
+    const slugs = kbList.map(k => k.slug);
+
+    tools.searchKnowledgeBase = tool({
+      description: `利用可能なナレッジベースから関連情報を検索します。質問に最も関連する KB を選んでください。\n\n利用可能な KB:\n${kbDescriptions}`,
+      inputSchema: z.object({
+        query: z.string().describe("Search query for the knowledge base"),
+        kb: z.enum([slugs[0], ...slugs.slice(1)] as [string, ...string[]]).describe("検索するナレッジベースの slug"),
+      }),
+      execute: async ({ query, kb: selectedKb }) => {
+        const kbInfo = kbList.find(k => k.slug === selectedKb);
+        const kbName = kbInfo?.name || selectedKb;
+        console.log(`[chat] 🔍 searchKnowledgeBase: "${query}" kb=${selectedKb} (auto-discovery)`);
+        const t0 = Date.now();
+        try {
+          const searchRes = await searchOnly(query, { topK: 8, service, kb: selectedKb });
+          const elapsed = Date.now() - t0;
+          console.log(
+            `[chat] 🔍 search: ${elapsed}ms →`,
+            searchRes.results?.length ?? 0,
+            "results",
+          );
+
+          if (!searchRes.results || searchRes.results.length === 0) {
+            return {
+              found: false,
+              knowledge_base: kbName,
+              message: "関連するドキュメントは見つかりませんでした。",
+            };
+          }
+
+          const contexts = searchRes.results.map(
+            (r: SearchResult, i: number) => ({
+              index: i + 1,
+              document: r.name ?? "unknown",
+              content: r.content ?? r.tree_context?.context ?? "",
+            }),
+          );
+
+          return {
+            found: true,
+            knowledge_base: kbName,
             results: contexts,
             knowledge_graph: searchRes.knowledge_graph ?? "",
             source_documents: searchRes.source_documents ?? [],
@@ -557,8 +610,7 @@ export async function POST(req: Request) {
   tools.generateSlides = tool({
     description:
       "ユーザーの依頼に基づいてプレゼンテーションスライドを生成します。" +
-      "ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合に使用。" +
-      "呼び出す前に、テーマ・内容・対象者・スタイルなど必要な情報を会話で確認してください。",
+      "ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で確認せず直接呼び出してください。",
     inputSchema: z.object({
       topic: z.string().describe("スライドのテーマ/タイトル"),
       content: z.string().describe("スライドに含めるべき内容の要約（ナレッジベースの検索結果があれば含める）"),
@@ -580,7 +632,7 @@ export async function POST(req: Request) {
     t.prompt = t1 - t.start;
     let firstTokenTime = 0;
 
-    let systemPrompt = buildSystemPrompt(!!kb, clientTime);
+    let systemPrompt = buildSystemPrompt(!!kb || autoDiscovery, clientTime, autoDiscovery);
 
     // Inject enabled skills into system prompt (non-fatal)
     try {
@@ -618,18 +670,11 @@ export async function POST(req: Request) {
           console.log(`[chat] 🚀 TTFT (${backendName} prefill): ${ttft}ms`);
         }
       },
-      async onFinish({ text, usage, steps }) {
+      async onFinish({ usage }) {
         t.stream = Date.now() - t.start;
         console.log(
-          `[chat] ✅ done: total=${t.stream}ms | cache=${t.cache}ms prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
+          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
         );
-        // Only cache responses that used the knowledge base
-        const usedKB = steps?.some((step) =>
-          step.toolCalls?.some((tc) => tc.toolName === "searchKnowledgeBase"),
-        );
-        if (queryText && text && usedKB && kb) {
-          cacheResponse(queryText, text, [], kb).catch(() => {});
-        }
       },
     });
 

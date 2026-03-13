@@ -221,7 +221,7 @@ function parsePlanMd(md: string): { title: string; slides: SlideSection[] } {
 // ============================================================
 
 export function SlidePanel() {
-  const { open, question, answer, instructions, deckId, closePanel } = useSlidePanelStore();
+  const { open, question, answer, instructions, styleOptions, deckId, closePanel } = useSlidePanelStore();
 
   // Phase state
   const [phase, setPhase] = useState<Phase>("planning");
@@ -381,7 +381,7 @@ export function SlidePanel() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question, answer, instructions }),
+          body: JSON.stringify({ question, answer, instructions, styleOptions }),
           signal: controller.signal,
         },
         PLAN_TIMEOUT_MS,
