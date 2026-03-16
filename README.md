@@ -7,6 +7,7 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 - **ナレッジベースチャット** — PDF アップロード → 知識グラフ自動構築 → AI 回答生成
 - **ドキュメント管理** — アップロード / 一覧 / 削除（OCR 対応）
 - **スライド生成** — チャット回答から 4 種類のスライドを自動生成（HTML / Visual / Studio / Simple）
+- **CRM 連携 + 提案書** — Salesforce / Kintone 商談データ取得、AI 商機分析、PPTX 提案書生成（チャット Tool Calling 経由）
 - **ウェブ検索** — Tavily 連携でリアルタイムウェブ検索（Tool Calling、オプション）
 - **語義キャッシュ** — 同一クエリは Valkey キャッシュから ~14ms で応答
 - **チャット履歴・ブランチ** — 会話の永続化、メッセージ編集、ブランチ分岐・切替
@@ -23,6 +24,9 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
                     │    ├──▶ lightrag (FastAPI)        │
                     │    │      └──▶ postgres (pgvector)│
                     │    │      └──▶ Gemini API ──────────── (外部)
+                    │    ├──▶ crm-service (Hono)        │
+                    │    │      └──▶ postgres           │
+                    │    │      └──▶ Gemini API         │
                     │    └──▶ valkey (cache)            │
                     │                                   │
                     └──────────────────────────────────┘
@@ -31,8 +35,9 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 | サービス | イメージ | 役割 |
 |---------|---------|------|
 | **rag-ui** | `oven/bun:1` | Next.js 16 フロントエンド + API Routes |
+| **crm-service** | `oven/bun:1` | CRM 連携 + 商機分析 + 提案書 PPTX 生成 |
 | **lightrag** | `python:3.12-slim` | FastAPI バックエンド、PDF 入庫、知識グラフ検索 |
-| **postgres** | `pgvector/pgvector:pg17` | ベクトル DB + メタデータ保存 |
+| **postgres** | `pgvector/pgvector:pg18` | ベクトル DB + メタデータ保存 |
 | **valkey** | `valkey/valkey:8` | クエリキャッシュ |
 
 ## クイックスタート
@@ -88,6 +93,14 @@ docker compose --profile prod up -d
 | 変数 | 説明 |
 |------|------|
 | `TAVILY_API_KEY` | [Tavily](https://tavily.com/) API Key（設定するとウェブ検索 Tool Calling が有効化） |
+| `SALESFORCE_INSTANCE_URL` | Salesforce インスタンス URL（CRM 連携用） |
+| `SALESFORCE_CLIENT_ID` | Salesforce OAuth2 クライアント ID |
+| `SALESFORCE_CLIENT_SECRET` | Salesforce OAuth2 クライアントシークレット |
+| `KINTONE_SUBDOMAIN` | Kintone サブドメイン（CRM 連携用） |
+| `KINTONE_API_TOKEN` | Kintone API トークン |
+| `KINTONE_APP_ID` | Kintone アプリ ID |
+
+> **CRM 連携について**: Salesforce / Kintone の環境変数は全てオプションです。未設定でも Kintone モックデータで動作確認が可能です。チャットで「商談一覧を見せて」と入力すると CRM ツールが呼び出されます。
 
 その他の設定（DB 認証情報、モデル名、サービス URL 等）は `docker-compose.yml` で設定済みです。
 
@@ -100,6 +113,8 @@ docker compose --profile prod up -d
 | 実体抽出 | gemini-2.5-flash | アップロード時（チャンク数分） |
 | Embedding | gemini-embedding-001 | アップロード時 + クエリ時 |
 | スライド生成 | gemini-2.5-flash | スライド作成時 |
+| 商機分析根拠 | gemini-2.5-flash | 商談分析時 |
+| 提案書 PPTX | gemini-2.5-flash | 提案書生成時 |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
 
@@ -115,6 +130,7 @@ docker compose --profile prod logs -f
 # 特定サービスのログ
 docker compose --profile prod logs -f lightrag
 docker compose --profile prod logs -f rag-ui
+docker compose --profile prod logs -f crm-service
 
 # 再起動
 docker compose --profile prod restart
@@ -136,7 +152,7 @@ docker compose --profile prod up -d
 
 | Volume | 内容 |
 |--------|------|
-| `pgdata` | PostgreSQL — ベクトル、知識グラフ KV ストア、ドキュメントメタ、チャット履歴、スライド |
+| `pgdata` | PostgreSQL — ベクトル、知識グラフ KV ストア、ドキュメントメタ、チャット履歴、スライド、CRM キャッシュ |
 | `valkeydata` | クエリキャッシュ |
 | `lightrag-data` | NetworkX グラフファイル |
 
@@ -153,18 +169,25 @@ docker compose --profile prod up -d
 - [LightRAG](https://github.com/HKUDS/LightRAG)（知識グラフ RAG）
 - pgvector, PyMuPDF（PDF → Gemini Vision OCR）
 
+**CRM サービス (crm-service)**
+- Bun + Hono
+- jsforce（Salesforce 連携）、xlsx（Excel パース）
+- pptxgenjs（PPTX 提案書生成）
+- Gemini API（商機分析根拠 + スライド計画）
+
 **インフラ**
 - PostgreSQL 17 + pgvector
 - Valkey 8（Redis 互換キャッシュ）
 
 ## リソース使用量
 
-4 コンテナ合計 約 410 MB（アイドル時）：
+5 コンテナ合計 約 450 MB（アイドル時）：
 
 | コンテナ | メモリ |
 |---------|-------|
 | lightrag | ~254 MB |
 | rag-ui | ~109 MB |
+| crm-service | ~40 MB |
 | postgres | ~37 MB |
 | valkey | ~10 MB |
 

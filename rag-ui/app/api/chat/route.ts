@@ -16,7 +16,7 @@ import {
 } from "@/lib/ollama-provider";
 import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } from "@/lib/rag-client";
 
-import { TAVILY_API_KEY } from "@/lib/constants";
+import { TAVILY_API_KEY, CRM_SERVICE_URL } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
 import { getChatFile } from "@/lib/chat-files-db";
 import { readStoredFile } from "@/lib/file-storage";
@@ -26,6 +26,7 @@ export const maxDuration = 300;
 
 const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
+const hasCrm = !!CRM_SERVICE_URL;
 
 /**
  * Post-process model messages to resolve file data to binary Uint8Array.
@@ -154,6 +155,24 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
   prompt += `
 - **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で質問せず直接呼び出す。ユーザーが指定したテーマ・内容・追加要望を topic/content/instructions にまとめて渡す。
   ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。`;
+
+  // CRM ツール説明
+  if (hasCrm) {
+    prompt += `
+
+## CRM・提案書ツール
+- **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得。「商談」「案件」「CRM」等のキーワードで使用
+- **fetchDealData**: 特定商談の詳細データを取得。分析前に必ず呼ぶ
+- **analyzeDeal**: 商談を分析（受注確率、スコア、シナリオ、AI 提案根拠）。fetchDealData の結果を渡す
+- **generateProposal**: 提案書 PPTX を生成。analyzeDeal の結果を渡す
+- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正
+
+ワークフロー例:
+1. listDeals → 商談一覧表示
+2. fetchDealData → 詳細取得
+3. analyzeDeal → 分析結果提示
+4. ユーザー確認後 → generateProposal で提案書生成`;
+  }
 
   // 情報の信頼度ヒエラルキー
   if (hasKb) {
@@ -626,6 +645,135 @@ export async function POST(req: Request) {
       };
     },
   });
+
+  // CRM tools (only when CRM_SERVICE_URL is configured)
+  if (hasCrm) {
+    tools.listDeals = tool({
+      description: "CRM（Salesforce/Kintone）から商談一覧を取得します。「商談一覧」「案件リスト」「CRMの情報」等のキーワードで使用。",
+      inputSchema: z.object({
+        source: z.enum(["salesforce", "kintone"]).describe("CRM ソース"),
+      }),
+      execute: async ({ source }) => {
+        console.log(`[chat] 📊 listDeals: source=${source}`);
+        const t0 = Date.now();
+        try {
+          const endpoint = source === "salesforce" ? "/sf/list" : "/kintone/list";
+          const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const data = await res.json();
+          console.log(`[chat] 📊 listDeals done: ${Date.now() - t0}ms, ${data.opportunities?.length ?? 0} deals`);
+          return data;
+        } catch (err) {
+          console.error(`[chat] ❌ listDeals failed:`, err);
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.fetchDealData = tool({
+      description: "特定の商談の詳細データを取得します。分析前に必ず呼んでください。",
+      inputSchema: z.object({
+        source: z.enum(["salesforce", "kintone"]).describe("CRM ソース"),
+        dealId: z.string().describe("商談/レコード ID"),
+        objectType: z.string().optional().describe("SF オブジェクトタイプ（Opportunity, Lead, Account）"),
+      }),
+      execute: async ({ source, dealId, objectType }) => {
+        console.log(`[chat] 📊 fetchDealData: source=${source} id=${dealId}`);
+        const t0 = Date.now();
+        try {
+          const endpoint = source === "salesforce" ? "/sf/fetch" : "/kintone/fetch";
+          const body: Record<string, unknown> = source === "salesforce"
+            ? { opportunityId: dealId, objectType: objectType || "Opportunity" }
+            : { recordId: dealId };
+          const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const result = await res.json();
+          console.log(`[chat] 📊 fetchDealData done: ${Date.now() - t0}ms`);
+          // Truncate large arrays to control token usage
+          if (result.data) {
+            const d = result.data;
+            if (d.activities?.length > 5) d.activities = d.activities.slice(0, 5);
+            if (d.emails?.length > 5) d.emails = d.emails.slice(0, 5);
+            if (d.feedItems?.length > 5) d.feedItems = d.feedItems.slice(0, 5);
+            if (d.events?.length > 5) d.events = d.events.slice(0, 5);
+          }
+          return result;
+        } catch (err) {
+          console.error(`[chat] ❌ fetchDealData failed:`, err);
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.analyzeDeal = tool({
+      description: "商談データを分析します（受注確率、スコア、シナリオ、AI提案根拠）。fetchDealData の結果を渡してください。",
+      inputSchema: z.object({
+        data: z.any().describe("fetchDealData で取得した商談データ（SFData 形式）"),
+      }),
+      execute: async ({ data }) => {
+        console.log(`[chat] 📊 analyzeDeal: ${data?.opportunity?.Name || "unknown"}`);
+        const t0 = Date.now();
+        try {
+          const res = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data }),
+          });
+          const result = await res.json();
+          console.log(`[chat] 📊 analyzeDeal done: ${Date.now() - t0}ms`);
+          return result;
+        } catch (err) {
+          console.error(`[chat] ❌ analyzeDeal failed:`, err);
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.generateProposal = tool({
+      description: "提案書 PPTX を生成します。analyzeDeal の結果を渡してください。",
+      inputSchema: z.object({
+        data: z.any().describe("商談データ（SFData 形式）"),
+        analysis: z.any().describe("analyzeDeal で取得した分析結果"),
+      }),
+      execute: async ({ data, analysis }) => {
+        console.log(`[chat] 📊 generateProposal: ${data?.opportunity?.Name || "unknown"}`);
+        return { triggered: true, data, analysis };
+      },
+    });
+
+    tools.reviseRationale = tool({
+      description: "ユーザーのフィードバックに基づいて分析根拠を修正します。",
+      inputSchema: z.object({
+        currentAnalysis: z.any().describe("現在の分析結果"),
+        feedback: z.string().describe("ユーザーからの修正フィードバック"),
+      }),
+      execute: async ({ currentAnalysis, feedback }) => {
+        console.log(`[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."`);
+        const t0 = Date.now();
+        try {
+          const res = await fetch(`${CRM_SERVICE_URL}/deals/revise-rationale`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ currentAnalysis, feedback }),
+          });
+          const result = await res.json();
+          console.log(`[chat] 📊 reviseRationale done: ${Date.now() - t0}ms`);
+          return result;
+        } catch (err) {
+          console.error(`[chat] ❌ reviseRationale failed:`, err);
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    console.log("[chat] 📊 CRM tools registered (crm-service connected)");
+  }
 
   try {
     const t1 = Date.now();

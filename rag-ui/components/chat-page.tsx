@@ -28,6 +28,8 @@ import { useChatSettingsStore } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
 import { useSlidePanelStore } from "@/lib/slide-panel-store";
 import { useChatTreeStore } from "@/lib/chat-tree";
+import { useProposalPanelStore } from "@/lib/proposal-panel-store";
+import { ProposalPanel } from "@/components/proposal-panel";
 import type { MessageRow, ConversationRow } from "@/lib/chat-db";
 
 // ---------------------------------------------------------------------------
@@ -254,7 +256,8 @@ export function ChatPage({
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
-  // Detect generateSlides tool result and show wizard
+  // Detect generateSlides / generateProposal tool result
+  const openProposal = useProposalPanelStore((s) => s.open);
   useEffect(() => {
     if (!sessionActiveRef.current) return;
     if (!justFinishedRef.current) return;
@@ -264,28 +267,28 @@ export function ChatPage({
     if (!lastAssistant) return;
 
     for (const part of lastAssistant.parts) {
-      if (
-        isToolUIPart(part) &&
-        getToolName(part) === "generateSlides" &&
-        part.state === "output-available"
-      ) {
-        const result = (("result" in part ? part.result : part.output) ?? {}) as {
-          triggered?: boolean;
-          topic?: string;
-          content?: string;
-          instructions?: string | null;
-        };
-        if (result?.triggered) {
-          setWizardData({
-            topic: result.topic ?? "",
-            content: result.content ?? "",
-            instructions: result.instructions ?? null,
-          });
-          break;
-        }
+      if (!isToolUIPart(part) || part.state !== "output-available") continue;
+      const toolName = getToolName(part);
+      const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
+
+      if (toolName === "generateSlides" && result?.triggered) {
+        setWizardData({
+          topic: (result.topic as string) ?? "",
+          content: (result.content as string) ?? "",
+          instructions: (result.instructions as string | null) ?? null,
+        });
+        break;
+      }
+
+      if (toolName === "generateProposal" && result?.triggered) {
+        openProposal(
+          result.data as Record<string, unknown>,
+          result.analysis as Record<string, unknown>,
+        );
+        break;
       }
     }
-  }, [status, messages]);
+  }, [status, messages, openProposal]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -709,6 +712,7 @@ export function ChatPage({
         onDeckChange={setStudioDeck}
         onRequestRefine={handleStudioRefine}
       />
+      <ProposalPanel />
     </div>
   );
 }

@@ -7,22 +7,46 @@ Gemini-only の自己完結型 Docker Compose プロジェクト。rag-ui（Next
 ```
 docker-compose.yml
 ├── rag-ui       (Next.js standalone, Bun)     → port 4002:3000
+├── crm-service  (Bun + Hono, NEW)             → port 8009 (internal)
 ├── lightrag     (Python FastAPI, uv)          → port 8007 (internal)
-├── postgres     (pgvector/pgvector:pg17)      → port 5432 (internal)
+├── postgres     (pgvector/pgvector:pg18)      → port 5432 (internal)
 └── valkey       (valkey/valkey:8)             → port 6379 (internal)
 ```
 
-外部公開ポートは **4002 のみ**。内部サービス（postgres/valkey/lightrag）はホストに公開しない。
+外部公開ポートは **4002 のみ**。内部サービス（postgres/valkey/lightrag/crm-service）はホストに公開しない。
 
 ## プロジェクト構造
 
 ```
 rag-deploy/
-├── docker-compose.yml              # 4サービス定義
+├── docker-compose.yml              # 5サービス定義
 ├── .env.example                    # GEMINI_API_KEY テンプレート
 ├── .env                            # 実際の API Key（git 管理外）
 ├── init.sql                        # CREATE EXTENSION vector
 ├── .gitignore                      # .env, node_modules, .venv 等
+├── crm-service/                    # CRM + 提案書マイクロサービス (Bun + Hono)
+│   ├── Dockerfile                  # oven/bun:1
+│   ├── .dockerignore
+│   ├── package.json                # hono, pg, @google/generative-ai, jsforce, xlsx, pptxgenjs
+│   ├── tsconfig.json
+│   └── src/
+│       ├── index.ts                # Hono app (port 8009) + route registration
+│       ├── routes/
+│       │   ├── health.ts           # GET /health
+│       │   ├── salesforce.ts       # POST /sf/check, /sf/list, /sf/fetch
+│       │   ├── kintone.ts          # POST /kintone/list, /kintone/fetch
+│       │   ├── parse-file.ts       # POST /deals/parse-file
+│       │   ├── analyze.ts          # POST /deals/analyze
+│       │   ├── rationale.ts        # POST /deals/revise-rationale
+│       │   ├── solution-qa.ts      # POST /deals/solution-qa
+│       │   ├── templates.ts        # GET/POST/DELETE/PATCH /templates, POST /templates/detect
+│       │   └── proposal-pptx.ts    # POST /proposal/generate-pptx
+│       └── lib/
+│           ├── gemini.ts           # GoogleGenerativeAI wrapper
+│           ├── db.ts               # pg Pool + ensureCrmTables()
+│           ├── scoring.ts          # 商機評分アルゴリズム
+│           ├── prompts.ts          # AI プロンプトビルダー
+│           └── types.ts            # SFData, AnalysisResult, etc.
 ├── lightrag-service/               # Python FastAPI バックエンド
 │   ├── Dockerfile                  # python:3.12-slim + uv
 │   ├── .dockerignore
@@ -89,7 +113,13 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー + チャット履歴 |
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
-| `rag-ui/components/chat-page.tsx` | 同上 | 一致 | チャット共有コンポーネント（履歴+ブランチ+ファイル添付） |
+| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | generateProposal 検出 + ProposalPanel 追加 |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（listDeals/fetchDealData/analyzeDeal/generateProposal/reviseRationale）追加 |
+| `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
+| `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store for ProposalPanel |
+| `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書生成サイドパネル |
+| `rag-ui/app/api/crm/generate-pptx/route.ts` | **rag-deploy のみ** | — | crm-service PPTX 生成プロキシ |
+| `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
 | `rag-ui/components/chat-message.tsx` | 同上 | 一致 | マルチモーダル表示（画像・ファイル）+ 編集+ブランチ |
@@ -181,6 +211,12 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | rag-ui | `EMBEDDING_PROVIDER` | gemini | 語義キャッシュ用 |
 | rag-ui | `TAVILY_API_KEY` | ${TAVILY_API_KEY:-} | ウェブ検索（オプション、未設定→Gemini Google Search にフォールバック） |
 | rag-ui | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | スライド履歴+スキル用 |
+| rag-ui | `CRM_SERVICE_URL` | http://crm-service:8009 | CRM サービス URL（設定時→CRM ツール有効） |
+| crm-service | `GEMINI_API_KEY` | ${GEMINI_API_KEY} | Gemini API（.env から共有） |
+| crm-service | `GEMINI_MODEL` | gemini-2.5-flash | Gemini モデル |
+| crm-service | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | DB 接続 |
+| crm-service | `SALESFORCE_*` | ${SALESFORCE_*:-} | Salesforce 認証（オプション） |
+| crm-service | `KINTONE_*` | ${KINTONE_*:-} | Kintone 認証（オプション） |
 
 ### .env（ユーザー設定）
 
@@ -188,6 +224,12 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 |------|------|
 | `GEMINI_API_KEY` | Gemini API Key（必須） |
 | `TAVILY_API_KEY` | Tavily API Key（オプション、設定時→Tavily ウェブ検索、未設定→Gemini Google Search grounding にフォールバック） |
+| `SALESFORCE_INSTANCE_URL` | Salesforce インスタンス URL（オプション） |
+| `SALESFORCE_CLIENT_ID` | Salesforce クライアント ID（オプション） |
+| `SALESFORCE_CLIENT_SECRET` | Salesforce クライアントシークレット（オプション） |
+| `KINTONE_SUBDOMAIN` | Kintone サブドメイン（オプション） |
+| `KINTONE_API_TOKEN` | Kintone API トークン（オプション） |
+| `KINTONE_APP_ID` | Kintone アプリ ID（オプション） |
 
 ## コマンド
 
@@ -204,6 +246,7 @@ docker compose --profile prod ps
 # ログ確認
 docker compose --profile prod logs -f lightrag
 docker compose --profile prod logs -f rag-ui
+docker compose --profile prod logs -f crm-service
 
 # 停止
 docker compose --profile prod down
@@ -226,19 +269,20 @@ docker compose --profile prod build --no-cache
 
 ## リソース使用量
 
-4 コンテナ合計約 **410 MB**（アイドル時）:
+5 コンテナ合計約 **450 MB**（アイドル時）:
 
 | コンテナ | メモリ |
 |---------|-------|
 | lightrag | ~254 MB |
 | rag-ui | ~109 MB |
+| crm-service | ~40 MB |
 | postgres | ~37 MB |
 | valkey | ~10 MB |
 
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages, chat_files）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## 踩坑記録

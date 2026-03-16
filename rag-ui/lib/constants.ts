@@ -31,3 +31,6 @@ export const REDIRECT_URL_COOKIE = "redirect_url";
 export const SLIDE_LLM_BASE_URL = process.env.SLIDE_LLM_BASE_URL || "";
 export const SLIDE_LLM_API_KEY = process.env.SLIDE_LLM_API_KEY || "";
 export const SLIDE_LLM_MODEL = process.env.SLIDE_LLM_MODEL || "";
+
+// CRM Service (optional — enables CRM tools in chat when set)
+export const CRM_SERVICE_URL = process.env.CRM_SERVICE_URL || "";

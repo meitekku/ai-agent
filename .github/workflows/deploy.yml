@@ -17,7 +17,7 @@ jobs:
         run: docker compose --profile prod build
 
       - name: Save images
-        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest
+        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest rag-deploy-crm:latest
 
       - name: Sync files to Orange Pi
         env:
@@ -47,6 +47,12 @@ jobs:
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
           PW=${{ secrets.PW }}
+          SALESFORCE_INSTANCE_URL=${{ secrets.SALESFORCE_INSTANCE_URL }}
+          SALESFORCE_CLIENT_ID=${{ secrets.SALESFORCE_CLIENT_ID }}
+          SALESFORCE_CLIENT_SECRET=${{ secrets.SALESFORCE_CLIENT_SECRET }}
+          KINTONE_SUBDOMAIN=${{ secrets.KINTONE_SUBDOMAIN }}
+          KINTONE_API_TOKEN=${{ secrets.KINTONE_API_TOKEN }}
+          KINTONE_APP_ID=${{ secrets.KINTONE_APP_ID }}
           EOF
           sed -i 's/^[[:space:]]*//' $REMOTE_DIR/.env"
 

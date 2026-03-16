@@ -61,6 +61,30 @@ services:
       retries: 5
     restart: unless-stopped
 
+  crm-service:
+    image: rag-deploy-crm:latest
+    build: ./crm-service
+    profiles: ["prod"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: gemini-2.5-flash
+      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
+      SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:-}
+      SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:-}
+      KINTONE_SUBDOMAIN: ${KINTONE_SUBDOMAIN:-}
+      KINTONE_API_TOKEN: ${KINTONE_API_TOKEN:-}
+      KINTONE_APP_ID: ${KINTONE_APP_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8009/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   rag-ui:
     image: rag-deploy-ui:latest
     build: ./rag-ui
@@ -76,12 +100,15 @@ services:
       PW: ${PW:-}
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
       CHAT_FILES_DIR: /app/data/chat-files
+      CRM_SERVICE_URL: http://crm-service:8009
     ports:
       - "4002:3000"
     volumes:
       - chat-files:/app/data/chat-files
     depends_on:
       lightrag:
+        condition: service_healthy
+      crm-service:
         condition: service_healthy
       valkey:
         condition: service_healthy
