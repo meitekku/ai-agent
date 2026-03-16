@@ -217,6 +217,8 @@ export const ChatMessage = memo(function ChatMessage({
   onEdit,
   branchInfo,
   onSwitchBranch,
+  slidePanelSourceId,
+  onReopenSlides,
 }: {
   message: UIMessage;
   isLoading: boolean;
@@ -237,6 +239,8 @@ export const ChatMessage = memo(function ChatMessage({
     siblings: string[];
   } | null;
   onSwitchBranch?: (nodeId: string) => void;
+  slidePanelSourceId?: string | null;
+  onReopenSlides?: () => void;
 }) {
   const meta = useChatSettingsStore((s) => s.messageMeta[message.id]);
   const serviceName = meta?.service;
@@ -528,6 +532,11 @@ export const ChatMessage = memo(function ChatMessage({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+          {slidePanelSourceId === message.id && onReopenSlides && (
+            <MessageAction tooltip="スライドを開く" onClick={onReopenSlides}>
+              <PresentationIcon className="size-3.5 text-primary" />
+            </MessageAction>
+          )}
           {branchInfo && onSwitchBranch && (
             <BranchSelector
               index={branchInfo.index}

@@ -482,6 +482,8 @@ export function ChatPage({
 
   // --- SlidePanel (right panel for HTML slides) ---
   const slidePanelOpen = useSlidePanelStore((s) => s.open);
+  const slidePanelSourceId = useSlidePanelStore((s) => s.sourceMessageId);
+  const reopenSlidePanel = useSlidePanelStore((s) => s.reopenPanel);
 
   // --- VisualSlideViewer state ---
   const [visualOpen, setVisualOpen] = useState(false);
@@ -514,7 +516,7 @@ export function ChatPage({
   }, [messages]);
 
   const handleGenerateSlides = useCallback(
-    (answerText: string, mode: "html" | "visual" | "studio" | "simple") => {
+    (answerText: string, mode: "html" | "visual" | "studio" | "simple", messageId?: string) => {
       const question = getQuestion();
       switch (mode) {
         case "simple":
@@ -526,7 +528,7 @@ export function ChatPage({
           setVisualOpen(true);
           break;
         case "html":
-          openSlidePanel(question, answerText);
+          openSlidePanel(question, answerText, null, null, messageId ?? null);
           break;
         case "studio": {
           setStudioBusy(true);
@@ -629,10 +631,12 @@ export function ChatPage({
                     stopped={treeStore.nodes[message.id]?.stopped}
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
-                    onGenerateSlides={handleGenerateSlides}
+                    onGenerateSlides={(text, mode) => handleGenerateSlides(text, mode, message.id)}
                     onEdit={message.role === "user" ? handleEdit : undefined}
                     branchInfo={branchInfo}
                     onSwitchBranch={handleSwitchBranch}
+                    slidePanelSourceId={slidePanelSourceId}
+                    onReopenSlides={reopenSlidePanel}
                   />
                 );
               })}

@@ -192,24 +192,30 @@ function KBSelector({ disabled }: { disabled: boolean }) {
 
   const selectedKb = kbs.find((k) => k.slug === activeKb);
 
-  if (kbs.length === 0) return null;
+  const hasKbs = kbs.length > 0;
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => !disabled && setOpen(!open)}
-        disabled={disabled}
+        onClick={() => !disabled && hasKbs && setOpen(!open)}
+        disabled={disabled || !hasKbs}
         className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-colors ${
           activeKb
             ? "bg-primary/10 text-primary ring-1 ring-primary/20"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            : hasKbs
+              ? "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              : "text-muted-foreground/50 cursor-not-allowed"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : hasKbs ? "cursor-pointer" : ""}`}
         aria-label="ナレッジベース選択"
       >
         <DatabaseIcon className="size-3.5" />
-        <span className="max-w-[120px] truncate">
-          {selectedKb ? selectedKb.name : "ナレッジベース"}
+        <span className="max-w-[140px] truncate">
+          {selectedKb
+            ? selectedKb.name
+            : hasKbs
+              ? "すべてのナレッジベース"
+              : "ナレッジベースなし"}
         </span>
         {activeKb && (
           <button
@@ -246,7 +252,7 @@ function KBSelector({ disabled }: { disabled: boolean }) {
               }`}
             >
               <span className="text-muted-foreground">—</span>
-              <span>なし</span>
+              <span>すべて（自動選択）</span>
             </button>
             {kbs.map((kb) => (
               <button
