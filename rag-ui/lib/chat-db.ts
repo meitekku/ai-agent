@@ -244,3 +244,33 @@ export async function deleteConversation(id: string): Promise<void> {
   await ensureChatTables();
   await getPool().query(`DELETE FROM chat_conversations WHERE id = $1`, [id]);
 }
+
+export async function updateMessage(
+  messageId: string,
+  conversationId: string,
+  data: { parts?: unknown[]; stopped?: boolean },
+): Promise<void> {
+  await ensureChatTables();
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (data.parts !== undefined) {
+    fields.push(`parts = $${idx++}`);
+    values.push(JSON.stringify(data.parts));
+  }
+  if (data.stopped !== undefined) {
+    fields.push(`stopped = $${idx++}`);
+    values.push(data.stopped);
+  }
+
+  if (fields.length === 0) return;
+
+  values.push(messageId, conversationId);
+
+  await getPool().query(
+    `UPDATE chat_messages SET ${fields.join(", ")}
+     WHERE id = $${idx} AND conversation_id = $${idx + 1}`,
+    values,
+  );
+}

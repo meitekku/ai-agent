@@ -198,10 +198,10 @@
   /* Skeleton shimmer wave for active indicators */
   @keyframes shimmer-wave {
     0% {
-      background-position: -200% 0;
+      background-position: 200% 0;
     }
     100% {
-      background-position: 200% 0;
+      background-position: -200% 0;
     }
   }
   .animate-shimmer {

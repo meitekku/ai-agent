@@ -24,6 +24,7 @@ import {
   Trash2Icon,
   PlusIcon,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AppLogo } from "@/components/icons/app-logo";
 
 // ---------------------------------------------------------------------------
@@ -102,7 +103,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   } | null>(null);
 
   // Fetch chat history
-  const { data: historyData } = useQuery({
+  const { data: historyData, isPending: historyLoading } = useQuery({
     queryKey: ["chat-history"],
     queryFn: async () => {
       const res = await fetch("/api/history/chats?limit=50");
@@ -200,7 +201,33 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Chat History — clicking does NOT close sidebar */}
-      {conversations.length > 0 && (
+      {historyLoading ? (
+        <>
+          <Separator />
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+            <div>
+              <Skeleton className="mx-3 mb-1.5 h-2.5 w-10" />
+              <div className="space-y-0.5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2">
+                    <Skeleton className="size-3.5 shrink-0 rounded" />
+                    <Skeleton className="h-3.5 flex-1" style={{ width: `${60 + (i * 13) % 30}%` }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : conversations.length === 0 ? (
+        <>
+          <Separator />
+          <div className="flex-1 flex items-center justify-center px-4">
+            <p className="text-xs text-foreground/30 text-center">
+              チャット履歴がありません
+            </p>
+          </div>
+        </>
+      ) : (
         <>
           <Separator />
           <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">

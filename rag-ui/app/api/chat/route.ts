@@ -1,4 +1,5 @@
 import {
+  consumeStream,
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -27,6 +28,7 @@ import { getEnabledSkills } from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
+import { saveMessages, updateConversation } from "@/lib/chat-db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -239,6 +241,8 @@ export async function POST(req: Request) {
   let kb: string | null = null;
   let clientTime: string | undefined;
   let modelOverride: string | null = null;
+  let chatId: string | null = null;
+  let parentId: string | null = null;
   try {
     const body = await req.json();
     messages = body.messages;
@@ -246,6 +250,8 @@ export async function POST(req: Request) {
     kb = body.kb ?? null;
     clientTime = body.clientTime;
     modelOverride = body.model ?? null;
+    chatId = body.chatId ?? null;
+    parentId = body.parentId ?? null;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -883,7 +889,7 @@ export async function POST(req: Request) {
         providerOptions: {
           google: { responseModalities: ["TEXT", "IMAGE"] },
         },
-        abortSignal: req.signal,
+        // No abortSignal — let image generation complete even if client disconnects
       });
 
       // Save generated images to disk + DB
@@ -905,6 +911,7 @@ export async function POST(req: Request) {
 
       // Build UIMessageStream manually
       const stream = createUIMessageStream({
+        originalMessages: messages,
         execute: async ({ writer }) => {
           writer.write({ type: "start-step" });
 
@@ -928,6 +935,22 @@ export async function POST(req: Request) {
 
           writer.write({ type: "finish-step" });
           writer.write({ type: "finish", finishReason: "stop" });
+        },
+        onFinish: async ({ responseMessage }) => {
+          if (!chatId) return;
+          try {
+            const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+            if (!lastUserMsg) return;
+            const toSave = [
+              { id: lastUserMsg.id, parent_id: parentId, role: "user", parts: lastUserMsg.parts as unknown[] },
+              { id: responseMessage.id, parent_id: lastUserMsg.id, role: "assistant", parts: responseMessage.parts as unknown[] },
+            ];
+            await saveMessages(chatId, toSave);
+            await updateConversation(chatId, { active_leaf_id: responseMessage.id });
+            console.log(`[chat] 💾 Image path: saved ${toSave.length} messages for conv=${chatId}`);
+          } catch (e) {
+            console.error("[chat] image path save failed:", e);
+          }
         },
       });
       return createUIMessageStreamResponse({ stream });
@@ -982,7 +1005,28 @@ export async function POST(req: Request) {
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // Server-side persistence: consume stream to completion even if client disconnects
+    void result.consumeStream({ onError: (e) => console.error("[chat] consumeStream error:", e) });
+
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      onFinish: async ({ responseMessage }) => {
+        if (!chatId) return;
+        try {
+          const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+          if (!lastUserMsg) return;
+          const toSave = [
+            { id: lastUserMsg.id, parent_id: parentId, role: "user", parts: lastUserMsg.parts as unknown[] },
+            { id: responseMessage.id, parent_id: lastUserMsg.id, role: "assistant", parts: responseMessage.parts as unknown[] },
+          ];
+          await saveMessages(chatId, toSave);
+          await updateConversation(chatId, { active_leaf_id: responseMessage.id });
+          console.log(`[chat] 💾 Server-side saved ${toSave.length} messages for conv=${chatId}`);
+        } catch (e) {
+          console.error("[chat] server-side save failed:", e);
+        }
+      },
+    });
   } catch (err) {
     console.error("[chat] streaming failed:", err);
     return Response.json(

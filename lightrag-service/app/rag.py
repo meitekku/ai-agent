@@ -56,6 +56,11 @@ async def _embed_ollama(texts: list[str]) -> np.ndarray:
 
 _gemini_client = None
 
+# Embedding rate limiter: max 4 concurrent requests + 0.25s interval → ~16 req/s peak, well within Tier 1 limits
+_embed_sem = asyncio.Semaphore(4)
+_embed_interval = 0.25
+_embed_last_call = 0.0
+
 
 def _get_gemini_client():
     global _gemini_client
@@ -66,18 +71,27 @@ def _get_gemini_client():
 
 
 async def _embed_gemini(texts: list[str]) -> np.ndarray:
-    """Gemini embedding (async, paid tier)."""
+    """Gemini embedding (async, rate-limited)."""
+    global _embed_last_call
     from google.genai import types
 
-    client = _get_gemini_client()
-    result = await client.aio.models.embed_content(
-        model=config.GEMINI_EMBEDDING_MODEL,
-        contents=texts,
-        config=types.EmbedContentConfig(
-            output_dimensionality=config.EMBEDDING_DIM,
-        ),
-    )
-    return np.array([e.values for e in result.embeddings], dtype=np.float32)
+    async with _embed_sem:
+        # Enforce minimum interval between calls
+        now = asyncio.get_event_loop().time()
+        wait = _embed_interval - (now - _embed_last_call)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _embed_last_call = asyncio.get_event_loop().time()
+
+        client = _get_gemini_client()
+        result = await client.aio.models.embed_content(
+            model=config.GEMINI_EMBEDDING_MODEL,
+            contents=texts,
+            config=types.EmbedContentConfig(
+                output_dimensionality=config.EMBEDDING_DIM,
+            ),
+        )
+        return np.array([e.values for e in result.embeddings], dtype=np.float32)
 
 
 _embed = _embed_gemini if config.EMBEDDING_PROVIDER == "gemini" else _embed_ollama

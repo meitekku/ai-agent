@@ -93,7 +93,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | ファイル | ソース | 同期 | 差分内容 |
 |---------|--------|------|---------|
 | `lightrag-service/app/config.py` | `~/Desktop/ai/rag-system/lightrag-service/` | **意図的に不一致** | PG デフォルト値: deploy=`raguser/ragpass`、local=個人認証情報 |
-| `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限 + `workspace=kb_slug`（v1.4.9.11 で namespace→workspace に変更） |
+| `lightrag-service/app/rag.py` | 同上 | **rag-deploy のみ** | Gemini embedding 速率制限（Semaphore(4) + 0.25s interval）+ `workspace=kb_slug`（v1.4.9.11 で namespace→workspace に変更）。ソース側は Ollama embedding 使用のため不要 |
 | `lightrag-service/app/extract.py` | 同上 | **rag-deploy のみ** | CSV 構造化抽出（エンコード自動検出 + グループ化レコード分割）。ソース側は小規模 CSV のみのため不要 |
 | `lightrag-service/app/ocr.py` | 同上 | **rag-deploy のみ** | Gemini OCR async 化（`await client.aio.models.generate_content`）。ソース側は GLM-OCR 使用のため不要 |
 | `lightrag-service/app/main.py` | 同上 | **rag-deploy のみ** | stale job recovery 改善（全非終端ステータス対応）。ソース側は PM2 で常駐のため不要 |
@@ -306,7 +306,7 @@ docker compose --profile prod build --no-cache
 | 問題 | 原因 | 対処 |
 |------|------|------|
 | `text-embedding-004 is not found` | Google が v1beta API から廃止 | `gemini-embedding-001` に変更 |
-| Embedding 429 RESOURCE_EXHAUSTED | 免費層 100 req/min 制限、LightRAG が entity/relation ごとに embedding 呼出 | `rag.py` に速率制限（Semaphore + interval）追加。付費層なら制限緩和可 |
+| Embedding 429 RESOURCE_EXHAUSTED | LightRAG が `llm_model_max_async=8` で並列実体抽出 → 各実体/関係ごとに embedding 呼出 → 瞬間数百リクエスト爆発で Tier 1 でも超過 | `rag.py` の `_embed_gemini` に速率制限追加: `Semaphore(4)` + `0.25s` interval → 最大 ~240 RPM に抑制 |
 | 複数ファイル同時アップロードで誤った processed 状態 | LightRAG の `apipeline_process_enqueue_documents` 内部 busy フラグで後続呼出が即 return | `ingest.py` を asyncio.Queue + 単一 worker に改修 |
 | ブラウザでファイル選択後リクエストが発生しない | `FileList` は活参照、`input.value=""` で空になる。`Array.from()` 前に clear していた | `Array.from()` でコピー後に clear するよう修正 |
 | `NEXT_PUBLIC_LLM_BACKEND=MLX` | build 時に GEMINI_API_KEY 未設定 | `docker compose build --no-cache` で再ビルド |
@@ -327,4 +327,4 @@ docker compose --profile prod build --no-cache
 | rag-ui が lightrag に接続失敗 | lightrag 未起動 | `docker compose logs lightrag` で確認 |
 | PDF アップロード後 failed | Gemini API エラー（Rate limit 等） | `docker compose logs lightrag` で詳細確認 |
 | 検索結果が空 | ドキュメント未入庫 or 入庫処理中 | `/api/documents` で status 確認 |
-| Embedding 速率制限でスロー | 免費層 API Key | 付費層にアップグレード後、`rag.py` の速率制限を緩和 |
+| Embedding 速率制限でスロー | Tier 1 でも LightRAG 並列処理で RPM 超過 | `rag.py` に Semaphore(4) + 0.25s interval 実装済み。上位 Tier なら `_embed_sem` と `_embed_interval` を調整可 |

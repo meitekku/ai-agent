@@ -189,7 +189,7 @@ export function ChatPage({
   const sessionActiveRef = useRef(false);
   const justFinishedRef = useRef(false);
 
-  // Persist messages when streaming finishes
+  // Sync tree store & UI when streaming finishes (DB save is now server-side)
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const wasLoading =
@@ -219,10 +219,10 @@ export function ChatPage({
     const wasStopped = stoppedRef.current;
     stoppedRef.current = false;
 
-    // Build save list with parent chain
-    const toSave: {
+    // Build message list with parent chain for tree store
+    const toAdd: {
       id: string;
-      parent_id: string | null;
+      parentId: string | null;
       role: string;
       parts: unknown[];
       stopped?: boolean;
@@ -232,52 +232,49 @@ export function ChatPage({
       const pid = i === 0 ? parentId : newMsgs[i - 1].id;
       const isLastAssistant =
         wasStopped && i === newMsgs.length - 1 && msg.role === "assistant";
-      toSave.push({
+      toAdd.push({
         id: msg.id,
-        parent_id: pid,
+        parentId: pid,
         role: msg.role,
         parts: msg.parts as unknown[],
         ...(isLastAssistant ? { stopped: true } : {}),
       });
     }
 
-    // Add to tree store
-    treeStore.addMessages(
-      toSave.map((m) => ({
-        id: m.id,
-        parentId: m.parent_id,
-        role: m.role,
-        parts: m.parts as unknown[],
-        stopped: m.stopped,
-      })),
-    );
+    // Add to tree store (local state for branching UI)
+    treeStore.addMessages(toAdd);
 
-    // Persist to DB
-    const leafId = toSave[toSave.length - 1].id;
+    // If stopped, PATCH server-saved message with partial content
+    if (wasStopped) {
+      const lastAssistant = toAdd.filter(m => m.role === "assistant").pop();
+      if (lastAssistant) {
+        fetch(`/api/history/chats/${convId}/messages/${lastAssistant.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parts: lastAssistant.parts,
+            stopped: true,
+          }),
+        }).catch((e) => console.error("[chat-page] stop patch failed:", e));
+      }
+    }
+
+    // Refresh sidebar + generate title
     const isFirstExchange = known === 0;
-    fetch(`/api/history/chats/${convId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: toSave, active_leaf_id: leafId }),
-    })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ["chat-history"] });
-        // Generate AI title after first exchange
-        if (isFirstExchange) {
-          fetch(`/api/history/chats/${convId}/generate-title`, {
-            method: "POST",
-          })
-            .then(async (res) => {
-              if (res.ok) {
-                const { title } = await res.json();
-                if (title) setChatTitle(title);
-              }
-              queryClient.invalidateQueries({ queryKey: ["chat-history"] });
-            })
-            .catch(() => {});
-        }
+    queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+    if (isFirstExchange) {
+      fetch(`/api/history/chats/${convId}/generate-title`, {
+        method: "POST",
       })
-      .catch((e) => console.error("[chat-page] save failed:", e));
+        .then(async (res) => {
+          if (res.ok) {
+            const { title } = await res.json();
+            if (title) setChatTitle(title);
+          }
+          queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+        })
+        .catch(() => {});
+    }
   }, [status, messages, treeStore, queryClient]);
 
   // Detect generateSlides / generateProposal tool result
@@ -355,7 +352,10 @@ export function ChatPage({
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
-      const body = { service, kb: activeKb, clientTime: getClientTime(), model: chatModel };
+      const body = {
+        service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
+        chatId: convIdRef.current, parentId: currentLeaf,
+      };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
       } else {
@@ -381,7 +381,11 @@ export function ChatPage({
       lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
-    regenerate({ body: { service, kb: activeKb, clientTime: getClientTime(), model: chatModel } });
+    const regenParentId = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
+    regenerate({ body: {
+      service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
+      chatId: convIdRef.current, parentId: regenParentId,
+    } });
   }, [regenerate, service, activeKb, chatModel, messages]);
 
   // Edit message: create new branch
@@ -410,7 +414,10 @@ export function ChatPage({
       knownCountRef.current = truncated.length;
 
       // Send new message (creates new user+assistant pair as siblings of the edited message)
-      sendMessage({ text: newText }, { body: { service, kb: activeKb, clientTime: getClientTime(), model: chatModel } });
+      sendMessage({ text: newText }, { body: {
+        service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
+        chatId: convId, parentId,
+      } });
     },
     [treeStore, setMessages, sendMessage, service, activeKb, chatModel],
   );

@@ -460,6 +460,9 @@ export function ChatInput({
           <ChatSubmitButton status={status} inputText={input} onStop={onStop} />
         </PromptInputFooter>
       </PromptInput>
+      <p className="text-center text-[11px] text-muted-foreground/50 py-1.5">
+        AI の回答には誤りが含まれる場合があります。重要な情報は必ずご確認ください。
+      </p>
     </div>
   );
 }

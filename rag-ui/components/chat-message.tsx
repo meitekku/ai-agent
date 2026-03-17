@@ -4,7 +4,6 @@ import { memo, useCallback, useState, useRef, useEffect, lazy, Suspense } from "
 import { motion, AnimatePresence } from "motion/react";
 import type { UIMessage } from "ai";
 import { isToolUIPart, getToolName } from "ai";
-import { useChatSettingsStore } from "@/lib/store";
 import {
   Message,
   MessageContent,
@@ -13,7 +12,6 @@ import {
   MessageAction,
 } from "@/components/ai-elements/message";
 import { StepIndicator } from "@/components/step-indicator";
-import { Badge } from "@/components/ui/badge";
 import {
   CopyIcon,
   CheckIcon,
@@ -122,15 +120,11 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 
   if (toolName === "searchKnowledgeBase") {
     const query = typeof args?.query === "string" ? args.query : "";
-    const kb = typeof args?.kb === "string" ? args.kb : "";
-    const detail = [kb && `KB: ${kb}`, query && `「${query}」`]
-      .filter(Boolean)
-      .join(" ");
     return (
       <StepIndicator
         icon={SearchIcon}
-        activeLabel={detail ? `ナレッジベースを検索中 — ${detail}` : "ナレッジベースを検索中..."}
-        completedLabel={detail ? `ナレッジベースを検索しました — ${detail}` : "ナレッジベースを検索しました"}
+        activeLabel={query ? `ナレッジベースを検索中 — 「${query}」` : "ナレッジベースを検索中..."}
+        completedLabel={query ? `ナレッジベースを検索しました — 「${query}」` : "ナレッジベースを検索しました"}
         active={!isComplete}
       />
     );
@@ -310,9 +304,11 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
 const ToolCallGroup = memo(function ToolCallGroup({
   messageId,
   tools,
+  isStreaming,
 }: {
   messageId: string;
   tools: ToolEntry[];
+  isStreaming?: boolean;
 }) {
   const allComplete = tools.every(
     (t) => t.part.state === "output-available",
@@ -320,66 +316,93 @@ const ToolCallGroup = memo(function ToolCallGroup({
   const [collapsed, setCollapsed] = useState(
     () => allComplete && tools.length >= 2,
   );
+  const [userExpanded, setUserExpanded] = useState(false);
 
-  // Auto-collapse when all tools finish during streaming
+  // Auto-collapse when all tools finish
   const prevCompleteRef = useRef(allComplete);
+
   useEffect(() => {
     if (allComplete && !prevCompleteRef.current && tools.length >= 2) {
-      const timer = setTimeout(() => setCollapsed(true), 800);
-      prevCompleteRef.current = true;
-      return () => clearTimeout(timer);
+      if (userExpanded) {
+        // User was viewing all tools — brief delay before collapse
+        const timer = setTimeout(() => {
+          setCollapsed(true);
+          setUserExpanded(false);
+        }, 800);
+        prevCompleteRef.current = true;
+        return () => clearTimeout(timer);
+      } else {
+        // Was in "only latest" mode — collapse immediately
+        setCollapsed(true);
+        prevCompleteRef.current = true;
+      }
     }
     if (!allComplete) prevCompleteRef.current = false;
-  }, [allComplete, tools.length]);
+  }, [allComplete, tools.length, userExpanded]);
 
-  // Single tool — just fade in
+  // Single tool
   if (tools.length === 1) {
     const t = tools[0];
+    const indicator = (
+      <ToolCallIndicator
+        toolName={t.toolName}
+        state={t.part.state}
+        args={t.part.input as Record<string, unknown> | undefined}
+      />
+    );
+    if (!isStreaming) return indicator;
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
-        <ToolCallIndicator
-          toolName={t.toolName}
-          state={t.part.state}
-          args={t.part.input as Record<string, unknown> | undefined}
-        />
+        {indicator}
       </motion.div>
     );
   }
 
-  // Multiple tools — collapsible
-  const summaryRow = allComplete && (
-    <button
-      onClick={() => setCollapsed(!collapsed)}
-      className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
-    >
-      <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
-      <span>{getGroupSummary(tools)} 完了</span>
-      <motion.span
-        animate={{ rotate: collapsed ? 0 : 90 }}
-        transition={{ duration: 0.2 }}
-        className="inline-flex"
-      >
-        <ChevronRightIcon className="size-3 ml-0.5 opacity-40" />
-      </motion.span>
-    </button>
-  );
-
-  return (
-    <div>
-      {summaryRow}
-      <motion.div
-        animate={{
-          height: collapsed ? 0 : "auto",
-          opacity: collapsed ? 0 : 1,
-        }}
-        initial={false}
-        transition={{ duration: 0.25, ease: "easeInOut" }}
-        style={{ overflow: "hidden" }}
-      >
+  // Multiple tools — streaming, not all complete
+  if (isStreaming && !allComplete) {
+    if (!userExpanded) {
+      // Show only the latest tool — old one instantly unmounts via key swap
+      const latestTool = tools[tools.length - 1];
+      return (
+        <div>
+          <motion.div
+            key={`${messageId}-latest-${latestTool.index}`}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <ToolCallIndicator
+              toolName={latestTool.toolName}
+              state={latestTool.part.state}
+              args={latestTool.part.input as Record<string, unknown> | undefined}
+            />
+          </motion.div>
+          {tools.length > 1 && (
+            <button
+              onClick={() => setUserExpanded(true)}
+              className="inline-flex items-center gap-1 ml-3 mt-0.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+            >
+              <ChevronDownIcon className="size-2.5" />
+              <span>前の{tools.length - 1}ステップを表示</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+    // User expanded — show all tools
+    return (
+      <div>
+        <button
+          onClick={() => setUserExpanded(false)}
+          className="inline-flex items-center gap-1 ml-3 mb-0.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+        >
+          <ChevronDownIcon className="size-2.5 rotate-180" />
+          <span>最新のみ表示</span>
+        </button>
         <div className="space-y-1 py-0.5">
           {tools.map((t) => (
             <motion.div
@@ -391,11 +414,50 @@ const ToolCallGroup = memo(function ToolCallGroup({
               <ToolCallIndicator
                 toolName={t.toolName}
                 state={t.part.state}
-                args={
-                  t.part.input as Record<string, unknown> | undefined
-                }
+                args={t.part.input as Record<string, unknown> | undefined}
               />
             </motion.div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple tools — all complete (or history load): summary row + collapsible
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
+      >
+        <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
+        <span>{getGroupSummary(tools)} 完了</span>
+        <motion.span
+          animate={{ rotate: collapsed ? 0 : 90 }}
+          transition={{ duration: 0.2 }}
+          className="inline-flex"
+        >
+          <ChevronRightIcon className="size-3 ml-0.5 opacity-40" />
+        </motion.span>
+      </button>
+      <motion.div
+        animate={{
+          height: collapsed ? 0 : "auto",
+          opacity: collapsed ? 0 : 1,
+        }}
+        initial={false}
+        transition={{ duration: 0.25, ease: "easeInOut" }}
+        style={{ overflow: "hidden" }}
+      >
+        <div className="space-y-1 py-0.5">
+          {tools.map((t) => (
+            <div key={`${messageId}-${t.index}`}>
+              <ToolCallIndicator
+                toolName={t.toolName}
+                state={t.part.state}
+                args={t.part.input as Record<string, unknown> | undefined}
+              />
+            </div>
           ))}
         </div>
       </motion.div>
@@ -469,8 +531,6 @@ export const ChatMessage = memo(function ChatMessage({
   slidePanelSourceId?: string | null;
   onReopenSlides?: () => void;
 }) {
-  const meta = useChatSettingsStore((s) => s.messageMeta[message.id]);
-  const serviceName = meta?.service;
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
@@ -601,6 +661,7 @@ export const ChatMessage = memo(function ChatMessage({
                 key={`${message.id}-tg-${segment.tools[0].index}`}
                 messageId={message.id}
                 tools={segment.tools}
+                isStreaming={isActiveStreaming}
               />
             );
           }
@@ -775,15 +836,6 @@ export const ChatMessage = memo(function ChatMessage({
               onSwitch={onSwitchBranch}
             />
           )}
-          {serviceName ? (
-            <Badge
-              variant="secondary"
-              className="cursor-default gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-0.5 text-[11px] font-normal text-foreground/70 hover:bg-secondary"
-            >
-              <DatabaseIcon className="size-3" />
-              {serviceName === "pageindex" ? "PageIndex" : "LightRAG"}
-            </Badge>
-          ) : null}
         </MessageActions>
       ) : null}
 

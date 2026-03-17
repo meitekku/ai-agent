@@ -55,6 +55,8 @@ export function WidgetRenderer({
     (_heightCache.get(cacheKey(widgetCode)) || 0) > 0,
   );
   const heightLockedRef = useRef(false);
+  // If mounted with isStreaming=false, this is a restored message — skip entrance animation
+  const isRestoredRef = useRef(!isStreaming);
 
   const hasCDN = useMemo(() => CDN_PATTERN.test(widgetCode), [widgetCode]);
 
@@ -195,11 +197,13 @@ export function WidgetRenderer({
 
   const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
+  const restored = isRestoredRef.current;
+
   return (
     <motion.div
       className="group/widget relative my-2 w-full overflow-hidden"
       style={{ minWidth: "min(100%, 600px)" }}
-      initial={{ opacity: 0, y: 8 }}
+      initial={restored ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
     >
@@ -212,7 +216,7 @@ export function WidgetRenderer({
       <motion.div
         className="overflow-hidden"
         animate={{ height: iframeHeight || "auto" }}
-        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        transition={restored ? { duration: 0 } : { duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
       >
         <iframe
           ref={iframeRef}

@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="130 70 252 252" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="128 89 256 256" width="512" height="512">
+  <!-- Background -->
+  <rect x="128" y="89" width="256" height="256" rx="40" fill="#09090B"/>
   <!-- 连接线 -->
-  <path d="M176 220 L256 160 L336 220 M256 160 L256 280" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.25"/>
+  <path d="M176 220 L256 160 L336 220 M256 160 L256 280" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
   <!-- 知识节点 -->
-  <circle cx="176" cy="220" r="14" fill="#ffffff"/>
-  <circle cx="336" cy="220" r="14" fill="#ffffff"/>
-  <circle cx="256" cy="280" r="14" fill="#ffffff"/>
+  <circle cx="176" cy="220" r="24" fill="#ffffff"/>
+  <circle cx="336" cy="220" r="24" fill="#ffffff"/>
+  <circle cx="256" cy="280" r="24" fill="#ffffff"/>
   <!-- AI 核心节点 -->
-  <circle cx="256" cy="160" r="22" fill="#00c589"/>
-  <!-- 星火 -->
-  <path d="M 296 110 Q 306 110 306 100 Q 306 110 316 110 Q 306 110 306 120 Q 306 110 296 110 Z" fill="#00c589"/>
+  <circle cx="256" cy="160" r="36" fill="#00c589"/>
 </svg>
