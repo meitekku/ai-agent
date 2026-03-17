@@ -329,7 +329,9 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  isActiveStreaming?: boolean;
+};
 
 const math = createMathPlugin({ singleDollarTextMath: true });
 const streamdownPlugins = { cjk, code, math, mermaid } as PluginConfig;
@@ -343,10 +345,16 @@ const sdClassName =
  * isStreaming is derived from fence-close detection, not streamdown internals.
  */
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => {
+  ({ className, isActiveStreaming, ...props }: MessageResponseProps) => {
     const content =
       typeof props.children === "string" ? props.children : "";
     const hasWidgetFence = content.includes("```show-widget");
+
+    // Shared animation props for smooth per-word streaming
+    const animProps = {
+      animated: { animation: "fadeIn" as const, duration: 200, easing: "ease-out" },
+      isAnimating: !!isActiveStreaming,
+    };
 
     // ── Fast path: no widgets — render with Streamdown directly ──────
     if (!hasWidgetFence) {
@@ -354,6 +362,7 @@ export const MessageResponse = memo(
         <Streamdown
           className={cn(sdClassName, className)}
           plugins={streamdownPlugins}
+          {...animProps}
           {...props}
         />
       );
@@ -373,7 +382,7 @@ export const MessageResponse = memo(
         <div className={cn(sdClassName, className)}>
           {segments.map((seg, i) =>
             seg.type === "text" ? (
-              <Streamdown key={`t-${i}`} plugins={streamdownPlugins}>
+              <Streamdown key={`t-${i}`} plugins={streamdownPlugins} {...animProps}>
                 {seg.content}
               </Streamdown>
             ) : (
@@ -407,14 +416,14 @@ export const MessageResponse = memo(
       <div className={cn(sdClassName, className)}>
         {/* Text before first widget (no completed fences) */}
         {!hasCompleted && beforePart && (
-          <Streamdown key="pre-text" plugins={streamdownPlugins}>
+          <Streamdown key="pre-text" plugins={streamdownPlugins} {...animProps}>
             {beforePart}
           </Streamdown>
         )}
         {/* Completed fences + interleaved text */}
         {completedSegments.map((seg, i) =>
           seg.type === "text" ? (
-            <Streamdown key={`t-${i}`} plugins={streamdownPlugins}>
+            <Streamdown key={`t-${i}`} plugins={streamdownPlugins} {...animProps}>
               {seg.content}
             </Streamdown>
           ) : (
@@ -443,7 +452,9 @@ export const MessageResponse = memo(
       </div>
     );
   },
-  (prevProps, nextProps) => prevProps.children === nextProps.children,
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.isActiveStreaming === nextProps.isActiveStreaming,
 );
 
 MessageResponse.displayName = "MessageResponse";

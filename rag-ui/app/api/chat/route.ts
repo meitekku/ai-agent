@@ -4,6 +4,7 @@ import {
   createUIMessageStreamResponse,
   generateText,
   generateImage,
+  smoothStream,
   stepCountIs,
   tool,
   ToolLoopAgent,
@@ -1004,6 +1005,10 @@ export async function POST(req: Request) {
 
     const result = await agent.stream({
       messages: modelMessages,
+      experimental_transform: smoothStream({
+        delayInMs: 20,
+        chunking: new Intl.Segmenter("ja", { granularity: "word" }),
+      }),
       experimental_onStepStart() {
         if (!firstTokenTime) {
           firstTokenTime = Date.now();

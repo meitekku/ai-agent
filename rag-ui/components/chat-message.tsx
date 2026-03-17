@@ -683,7 +683,12 @@ export const ChatMessage = memo(function ChatMessage({
           switch (part.type) {
             case "text":
               return (
-                <MessageResponse key={key}>
+                <MessageResponse
+                  key={key}
+                  isActiveStreaming={
+                    message.role === "assistant" ? isActiveStreaming : false
+                  }
+                >
                   {message.role === "assistant"
                     ? stripThinkTags(part.text)
                     : part.text}
