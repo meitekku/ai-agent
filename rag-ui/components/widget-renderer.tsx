@@ -56,9 +56,6 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     (_heightCache.get(getHeightCacheKey(code)) || 0) > 0,
   );
   const heightLockedRef = useRef(false);
-  // Track isIncomplete in a ref so onLoad callback can access current value
-  const isIncompleteRef = useRef(isIncomplete);
-  isIncompleteRef.current = isIncomplete;
 
   // Parse widget content
   const parsed = useMemo(
@@ -68,6 +65,13 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
   // Keep parsed in a ref for use in callbacks
   const parsedRef = useRef(parsed);
   parsedRef.current = parsed;
+
+  // ── Key insight: use jsonComplete as the finalization signal ────────────
+  // streamdown's isIncomplete may never flip to false for custom renderers.
+  // Instead, we detect when JSON.parse(code) succeeds → widget_code is ready.
+  const readyToFinalize = !isIncomplete || parsed.jsonComplete;
+  const readyToFinalizeRef = useRef(readyToFinalize);
+  readyToFinalizeRef.current = readyToFinalize;
 
   // Detect CDN scripts for overlay
   const hasCDN = useMemo(
@@ -84,13 +88,18 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     return buildReceiverSrcdoc(styleBlock, isDark);
   }, []);
 
-  // ── Finalize helper (extracted so it can be called from multiple places) ──
+  // ── Finalize helper ────────────────────────────────────────────────────
   const doFinalize = useCallback(() => {
     if (finalizedRef.current) return;
     const html = parsedRef.current.widgetHtml;
     if (!html) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
+    // Clear any pending streaming debounce to prevent it from overwriting
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     const sanitized = sanitizeForIframe(html);
     console.log("[widget] finalize: sending", sanitized.length, "chars");
     finalizedRef.current = true;
@@ -121,7 +130,7 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
           console.log("[widget] iframe ready (postMessage)");
           setIframeReady(true);
           // If content is already complete, finalize immediately
-          if (!isIncompleteRef.current) {
+          if (readyToFinalizeRef.current) {
             doFinalize();
           }
           break;
@@ -170,19 +179,19 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     return () => window.removeEventListener("message", handleMessage);
   }, [code, doFinalize]);
 
-  // ── iframe onLoad — fallback for missed widget:ready postMessage ────────
+  // ── iframe onLoad — fallback for missed widget:ready ───────────────────
   const handleIframeLoad = useCallback(() => {
-    console.log("[widget] iframe onLoad fired");
+    console.log("[widget] iframe onLoad");
     setIframeReady(true);
-    // If content is already complete, finalize immediately
-    if (!isIncompleteRef.current) {
-      // Small delay to ensure receiver script is listening
+    // If content is already complete, finalize after short delay
+    if (readyToFinalizeRef.current) {
       setTimeout(() => doFinalize(), 50);
     }
   }, [doFinalize]);
 
-  // ── Streaming updates ──────────────────────────────────────────────────
+  // ── Streaming updates (only while NOT ready to finalize) ───────────────
   const sendUpdate = useCallback((html: string) => {
+    if (finalizedRef.current) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
     if (html === lastSentRef.current) return;
@@ -191,8 +200,9 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
   }, []);
 
   useEffect(() => {
-    if (!isIncomplete || !iframeReady || !parsed.widgetHtml) return;
-    // Strip incomplete scripts and sanitize for streaming preview
+    // Stop streaming updates once ready to finalize
+    if (readyToFinalize || finalizedRef.current) return;
+    if (!iframeReady || !parsed.widgetHtml) return;
     let html = parsed.widgetHtml;
     if (parsed.scriptsTruncated) {
       html = stripIncompleteScript(html);
@@ -206,21 +216,20 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [parsed.widgetHtml, parsed.scriptsTruncated, isIncomplete, iframeReady, sendUpdate]);
+  }, [parsed.widgetHtml, parsed.scriptsTruncated, readyToFinalize, iframeReady, sendUpdate]);
 
-  // ── Finalize (effect-based — primary path) ─────────────────────────────
+  // ── Finalize (primary path — effect-based) ─────────────────────────────
   useEffect(() => {
-    if (isIncomplete || !iframeReady || finalizedRef.current) return;
+    if (!readyToFinalize || !iframeReady || finalizedRef.current) return;
     if (!parsed.widgetHtml) return;
     console.log("[widget] finalize effect triggered");
     doFinalize();
-  }, [isIncomplete, iframeReady, parsed.widgetHtml, doFinalize]);
+  }, [readyToFinalize, iframeReady, parsed.widgetHtml, doFinalize]);
 
-  // ── Finalize fallback — retry after timeout if effect didn't fire ──────
+  // ── Finalize fallback — retry after timeout ────────────────────────────
   useEffect(() => {
-    if (isIncomplete || finalizedRef.current) return;
+    if (!readyToFinalize || finalizedRef.current) return;
     if (!parsed.widgetHtml) return;
-    // If finalization hasn't happened within 800ms, force it
     const timer = setTimeout(() => {
       if (!finalizedRef.current) {
         console.log("[widget] finalize fallback (800ms timeout)");
@@ -229,7 +238,7 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [isIncomplete, parsed.widgetHtml, doFinalize]);
+  }, [readyToFinalize, parsed.widgetHtml, doFinalize]);
 
   // ── Theme sync ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -250,9 +259,9 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
   }, [iframeReady]);
 
   // Show shimmer for CDN-dependent widgets while scripts are loading
-  const showLoadingOverlay = hasCDN && !isIncomplete && iframeReady && !finalized;
+  const showLoadingOverlay = hasCDN && readyToFinalize && iframeReady && !finalized;
   // Show shimmer during streaming when scripts are still being generated
-  const showStreamingOverlay = isIncomplete && parsed.scriptsTruncated;
+  const showStreamingOverlay = !readyToFinalize && parsed.scriptsTruncated;
 
   // No widget content yet — show placeholder
   if (!parsed.widgetHtml && isIncomplete) {

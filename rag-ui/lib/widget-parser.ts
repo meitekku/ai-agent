@@ -12,6 +12,8 @@ export interface ParsedWidget {
   widgetHtml: string | null;
   /** True when <script> tag is still being streamed (not yet closed). */
   scriptsTruncated: boolean;
+  /** True when JSON.parse succeeded — widget_code is complete. */
+  jsonComplete: boolean;
 }
 
 /**
@@ -24,18 +26,19 @@ export function parseWidgetContent(
   code: string,
   isIncomplete: boolean,
 ): ParsedWidget {
-  // Try JSON.parse for complete content
-  if (!isIncomplete) {
-    try {
-      const obj = JSON.parse(code);
-      return {
-        title: obj.title ?? null,
-        widgetHtml: obj.widget_code ?? null,
-        scriptsTruncated: false,
-      };
-    } catch {
-      // Fall through to manual parsing
-    }
+  // Always try JSON.parse first — even during streaming, if the JSON is
+  // already complete (closing brace written) we get the accurate result.
+  // This also handles the case where isIncomplete never flips to false.
+  try {
+    const obj = JSON.parse(code);
+    return {
+      title: obj.title ?? null,
+      widgetHtml: obj.widget_code ?? null,
+      scriptsTruncated: false,
+      jsonComplete: true,
+    };
+  } catch {
+    // Fall through to manual parsing
   }
 
   // Manual extraction for incomplete/malformed JSON
@@ -54,7 +57,7 @@ export function parseWidgetContent(
     }
   }
 
-  return { title, widgetHtml, scriptsTruncated };
+  return { title, widgetHtml, scriptsTruncated, jsonComplete: false };
 }
 
 /** Extract a simple string value from JSON by key (regex). */
