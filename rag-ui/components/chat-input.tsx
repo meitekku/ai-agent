@@ -336,7 +336,7 @@ function ModelSelector({ disabled }: { disabled: boolean }) {
                   <SparklesIcon className="size-3 shrink-0 text-violet-500/70" />
                   <div className="flex flex-col items-start gap-0.5">
                     <span className="font-medium">{model.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{model.description}</span>
+                    <span className={`text-[10px] ${isSelected ? "text-accent-foreground/70" : "text-muted-foreground"}`}>{model.description}</span>
                   </div>
                   {isSelected && (
                     <CheckIcon className="ml-auto size-3 shrink-0 text-violet-500" />
