@@ -56,6 +56,7 @@ rag-deploy/
 │       ├── config.py               # 環境変数設定
 │       ├── main.py                 # FastAPI エントリ + lifespan
 │       ├── rag.py                  # LightRAG LRU マルチインスタンス + Gemini embedding 速率制限
+│       ├── extract.py              # マルチフォーマットテキスト抽出（CSV 構造化対応）
 │       ├── ocr.py                  # OCR（Gemini Vision / GLM-OCR）
 │       ├── db.py                   # asyncpg + knowledge_bases + ingest_jobs テーブル
 │       └── routers/
@@ -93,6 +94,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 |---------|--------|------|---------|
 | `lightrag-service/app/config.py` | `~/Desktop/ai/rag-system/lightrag-service/` | **意図的に不一致** | PG デフォルト値: deploy=`raguser/ragpass`、local=個人認証情報 |
 | `lightrag-service/app/rag.py` | 同上 | 一致 | Gemini embedding 速率制限 + `workspace=kb_slug`（v1.4.9.11 で namespace→workspace に変更） |
+| `lightrag-service/app/extract.py` | 同上 | **rag-deploy のみ** | CSV 構造化抽出（エンコード自動検出 + グループ化レコード分割）。ソース側は小規模 CSV のみのため不要 |
 | `lightrag-service/app/ocr.py` | 同上 | **rag-deploy のみ** | Gemini OCR async 化（`await client.aio.models.generate_content`）。ソース側は GLM-OCR 使用のため不要 |
 | `lightrag-service/app/main.py` | 同上 | **rag-deploy のみ** | stale job recovery 改善（全非終端ステータス対応）。ソース側は PM2 で常駐のため不要 |
 | `lightrag-service/app/db.py` | 同上 | **rag-deploy のみ** | `get_stale_jobs()` 追加（recovery 用） |
@@ -314,6 +316,8 @@ docker compose --profile prod build --no-cache
 | Widget: streamdown `renderers` API の `isIncomplete` が false に遷移しない | streamdown の CustomRenderer はフェンス完了後も `isIncomplete=true` のまま | streamdown 外で widget 解析する CodePilot 方式に変更。`isStreaming` はフェンス閉じ検出で自前判定 |
 | Widget: `tmp.innerHTML` で script 内容が切断される | sandbox iframe 内の `tmp` div で `innerHTML` 解析時に script `textContent` が不完全になるケース | CodePilot 原版の `finalizeHtml`（`tmp` div + `querySelectorAll` + `appendChild`）をそのまま採用 |
 | Widget: CDN script の `onload` attribute が動的 script で発火しない場合がある | `setAttribute('onload', ...)` は動的生成 script 要素で不安定 | `addEventListener('load', ...)` + 動的 inline script 生成で対処 |
+| CSV アップロードで知識グラフの関係が破壊される | `extract.py` が CSV を 1 枚の巨大 Markdown 表格に変換 → chunk 切割で列ヘッダーと行データが分離 | CSV 構造化抽出に改修: エンコード自動検出(UTF-8/cp932) + グループ列検出 + レコード単位の自然言語ドキュメントに変換。小表格(≤10行×8列)は従来の Markdown 表格を維持 |
+| CRM 分析・提案書が KB/Web 情報を参照できない | `analyzeDeal`/`generateProposal` が CRM データのみで分析、KB/Web 検索結果が断絶 | 3 ツール（analyze/revise/pptx）に `additionalContext` パラメータ追加。LLM が事前に KB/Web 検索した情報を渡し、crm-service の Gemini プロンプトに注入 |
 
 ## トラブルシューティング
 

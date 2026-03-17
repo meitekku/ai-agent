@@ -14,12 +14,17 @@ rag-ui (chat tool calling)
   │
   ├── listDeals ────────▶ POST /sf/list or /kintone/list
   ├── fetchDealData ────▶ POST /sf/fetch or /kintone/fetch
-  ├── analyzeDeal ──────▶ POST /deals/analyze
-  ├── reviseRationale ──▶ POST /deals/revise-rationale
-  └── generateProposal ─▶ signal tool → ProposalPanel → POST /proposal/generate-pptx
+  ├── searchKnowledgeBase ─▶ KB/Web 検索 → additionalContext として収集
+  ├── analyzeDeal(+additionalContext) ──────▶ POST /deals/analyze
+  ├── reviseRationale(+additionalContext) ──▶ POST /deals/revise-rationale
+  └── generateProposal(+additionalContext) ─▶ signal tool → ProposalPanel → POST /proposal/generate-pptx
 ```
 
 rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義 → execute 内で `http://crm-service:8009` に HTTP リクエスト → 結果を LLM に返却。
+
+### additionalContext 連携
+
+`analyzeDeal`、`reviseRationale`、`generateProposal` の 3 ツールは `additionalContext?: string` パラメータを持つ。LLM がこれらを呼ぶ前に `searchKnowledgeBase` や `webSearch` で収集した情報を `additionalContext` として渡すことで、分析・提案書生成にナレッジベースやウェブ検索の情報が反映される。crm-service 側では `lib/prompts.ts` の各プロンプトビルダーに注入。
 
 ## ディレクトリ構造
 

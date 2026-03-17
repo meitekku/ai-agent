@@ -26,6 +26,15 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 9. Chart.js: canvas は hex カラー使用（CSS 変数不可）。responsive:true, maintainAspectRatio:false
 10. SVG: \`<svg width="100%" viewBox="0 0 680 H">\` 形式
 
+### ダークモード対応（重要）
+ホストがダークモードとライトモードを切り替えます。以下の CSS 変数を使うと自動追従します:
+- テキスト: \`var(--color-text-primary)\`, \`var(--color-text-secondary)\`
+- 背景: 透明のまま。コンテナに背景色を付ける場合は \`var(--color-background-secondary)\`
+- ボーダー: \`var(--color-border-tertiary)\`
+- **HTML/CSS**: 文字色・背景色・ボーダーに上記 CSS 変数を使う。\`#334155\` のような固定色は避ける
+- **Chart.js**: データ色は hex で OK。ただし軸ラベル・グリッド線は半透明を使う: \`color:'rgba(150,150,150,0.7)'\`, \`grid:{color:'rgba(150,150,150,0.15)'}\`
+- **SVG**: テキスト fill に \`var(--color-text-primary)\` を使用。線は \`rgba(150,150,150,0.3)\`
+
 ### 使用場面
 - データの可視化（棒グラフ、円グラフ、折れ線グラフ）
 - インタラクティブな計算機・シミュレーター
@@ -42,7 +51,7 @@ function init(){
   chart=new Chart(document.getElementById('c'),{
     type:'bar',
     data:{labels:[...],datasets:[{data:[...],backgroundColor:['#818CF8','#34D399','#FBBF24','#FB7185','#38BDF8'],borderRadius:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{color:'rgba(150,150,150,0.15)'}},x:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{display:false}}}}
   });
 }
 if(window.Chart)init();
