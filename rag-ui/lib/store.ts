@@ -9,6 +9,24 @@ export interface MessageMeta {
 }
 
 // ---------------------------------------------------------------------------
+// Model definitions
+// ---------------------------------------------------------------------------
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export const GEMINI_MODELS: ModelOption[] = [
+  { id: "gemini-2.5-flash", label: "2.5 Flash", description: "高速バランス型" },
+  { id: "gemini-2.5-pro", label: "2.5 Pro", description: "高精度推論" },
+  { id: "gemini-2.5-flash-lite", label: "2.5 Flash-Lite", description: "最安・高速" },
+  { id: "gemini-3-flash", label: "3 Flash", description: "最新世代" },
+  { id: "gemini-3.1-pro-preview", label: "3.1 Pro", description: "最上位" },
+];
+
+// ---------------------------------------------------------------------------
 // Chat Settings Store
 // ---------------------------------------------------------------------------
 
@@ -18,6 +36,10 @@ interface ChatSettingsState {
   // Service
   service: string;
   setService: (service: string) => void;
+
+  // Model selection (null = use server default from GEMINI_MODEL env)
+  chatModel: string | null;
+  setChatModel: (model: string | null) => void;
 
   // Active KB
   activeKb: string | null;
@@ -41,6 +63,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   // Service
   service: DEFAULT_SERVICE,
   setService: (service) => set({ service }),
+
+  // Model selection
+  chatModel: null,
+  setChatModel: (model) => set({ chatModel: model }),
 
   // Active KB
   activeKb: null,

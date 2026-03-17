@@ -89,6 +89,7 @@ export function ChatPage({
   const service = useChatSettingsStore((s) => s.service);
   const activeKb = useChatSettingsStore((s) => s.activeKb);
   const setActiveKb = useChatSettingsStore((s) => s.setActiveKb);
+  const chatModel = useChatSettingsStore((s) => s.chatModel);
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
   const queryClient = useQueryClient();
 
@@ -156,7 +157,7 @@ export function ChatPage({
     stoppedRef.current = true;
     stop();
   }, [stop]);
-  const submitTimeRef = useRef(0);
+
 
   // Slide panel (declared early so effects can reference it)
   const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
@@ -320,7 +321,7 @@ export function ChatPage({
   const handleSend = useCallback(
     async (text: string, files?: FileUIPart[]) => {
       sessionActiveRef.current = true;
-      submitTimeRef.current = Date.now();
+
       await ensureConversation(text || "ファイル添付");
 
       // Track parent for the new user message
@@ -328,7 +329,7 @@ export function ChatPage({
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
-      const body = { service, kb: activeKb, clientTime: getClientTime() };
+      const body = { service, kb: activeKb, clientTime: getClientTime(), model: chatModel };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
       } else {
@@ -339,6 +340,7 @@ export function ChatPage({
       sendMessage,
       service,
       activeKb,
+      chatModel,
       ensureConversation,
       treeStore.activeLeafId,
       messages.length,
@@ -346,7 +348,6 @@ export function ChatPage({
   );
 
   const handleRegenerate = useCallback(() => {
-    submitTimeRef.current = Date.now();
     // For regeneration, the new assistant will have the same parent as the current last assistant
     // which is the user message before it
     const lastUserIdx = messages.length >= 2 ? messages.length - 2 : -1;
@@ -354,8 +355,8 @@ export function ChatPage({
       lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
-    regenerate({ body: { service, kb: activeKb, clientTime: getClientTime() } });
-  }, [regenerate, service, activeKb, messages]);
+    regenerate({ body: { service, kb: activeKb, clientTime: getClientTime(), model: chatModel } });
+  }, [regenerate, service, activeKb, chatModel, messages]);
 
   // Edit message: create new branch
   const handleEdit = useCallback(
@@ -378,14 +379,14 @@ export function ChatPage({
       setMessages(truncated);
 
       // Track parent for the new user message
-      submitTimeRef.current = Date.now();
+
       pendingParentRef.current = parentId;
       knownCountRef.current = truncated.length;
 
       // Send new message (creates new user+assistant pair as siblings of the edited message)
-      sendMessage({ text: newText }, { body: { service, kb: activeKb, clientTime: getClientTime() } });
+      sendMessage({ text: newText }, { body: { service, kb: activeKb, clientTime: getClientTime(), model: chatModel } });
     },
-    [treeStore, setMessages, sendMessage, service, activeKb],
+    [treeStore, setMessages, sendMessage, service, activeKb, chatModel],
   );
 
   // Branch switching
@@ -629,7 +630,6 @@ export function ChatPage({
                     message={message}
                     isLoading={isLoading}
                     isActiveStreaming={isActive}
-                    submitTime={isActive ? submitTimeRef.current : undefined}
                     createdAt={treeStore.nodes[message.id]?.createdAt}
                     stopped={treeStore.nodes[message.id]?.stopped}
                     onCopy={handleCopy}

@@ -25,8 +25,10 @@ import {
   XCircleIcon,
   Loader2Icon,
   RotateCcwIcon,
+  SparklesIcon,
+  CheckIcon,
 } from "lucide-react";
-import { useChatSettingsStore } from "@/lib/store";
+import { useChatSettingsStore, GEMINI_MODELS } from "@/lib/store";
 import { useFileUpload } from "@/hooks/use-file-upload";
 
 // ---------------------------------------------------------------------------
@@ -283,6 +285,73 @@ function KBSelector({ disabled }: { disabled: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Model Selector
+// ---------------------------------------------------------------------------
+
+function ModelSelector({ disabled }: { disabled: boolean }) {
+  const chatModel = useChatSettingsStore((s) => s.chatModel);
+  const setChatModel = useChatSettingsStore((s) => s.setChatModel);
+  const [open, setOpen] = useState(false);
+
+  const selected = GEMINI_MODELS.find((m) => m.id === chatModel);
+  const displayLabel = selected ? selected.label : GEMINI_MODELS[0].label;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen(!open)}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-colors ${
+          chatModel
+            ? "bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-1 ring-violet-500/20"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+        aria-label="モデル選択"
+      >
+        <SparklesIcon className="size-3.5" />
+        <span>{displayLabel}</span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[220px] rounded-lg border border-border bg-popover p-1 shadow-lg">
+            {GEMINI_MODELS.map((model) => {
+              const isSelected = chatModel === model.id || (!chatModel && model.id === GEMINI_MODELS[0].id);
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => {
+                    setChatModel(model.id === GEMINI_MODELS[0].id ? null : model.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+                    isSelected
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent/50"
+                  }`}
+                >
+                  <SparklesIcon className="size-3 shrink-0 text-violet-500/70" />
+                  <div className="flex flex-col items-start gap-0.5">
+                    <span className="font-medium">{model.label}</span>
+                    <span className="text-[10px] text-muted-foreground">{model.description}</span>
+                  </div>
+                  {isSelected && (
+                    <CheckIcon className="ml-auto size-3 shrink-0 text-violet-500" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ChatInput
 // ---------------------------------------------------------------------------
 
@@ -386,6 +455,7 @@ export function ChatInput({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <KBSelector disabled={false} />
+            <ModelSelector disabled={false} />
           </PromptInputTools>
           <ChatSubmitButton status={status} inputText={input} onStop={onStop} />
         </PromptInputFooter>

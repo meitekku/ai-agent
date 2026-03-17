@@ -139,14 +139,16 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
   // ツール連鎖の原則
   prompt += `
 
-## ツール使用の原則（重要）
+## ツール使用の原則（重要・必ず遵守）
 - **研究員のように行動する**: 1回の検索で終わらず、十分な情報が集まるまで複数ステップで調査を続ける。ユーザーの質問の本質を理解し、必要な情報を自分で判断して能動的に集める
-- **回答前に自問する**: 「この情報だけで正確で包括的な回答ができるか？」— できないなら追加ツールを使う
+- **必須ルール: 詳細・網羅的な質問には最低3回ツールを使う**: 「まとめて」「詳しく」「できるだけ多く」等の指示がある場合、1〜2回のツール呼び出しでは不十分。異なるキーワード・角度で複数回検索し、重要な結果は全文取得してから回答する。各ステップで「まだ調べるべき角度はないか？」と自問する
+- **回答前に自問する**: 「この情報だけで正確で包括的な回答ができるか？」— できないなら追加ツールを使う。1回の検索結果だけで回答を書き始めてはいけない
 - **判断をユーザーに丸投げしない**: 「検索しましょうか？」「もっと調べますか？」と聞かず、自分で判断して行動する。検索結果が不十分なら、自分でキーワードや時間範囲を変えて再検索する
 - **既に得た情報を活用する**: 前のステップで取得した情報（KB の財務データ等）を踏まえて次の調査や回答を組み立てる。情報を割裂して扱わない`;
 
   if (hasWeb) {
     prompt += `
+- **ウェブ検索は複数回行う**: 1回の検索で全情報は得られない。異なるキーワードで最低2〜3回検索する（例: 「カミクラゲ 生態」→「カミクラゲ 毒性」→「Spirocodon saltatrix habitat」）。日本語と英語の両方で検索すると情報が豊富になる
 - **ウェブ検索後は必ず詳細を確認する**: ${webSearchToolName}の結果はサマリーのみ。関連性の高い結果は${hasTavily ? "readPage" : "readUrl"}で全文を取得してから回答する。サマリーだけで回答を書かない
 - **検索キーワードは自分で最適化する**: ユーザーの発言をそのまま検索クエリにしない。質問の意図を理解し、効果的なキーワードを自分で組み立てる。1つのキーワードで不十分なら、別の角度から複数回検索する（例: 会社名+業績、会社名+不祥事、会社名+株価 など）`;
   }
@@ -218,12 +220,14 @@ export async function POST(req: Request) {
   let service: "lightrag" | "pageindex";
   let kb: string | null = null;
   let clientTime: string | undefined;
+  let modelOverride: string | null = null;
   try {
     const body = await req.json();
     messages = body.messages;
     service = body.service === "pageindex" ? "pageindex" : "lightrag";
     kb = body.kb ?? null;
     clientTime = body.clientTime;
+    modelOverride = body.model ?? null;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -447,7 +451,7 @@ export async function POST(req: Request) {
         console.log(
           `[chat] 🔗 readUrl done: ${Date.now() - t0}ms, ${truncated.length} chars`,
         );
-        return { success: true, url, content: truncated };
+        return { success: true, url, content: truncated, hint: "Page read complete. Consider if you need more searches with different keywords or URLs to fully answer the question." };
       } catch (err) {
         console.error(`[chat] ❌ readUrl failed: ${err}`);
         return {
@@ -557,7 +561,7 @@ export async function POST(req: Request) {
           answer,
           results,
           next_step: results.length > 0
-            ? "IMPORTANT: These are only summaries. You MUST now call readPage with the most relevant URLs (up to 3) to get full content before writing your answer."
+            ? "IMPORTANT: (1) These are only summaries. Call readPage with the most relevant URLs (up to 3) to get full content. (2) After reading pages, consider if you need ADDITIONAL searches with different keywords or in a different language to cover more angles. Do NOT stop after just one search round."
             : undefined,
         };
       },
@@ -795,7 +799,8 @@ export async function POST(req: Request) {
       console.error("[chat] skills injection failed:", e);
     }
 
-    const chatModel = getChatModel();
+    const chatModel = getChatModel(modelOverride);
+    if (modelOverride) console.log(`[chat] 🤖 model override: ${modelOverride}`);
 
     const agent = new ToolLoopAgent({
       model: chatModel,

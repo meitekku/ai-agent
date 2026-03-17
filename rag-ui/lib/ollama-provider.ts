@@ -15,10 +15,22 @@ const gemini = useGemini
   ? createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY })
   : null;
 
-/** Auto-select: Gemini if API key is set, otherwise MLX */
-export function getChatModel() {
+/** Allowed Gemini model IDs (whitelist to prevent abuse) */
+const ALLOWED_GEMINI_MODELS = new Set([
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash-lite",
+  "gemini-3-flash",
+  "gemini-3.1-pro-preview",
+]);
+
+/** Auto-select: Gemini if API key is set, otherwise MLX. Accepts optional model override. */
+export function getChatModel(modelOverride?: string | null) {
   if (gemini) {
-    return gemini(GEMINI_MODEL);
+    const model = modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
+      ? modelOverride
+      : GEMINI_MODEL;
+    return gemini(model);
   }
   return mlx.chat(MLX_MODEL);
 }

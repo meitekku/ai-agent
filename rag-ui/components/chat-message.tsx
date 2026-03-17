@@ -12,10 +12,6 @@ import {
   MessageAction,
 } from "@/components/ai-elements/message";
 import { StepIndicator } from "@/components/step-indicator";
-import {
-  useResponseTimings,
-  ResponseTimingBadge,
-} from "@/components/response-timing";
 import { Badge } from "@/components/ui/badge";
 import {
   CopyIcon,
@@ -272,7 +268,6 @@ export const ChatMessage = memo(function ChatMessage({
   message,
   isLoading,
   isActiveStreaming,
-  submitTime,
   createdAt,
   stopped,
   onCopy,
@@ -287,7 +282,6 @@ export const ChatMessage = memo(function ChatMessage({
   message: UIMessage;
   isLoading: boolean;
   isActiveStreaming?: boolean;
-  submitTime?: number;
   createdAt?: string;
   stopped?: boolean;
   onCopy: (text: string) => void;
@@ -361,10 +355,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [handleSubmitEdit, handleCancelEdit],
   );
-
-  // Track response timings for this message
-  const timings = useResponseTimings(message, isActiveStreaming, submitTime);
-
   // Determine extra streaming indicators
   const showThinking =
     isActiveStreaming &&
@@ -619,7 +609,6 @@ export const ChatMessage = memo(function ChatMessage({
               {serviceName === "pageindex" ? "PageIndex" : "LightRAG"}
             </Badge>
           ) : null}
-          {timings ? <ResponseTimingBadge timestamps={timings} /> : null}
         </MessageActions>
       ) : null}
 
