@@ -61,15 +61,13 @@ function AttachmentPreviewHeader() {
         {attachments.files.map((file) => {
           const isImage = file.mediaType?.startsWith("image/");
           const state = uploadState[file.id];
-          const progress = state?.progress ?? (file.url?.startsWith("blob:") ? 0 : 100);
+          const progress =
+            state?.progress ?? (file.url?.startsWith("blob:") ? 0 : 100);
           const hasError = progress === -1;
           const isUploading = progress >= 0 && progress < 100;
 
           return (
-            <div
-              key={file.id}
-              className="group/att relative"
-            >
+            <div key={file.id} className="group/att relative">
               {/* Thumbnail / icon */}
               {isImage && file.url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -318,13 +316,17 @@ function ModelSelector({ disabled }: { disabled: boolean }) {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[220px] rounded-lg border border-border bg-popover p-1 shadow-lg">
             {GEMINI_MODELS.map((model) => {
-              const isSelected = chatModel === model.id || (!chatModel && model.id === GEMINI_MODELS[0].id);
+              const isSelected =
+                chatModel === model.id ||
+                (!chatModel && model.id === GEMINI_MODELS[0].id);
               return (
                 <button
                   key={model.id}
                   type="button"
                   onClick={() => {
-                    setChatModel(model.id === GEMINI_MODELS[0].id ? null : model.id);
+                    setChatModel(
+                      model.id === GEMINI_MODELS[0].id ? null : model.id,
+                    );
                     setOpen(false);
                   }}
                   className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
@@ -336,7 +338,11 @@ function ModelSelector({ disabled }: { disabled: boolean }) {
                   <SparklesIcon className="size-3 shrink-0 text-violet-500/70" />
                   <div className="flex flex-col items-start gap-0.5">
                     <span className="font-medium">{model.label}</span>
-                    <span className={`text-[10px] ${isSelected ? "text-accent-foreground/70" : "text-muted-foreground"}`}>{model.description}</span>
+                    <span
+                      className={`text-[10px] ${isSelected ? "text-accent-foreground/70" : "text-muted-foreground"}`}
+                    >
+                      {model.description}
+                    </span>
                   </div>
                   {isSelected && (
                     <CheckIcon className="ml-auto size-3 shrink-0 text-violet-500" />
@@ -418,15 +424,12 @@ export function ChatInput({
     [],
   );
 
-  const handleError = useCallback(
-    (err: { code: string; message: string }) => {
-      console.warn("[chat-input] file error:", err.code, err.message);
-    },
-    [],
-  );
+  const handleError = useCallback((err: { code: string; message: string }) => {
+    console.warn("[chat-input] file error:", err.code, err.message);
+  }, []);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-5">
+    <div className="mx-auto w-full max-w-3xl px-4 pb-3">
       <PromptInput
         onSubmit={handleSubmit}
         accept={ACCEPTED_TYPES}
@@ -461,7 +464,8 @@ export function ChatInput({
         </PromptInputFooter>
       </PromptInput>
       <p className="text-center text-[11px] text-muted-foreground/50 py-1.5">
-        AI の回答には誤りが含まれる場合があります。重要な情報は必ずご確認ください。
+        AI
+        の回答には誤りが含まれる場合があります。重要な情報は必ずご確認ください。
       </p>
     </div>
   );
