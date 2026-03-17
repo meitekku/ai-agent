@@ -18,9 +18,10 @@ interface GraphEdgesProps {
   nodes: SimNode[];
   links: SimLink[];
   hoveredId: string | null;
+  isDark: boolean;
 }
 
-export function GraphEdges({ nodes, links, hoveredId }: GraphEdgesProps) {
+export function GraphEdges({ nodes, links, hoveredId, isDark }: GraphEdgesProps) {
   const linesRef = useRef<LineSegments>(null);
   const particlesRef = useRef<Points>(null);
   const timeRef = useRef(0);
@@ -68,14 +69,16 @@ export function GraphEdges({ nodes, links, hoveredId }: GraphEdgesProps) {
       linePos.setXYZ(i * 2, sx, sy, sz);
       linePos.setXYZ(i * 2 + 1, tx, ty, tz);
 
-      // Highlighted edges are bright blue, normal edges are subtle white
       const isHighlighted = hoveredEdgeSet?.has(i);
       if (isHighlighted) {
         lineColor.setXYZ(i * 2, 0.4, 0.6, 1.0);
         lineColor.setXYZ(i * 2 + 1, 0.4, 0.6, 1.0);
-      } else {
+      } else if (isDark) {
         lineColor.setXYZ(i * 2, 0.35, 0.4, 0.5);
         lineColor.setXYZ(i * 2 + 1, 0.35, 0.4, 0.5);
+      } else {
+        lineColor.setXYZ(i * 2, 0.55, 0.58, 0.65);
+        lineColor.setXYZ(i * 2 + 1, 0.55, 0.58, 0.65);
       }
 
       // Flowing particle
@@ -113,10 +116,9 @@ export function GraphEdges({ nodes, links, hoveredId }: GraphEdgesProps) {
     });
   }, []);
 
-  // Dim non-hovered edges when something is hovered
   useFrame(() => {
     if (lineMat) {
-      lineMat.opacity = hoveredId ? 0.12 : 0.35;
+      lineMat.opacity = hoveredId ? 0.12 : isDark ? 0.35 : 0.5;
     }
   });
 
@@ -130,15 +132,15 @@ export function GraphEdges({ nodes, links, hoveredId }: GraphEdgesProps) {
 
   const particleMat = useMemo(() => {
     return new PointsMaterial({
-      color: new Color("#93c5fd"),
+      color: new Color(isDark ? "#93c5fd" : "#3b82f6"),
       size: 0.6,
       transparent: true,
-      opacity: 0.7,
-      blending: AdditiveBlending,
+      opacity: isDark ? 0.7 : 0.9,
+      blending: isDark ? AdditiveBlending : undefined,
       depthWrite: false,
       sizeAttenuation: true,
     });
-  }, []);
+  }, [isDark]);
 
   if (links.length === 0) return null;
 

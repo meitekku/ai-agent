@@ -92,7 +92,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#030712]">
+      <div className="flex flex-1 items-center justify-center bg-slate-100 dark:bg-[#030712]">
         <div className="flex flex-col items-center gap-3">
           <Loader2Icon className="size-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">
@@ -105,7 +105,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
 
   if (isError || !data) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[#030712]">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-slate-100 dark:bg-[#030712]">
         <p className="text-sm text-muted-foreground">
           グラフの取得に失敗しました
         </p>
@@ -119,7 +119,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
 
   if (data.nodes.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[#030712]">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-slate-100 dark:bg-[#030712]">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
           <NetworkIcon className="size-7 text-primary" />
         </div>
@@ -158,12 +158,12 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
           <button
             type="button"
             onClick={() => router.push(`/documents/${slug}`)}
-            className="flex size-8 items-center justify-center rounded-lg bg-black/50 backdrop-blur-sm text-muted-foreground transition-colors hover:bg-black/70 hover:text-foreground ring-1 ring-white/10"
+            className="flex size-8 items-center justify-center rounded-lg bg-white/70 dark:bg-black/50 backdrop-blur-sm text-muted-foreground transition-colors hover:bg-white/90 dark:hover:bg-black/70 hover:text-foreground ring-1 ring-black/10 dark:ring-white/10"
             aria-label="戻る"
           >
             <ArrowLeftIcon className="size-4" />
           </button>
-          <div className="flex items-center gap-2 rounded-lg bg-black/50 backdrop-blur-sm px-3 py-1.5 ring-1 ring-white/10">
+          <div className="flex items-center gap-2 rounded-lg bg-white/70 dark:bg-black/50 backdrop-blur-sm px-3 py-1.5 ring-1 ring-black/10 dark:ring-white/10">
             <NetworkIcon className="size-4 text-primary" />
             <span className="text-sm font-medium">{kbName ?? slug}</span>
           </div>
@@ -185,7 +185,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
             placeholder="エンティティを検索..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-black/60 backdrop-blur-sm border-white/10 text-sm h-9"
+            className="pl-9 bg-white/70 dark:bg-black/60 backdrop-blur-sm border-black/10 dark:border-white/10 text-sm h-9"
           />
           {search && (
             <button
@@ -198,13 +198,13 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
           )}
         </div>
         {searchResults.length > 0 && (
-          <div className="mt-1 rounded-lg bg-black/80 backdrop-blur-sm border border-white/10 overflow-hidden">
+          <div className="mt-1 rounded-lg bg-white/80 dark:bg-black/80 backdrop-blur-sm border border-black/10 dark:border-white/10 overflow-hidden">
             <ScrollArea className="max-h-60">
               {searchResults.map((n) => (
                 <button
                   key={n.id}
                   type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors border-b border-black/5 dark:border-white/5 last:border-0"
                   onClick={() => {
                     handleSelect(n.id);
                     setSearch("");
@@ -225,8 +225,8 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
       {/* Detail panel — right side */}
       {selectedNode && (
         <div className="absolute top-14 right-4 bottom-4 z-10 w-80">
-          <div className="h-full rounded-xl bg-black/70 backdrop-blur-sm border border-white/10 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+          <div className="h-full rounded-xl bg-white/80 dark:bg-black/70 backdrop-blur-sm border border-black/10 dark:border-white/10 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10">
               <h3 className="text-sm font-semibold truncate">
                 {selectedNode.id}
               </h3>
@@ -296,7 +296,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
                           <button
                             key={i}
                             type="button"
-                            className="w-full text-left rounded-md px-2.5 py-1.5 text-xs hover:bg-white/5 transition-colors"
+                            className="w-full text-left rounded-md px-2.5 py-1.5 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                             onClick={() => handleSelect(other)}
                           >
                             <span className="font-medium text-primary/80">
@@ -336,7 +336,7 @@ function StatBadge({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-lg bg-black/50 backdrop-blur-sm px-2.5 py-1.5 ring-1 ring-white/10">
+    <div className="flex items-center gap-1.5 rounded-lg bg-white/70 dark:bg-black/50 backdrop-blur-sm px-2.5 py-1.5 ring-1 ring-black/10 dark:ring-white/10">
       <Icon className="size-3.5 text-muted-foreground" />
       <span className="text-xs font-medium">{value.toLocaleString()}</span>
       <span className="text-xs text-muted-foreground">{label}</span>

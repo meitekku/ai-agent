@@ -224,6 +224,18 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "generateImage") {
+    const prompt = typeof args?.prompt === "string" ? args.prompt : "";
+    return (
+      <StepIndicator
+        icon={ImageIcon}
+        activeLabel={prompt ? `画像を生成中 — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」` : "画像を生成中..."}
+        completedLabel={prompt ? `画像を生成しました — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」` : "画像を生成しました"}
+        active={!isComplete}
+      />
+    );
+  }
+
   return (
     <StepIndicator
       icon={SearchIcon}
@@ -443,17 +455,21 @@ export const ChatMessage = memo(function ChatMessage({
                   ? (part as { filename?: string }).filename
                   : undefined) ?? "file";
               if (mediaType.startsWith("image/")) {
+                const isGenerated = message.role === "assistant";
                 return (
                   <div
                     key={key}
-                    className="group/img relative inline-block cursor-pointer overflow-hidden rounded-lg border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
+                    className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
                     onClick={() => setLightboxSrc(part.url)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={part.url}
                       alt={filename}
-                      className="block size-14 object-cover"
+                      className={isGenerated
+                        ? "block max-w-md rounded-xl"
+                        : "block size-14 object-cover"
+                      }
                     />
                     {/* Hover overlay */}
                     <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
@@ -479,10 +495,13 @@ export const ChatMessage = memo(function ChatMessage({
             }
             default:
               if (isToolUIPart(part)) {
+                const tn = getToolName(part);
+                // suggestSlides is a silent signal — don't render any UI for it
+                if (tn === "suggestSlides") return null;
                 return (
                   <ToolCallIndicator
                     key={key}
-                    toolName={getToolName(part)}
+                    toolName={tn}
                     state={part.state}
                     args={(part as Record<string, unknown>).input as Record<string, unknown> | undefined}
                   />
@@ -544,7 +563,9 @@ export const ChatMessage = memo(function ChatMessage({
           <MessageAction tooltip="再生成" onClick={onRegenerate}>
             <RotateCcwIcon className="size-3.5" />
           </MessageAction>
-          {onGenerateSlides && getMessageText(message) ? (
+          {onGenerateSlides && getMessageText(message) && message.parts.some(
+            (p) => isToolUIPart(p) && getToolName(p) === "suggestSlides",
+          ) ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <MessageAction tooltip="スライド生成">

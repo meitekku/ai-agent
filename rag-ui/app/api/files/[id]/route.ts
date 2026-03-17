@@ -3,10 +3,12 @@ import { getChatFile } from "@/lib/chat-files-db";
 import { readStoredFile } from "@/lib/file-storage";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const url = new URL(req.url);
+  const download = url.searchParams.get("dl") === "1";
 
   try {
     const row = await getChatFile(id);
@@ -15,13 +17,14 @@ export async function GET(
     }
 
     const buffer = await readStoredFile(row.stored_path);
+    const disposition = download ? "attachment" : "inline";
 
     return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type": row.media_type,
         "Content-Length": String(buffer.length),
         "Cache-Control": "public, max-age=31536000, immutable",
-        "Content-Disposition": `inline; filename="${encodeURIComponent(row.original_name)}"`,
+        "Content-Disposition": `${disposition}; filename="${encodeURIComponent(row.original_name)}"`,
       },
     });
   } catch (err) {

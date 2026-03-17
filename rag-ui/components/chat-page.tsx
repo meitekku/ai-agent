@@ -22,9 +22,9 @@ import { SlidePanel } from "@/components/slide-panel";
 import { SlideSetupWizard, type WizardConfig } from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
 import { AnimatePresence } from "motion/react";
-import { BookOpenIcon, ZapIcon, AlertCircleIcon } from "lucide-react";
+import { BookOpenIcon, ZapIcon, AlertCircleIcon, ImageIcon } from "lucide-react";
 import { StepIndicator } from "@/components/step-indicator";
-import { useChatSettingsStore } from "@/lib/store";
+import { useChatSettingsStore, isImageModel } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
 import { useSlidePanelStore } from "@/lib/slide-panel-store";
 import { useChatTreeStore } from "@/lib/chat-tree";
@@ -152,6 +152,24 @@ export function ChatPage({
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 
   const isLoading = status === "submitted" || status === "streaming";
+  const setImageGenerating = useChatSettingsStore((s) => s.setImageGenerating);
+
+  // Track imageGenerating state for navigation guard
+  useEffect(() => {
+    const generating = isLoading && isImageModel(chatModel);
+    setImageGenerating(generating);
+    return () => setImageGenerating(false);
+  }, [isLoading, chatModel, setImageGenerating]);
+
+  // Prevent browser navigation during image generation
+  useEffect(() => {
+    if (!isLoading || !isImageModel(chatModel)) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isLoading, chatModel]);
 
   const handleStop = useCallback(() => {
     stoppedRef.current = true;
@@ -650,12 +668,22 @@ export function ChatPage({
               messages[messages.length - 1].role === "user" ? (
                 <Message from="assistant">
                   <MessageContent>
-                    <StepIndicator
-                      icon={ZapIcon}
-                      activeLabel="考え中..."
-                      completedLabel="処理完了"
-                      active
-                    />
+                    {isImageModel(chatModel) ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <ImageIcon className="size-3.5 animate-pulse" />
+                          <span className="animate-pulse">画像を生成中...</span>
+                        </div>
+                        <div className="h-64 w-80 animate-pulse rounded-xl bg-muted/40 border border-border/30" />
+                      </div>
+                    ) : (
+                      <StepIndicator
+                        icon={ZapIcon}
+                        activeLabel="考え中..."
+                        completedLabel="処理完了"
+                        active
+                      />
+                    )}
                   </MessageContent>
                 </Message>
               ) : null}

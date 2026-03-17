@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { XIcon } from "lucide-react";
+import { XIcon, DownloadIcon } from "lucide-react";
 
 export function ImageLightbox({
   src,
@@ -30,6 +30,14 @@ export function ImageLightbox({
         <DialogDescription className="sr-only">
           画像の拡大表示
         </DialogDescription>
+        <a
+          href={`${src}${src.includes("?") ? "&" : "?"}dl=1`}
+          download
+          className="absolute top-3 right-12 z-10 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+        >
+          <DownloadIcon className="size-4" />
+          <span className="sr-only">ダウンロード</span>
+        </a>
         <DialogClose className="absolute top-3 right-3 z-10 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white">
           <XIcon className="size-4" />
           <span className="sr-only">閉じる</span>

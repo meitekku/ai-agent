@@ -93,7 +93,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `lightrag-service/app/routers/ingest.py` | 同上 | 一致 | asyncio.Queue 排隊処理 |
 | `lightrag-service/pyproject.toml` | 同上 | **意図的に不一致** | deploy 版のみ `pymupdf` 追加（Gemini OCR 用） |
 | `rag-ui/app/api/chat/route.ts` | `~/Desktop/uiForAI/rag-ui/` | 一致 | tool calling（searchKnowledgeBase + webSearch/readPage/google_search）+ skills injection |
-| `rag-ui/lib/ollama-provider.ts` | 同上 | 一致 | Gemini/MLX 自動切替 + `geminiGoogleSearch` エクスポート |
+| `rag-ui/lib/ollama-provider.ts` | 同上 | **rag-deploy のみ** | Gemini/MLX 自動切替 + `isImageModel()` + `geminiImageModel` エクスポート |
 | `rag-ui/app/api/kb-config/route.ts` | 同上 | 一致 | GET/PUT ナレッジベース設定 |
 | `rag-ui/app/api/kb-config/generate/route.ts` | 同上 | 一致 | LLM で KB 設定自動生成 |
 | `rag-ui/app/layout.tsx` | 同上 | 一致 | AppShell ラッパー追加 |
@@ -110,11 +110,11 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/history/chats/[id]/route.ts` | 同上 | 一致 | GET/PATCH/DELETE 会話 |
 | `rag-ui/app/api/history/chats/[id]/messages/route.ts` | 同上 | 一致 | POST メッセージ保存 |
 | `rag-ui/components/app-shell.tsx` | 同上 | 一致 | sidebar + header ラッパー |
-| `rag-ui/components/app-sidebar.tsx` | 同上 | 一致 | ナビゲーションサイドバー + チャット履歴 |
+| `rag-ui/components/app-sidebar.tsx` | 同上 | **rag-deploy のみ** | ナビゲーションサイドバー + チャット履歴 + 画像生成中ナビガード |
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
-| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | generateProposal 検出 + ProposalPanel 追加 |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（listDeals/fetchDealData/analyzeDeal/generateProposal/reviseRationale）追加 |
+| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | generateProposal 検出 + ProposalPanel + 画像スケルトン + beforeunload ガード |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools + 画像モデルパス（generateText + responseModalities）+ generateImage ツール |
 | `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
 | `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store for ProposalPanel |
 | `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書生成サイドパネル |
@@ -122,8 +122,8 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
-| `rag-ui/components/chat-message.tsx` | 同上 | 一致 | マルチモーダル表示（画像・ファイル）+ 編集+ブランチ |
-| `rag-ui/lib/store.ts` | 同上 | 一致 | sidebar state（Zustand） |
+| `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator |
+| `rag-ui/lib/store.ts` | 同上 | **rag-deploy のみ** | sidebar state + `isImageModel()` + `imageGenerating` 状態（Zustand） |
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
 | `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
@@ -133,9 +133,9 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/file-storage.ts` | 同上 | 一致 | ファイルディスク I/O |
 | `rag-ui/lib/chat-files-db.ts` | 同上 | 一致 | chat_files テーブル CRUD |
 | `rag-ui/app/api/files/upload/route.ts` | 同上 | 一致 | POST ファイルアップロード |
-| `rag-ui/app/api/files/[id]/route.ts` | 同上 | 一致 | GET ファイル配信 |
+| `rag-ui/app/api/files/[id]/route.ts` | 同上 | **rag-deploy のみ** | GET ファイル配信 + `?dl=1` ダウンロードモード |
 | `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック（リトライ対応） |
-| `rag-ui/components/image-lightbox.tsx` | 同上 | 一致 | shadcn Dialog ベース画像拡大表示 |
+| `rag-ui/components/image-lightbox.tsx` | 同上 | **rag-deploy のみ** | shadcn Dialog ベース画像拡大表示 + ダウンロードボタン |
 | `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |

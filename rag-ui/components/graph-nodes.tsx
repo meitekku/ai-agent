@@ -80,6 +80,7 @@ interface GraphNodesProps {
   selectedId: string | null;
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
+  isDark: boolean;
 }
 
 const dummy = new Object3D();
@@ -92,6 +93,7 @@ export function GraphNodes({
   selectedId,
   onHover,
   onSelect,
+  isDark,
 }: GraphNodesProps) {
   const meshRef = useRef<InstancedMesh>(null);
 
@@ -196,6 +198,7 @@ export function GraphNodes({
             isSelected={selectedId === n.id}
             onHover={onHover}
             onSelect={onSelect}
+            isDark={isDark}
           />
         );
       })}
@@ -216,6 +219,7 @@ const NodeLabel = memo(function NodeLabel({
   isSelected,
   onHover,
   onSelect,
+  isDark,
 }: {
   node: SimNode;
   yOffset: number;
@@ -223,6 +227,7 @@ const NodeLabel = memo(function NodeLabel({
   isSelected: boolean;
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
+  isDark: boolean;
 }) {
   const groupRef = useRef<Group>(null);
   const _pos = useRef(new Vector3());
@@ -270,11 +275,15 @@ const NodeLabel = memo(function NodeLabel({
       >
         <Text
           fontSize={3.2}
-          color={isHovered || isSelected ? "#ffffff" : "#cbd5e1"}
+          color={
+            isHovered || isSelected
+              ? isDark ? "#ffffff" : "#0f172a"
+              : isDark ? "#cbd5e1" : "#334155"
+          }
           anchorX="center"
           anchorY="bottom"
           outlineWidth={0.2}
-          outlineColor="#000000"
+          outlineColor={isDark ? "#000000" : "#ffffff"}
         >
           {label}
         </Text>

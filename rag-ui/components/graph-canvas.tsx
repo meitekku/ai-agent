@@ -5,6 +5,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Vector3 } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { useTheme } from "next-themes";
 import type { GraphData } from "@/lib/rag-client";
 import type { SimNode, SimLink } from "@/lib/force-simulation";
 import { createSimulation } from "@/lib/force-simulation";
@@ -91,6 +92,9 @@ export function GraphCanvas({
   onHover,
   onSelect,
 }: GraphCanvasProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
+
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
   const [simLinks, setSimLinks] = useState<SimLink[]>([]);
   const [cameraTarget, setCameraTarget] = useState<Vector3 | null>(null);
@@ -139,12 +143,12 @@ export function GraphCanvas({
   return (
     <Canvas
       camera={{ position: [0, 0, cameraZ], fov: 60, near: 0.1, far: 3000 }}
-      style={{ background: "#030712" }}
+      style={{ background: isDark ? "#030712" : "#f1f5f9" }}
       gl={{ antialias: true, alpha: false }}
       dpr={[1, 1.5]}
     >
-      <ambientLight intensity={0.4} />
-      <pointLight position={[100, 100, 100]} intensity={0.6} />
+      <ambientLight intensity={isDark ? 0.4 : 0.6} />
+      <pointLight position={[100, 100, 100]} intensity={isDark ? 0.6 : 0.8} />
 
       <GraphNodes
         nodes={simNodes}
@@ -153,9 +157,10 @@ export function GraphCanvas({
         selectedId={selectedId}
         onHover={onHover}
         onSelect={onSelect}
+        isDark={isDark}
       />
-      <GraphEdges nodes={simNodes} links={simLinks} hoveredId={hoveredId} />
-      <GraphEffects />
+      <GraphEdges nodes={simNodes} links={simLinks} hoveredId={hoveredId} isDark={isDark} />
+      <GraphEffects isDark={isDark} />
       <CameraAnimator targetPosition={cameraTarget} controlsRef={controlsRef} />
 
       <OrbitControls

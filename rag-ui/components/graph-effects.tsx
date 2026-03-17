@@ -7,17 +7,17 @@ import {
 } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 
-export function GraphEffects() {
+export function GraphEffects({ isDark }: { isDark: boolean }) {
   return (
     <EffectComposer>
       <Bloom
-        luminanceThreshold={0.4}
+        luminanceThreshold={isDark ? 0.4 : 0.6}
         luminanceSmoothing={0.9}
-        intensity={1.5}
+        intensity={isDark ? 1.5 : 0.8}
         radius={0.6}
       />
       <Vignette
-        darkness={0.3}
+        darkness={isDark ? 0.3 : 0.12}
         offset={0.5}
         blendFunction={BlendFunction.NORMAL}
       />

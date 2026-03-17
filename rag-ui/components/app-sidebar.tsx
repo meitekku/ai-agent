@@ -93,6 +93,13 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const incrementChatReset = useChatSettingsStore((s) => s.incrementChatReset);
+  const imageGenerating = useChatSettingsStore((s) => s.imageGenerating);
+
+  // Navigation guard state for image generation
+  const [navGuardTarget, setNavGuardTarget] = useState<{
+    href: string;
+    action?: () => void;
+  } | null>(null);
 
   // Fetch chat history
   const { data: historyData } = useQuery({
@@ -163,7 +170,15 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => {
+              onClick={(e) => {
+                if (imageGenerating) {
+                  e.preventDefault();
+                  setNavGuardTarget({
+                    href: item.href,
+                    action: item.href === "/new" ? incrementChatReset : undefined,
+                  });
+                  return;
+                }
                 if (item.href === "/new") incrementChatReset();
               }}
               className={`
@@ -201,6 +216,12 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                       <Link
                         key={chat.id}
                         href={`/chat/${chat.id}`}
+                        onClick={(e) => {
+                          if (imageGenerating) {
+                            e.preventDefault();
+                            setNavGuardTarget({ href: `/chat/${chat.id}` });
+                          }
+                        }}
                         className={`
                           group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors
                           ${
@@ -258,6 +279,37 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Navigation guard during image generation */}
+      <AlertDialog
+        open={!!navGuardTarget}
+        onOpenChange={(open) => {
+          if (!open) setNavGuardTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>画像生成中</AlertDialogTitle>
+            <AlertDialogDescription>
+              画像を生成中です。離脱すると結果が失われます。本当に移動しますか？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (navGuardTarget) {
+                  navGuardTarget.action?.();
+                  router.push(navGuardTarget.href);
+                }
+                setNavGuardTarget(null);
+              }}
+            >
+              移動する
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

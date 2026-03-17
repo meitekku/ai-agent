@@ -2,24 +2,30 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  generateText,
+  generateImage,
   stepCountIs,
   tool,
   ToolLoopAgent,
   UIMessage,
 } from "ai";
 import { z } from "zod";
+import { nanoid } from "nanoid";
 import {
   getChatModel,
   useGemini,
   backendName,
   geminiGoogleSearch,
+  ALLOWED_GEMINI_MODELS,
+  isImageModel,
+  geminiImageModel,
 } from "@/lib/ollama-provider";
 import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } from "@/lib/rag-client";
 
-import { TAVILY_API_KEY, CRM_SERVICE_URL } from "@/lib/constants";
+import { TAVILY_API_KEY, CRM_SERVICE_URL, GEMINI_MODEL } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
-import { getChatFile } from "@/lib/chat-files-db";
-import { readStoredFile } from "@/lib/file-storage";
+import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
+import { readStoredFile, saveFile } from "@/lib/file-storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -156,7 +162,15 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
   // generateSlides ツール説明
   prompt += `
 - **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で質問せず直接呼び出す。ユーザーが指定したテーマ・内容・追加要望を topic/content/instructions にまとめて渡す。
-  ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。`;
+  ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。
+- **suggestSlides**: 回答がスライド化に適している場合（解説・分析・比較・手順など構造化された内容）に呼び出す。短い挨拶・雑談・簡単な回答では不要。テキスト回答と同じステップで呼び出すこと。`;
+
+  // generateImage ツール説明
+  if (geminiImageModel) {
+    prompt += `
+- **generateImage**: ユーザーが画像生成を依頼した場合に使用。プロンプトは英語で具体的に記述すると高品質な結果が得られる。
+  生成結果の画像 URL を \`![説明](url)\` 形式でマークダウンに埋め込んで表示すること。`;
+  }
 
   // CRM ツール説明
   if (hasCrm) {
@@ -650,6 +664,16 @@ export async function POST(req: Request) {
     },
   });
 
+  // suggestSlides: lightweight signal — AI calls this when the response is suitable for slide generation
+  tools.suggestSlides = tool({
+    description:
+      "回答内容がプレゼンテーション資料に適していると判断した場合に呼び出す。" +
+      "解説、分析結果、比較、手順説明、構造化された情報など、スライド化の価値がある回答で使用。" +
+      "短い挨拶、雑談、簡単な一言回答、コードのみの回答では呼び出さない。",
+    inputSchema: z.object({}),
+    execute: async () => ({ suggested: true }),
+  });
+
   // CRM tools (only when CRM_SERVICE_URL is configured)
   if (hasCrm) {
     tools.listDeals = tool({
@@ -779,9 +803,130 @@ export async function POST(req: Request) {
     console.log("[chat] 📊 CRM tools registered (crm-service connected)");
   }
 
+  // Image generation tool (available to all text models when geminiImageModel exists)
+  if (geminiImageModel) {
+    tools.generateImage = tool({
+      description: "テキストの説明から画像を生成します。ユーザーが「描いて」「画像を作って」「イラスト」等を依頼した場合に使用。",
+      inputSchema: z.object({
+        prompt: z.string().describe("生成する画像の詳細な説明（英語推奨）"),
+        aspectRatio: z.enum(["1:1", "3:4", "4:3", "9:16", "16:9"]).optional()
+          .describe("画像のアスペクト比"),
+      }),
+      execute: async ({ prompt, aspectRatio }) => {
+        console.log(`[chat] 🎨 generateImage: "${prompt.slice(0, 50)}..."`);
+        const t0 = Date.now();
+        try {
+          const result = await generateImage({
+            model: geminiImageModel!,
+            prompt,
+            aspectRatio,
+            providerOptions: { google: { personGeneration: "allow_adult" } },
+          });
+          const savedUrls: string[] = [];
+          for (const img of result.images) {
+            const ext = img.mediaType === "image/jpeg" ? ".jpg" : ".png";
+            const name = `generated-${Date.now()}${ext}`;
+            const { id, storedPath } = await saveFile(Buffer.from(img.uint8Array), name);
+            await insertChatFile({
+              id, originalName: name, storedPath,
+              mediaType: img.mediaType, sizeBytes: img.uint8Array.length,
+            });
+            savedUrls.push(`/api/files/${id}`);
+          }
+          console.log(`[chat] 🎨 generateImage done: ${Date.now() - t0}ms, ${savedUrls.length} images`);
+          return {
+            success: true,
+            images: savedUrls.map((url, i) => ({
+              url,
+              mediaType: result.images[i].mediaType,
+            })),
+          };
+        } catch (err) {
+          console.error(`[chat] ❌ generateImage failed:`, err);
+          return { success: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+  }
+
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
+
+    const selectedModel = modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
+      ? modelOverride : GEMINI_MODEL;
+
+    // Convert to model messages, then resolve file URLs to binary data
+    const modelMessages = await convertToModelMessages(messages);
+    await resolveServerFiles(modelMessages);
+
+    // === IMAGE MODEL PATH ===
+    if (isImageModel(selectedModel)) {
+      console.log(`[chat] 🎨 Image model path: ${selectedModel}`);
+      const chatModel = getChatModel(modelOverride);
+
+      const result = await generateText({
+        model: chatModel,
+        messages: modelMessages,
+        system: `あなたは画像生成・編集が可能な AI アシスタントです。
+ユーザーの指示に基づいて画像を生成・編集します。
+- ユーザーが画像を添付した場合、指示に従って編集してください
+- テキストでの説明も併せて提供してください
+- ユーザーの質問と同じ言語で回答してください`,
+        providerOptions: {
+          google: { responseModalities: ["TEXT", "IMAGE"] },
+        },
+        abortSignal: req.signal,
+      });
+
+      // Save generated images to disk + DB
+      const savedFiles: { url: string; mediaType: string }[] = [];
+      for (const file of result.files ?? []) {
+        const ext = file.mediaType === "image/png" ? ".png"
+          : file.mediaType === "image/jpeg" ? ".jpg"
+          : file.mediaType === "image/webp" ? ".webp" : ".png";
+        const name = `generated-${Date.now()}${ext}`;
+        const { id, storedPath } = await saveFile(Buffer.from(file.uint8Array), name);
+        await insertChatFile({
+          id, originalName: name, storedPath,
+          mediaType: file.mediaType, sizeBytes: file.uint8Array.length,
+        });
+        savedFiles.push({ url: `/api/files/${id}`, mediaType: file.mediaType });
+      }
+
+      console.log(`[chat] 🎨 Image result: text=${result.text?.length ?? 0} chars, files=${savedFiles.length}`);
+
+      // Build UIMessageStream manually
+      const stream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          writer.write({ type: "start-step" });
+
+          if (result.text) {
+            const textId = nanoid();
+            writer.write({ type: "text-start", id: textId });
+            writer.write({ type: "text-delta", id: textId, delta: result.text });
+            writer.write({ type: "text-end", id: textId });
+          }
+
+          for (const f of savedFiles) {
+            writer.write({ type: "file", url: f.url, mediaType: f.mediaType });
+          }
+
+          if (!result.text && savedFiles.length === 0) {
+            const errId = nanoid();
+            writer.write({ type: "text-start", id: errId });
+            writer.write({ type: "text-delta", id: errId, delta: "画像の生成に失敗しました。別のプロンプトをお試しください。" });
+            writer.write({ type: "text-end", id: errId });
+          }
+
+          writer.write({ type: "finish-step" });
+          writer.write({ type: "finish", finishReason: "stop" });
+        },
+      });
+      return createUIMessageStreamResponse({ stream });
+    }
+
+    // === EXISTING TEXT MODEL PATH ===
     let firstTokenTime = 0;
 
     let systemPrompt = buildSystemPrompt(!!kb || autoDiscovery, clientTime, autoDiscovery);
@@ -809,10 +954,6 @@ export async function POST(req: Request) {
       stopWhen: stepCountIs(10),
       maxOutputTokens: 8192,
     });
-
-    // Convert to model messages, then resolve file URLs to binary data
-    const modelMessages = await convertToModelMessages(messages);
-    await resolveServerFiles(modelMessages);
 
     const result = await agent.stream({
       messages: modelMessages,

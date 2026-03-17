@@ -19,11 +19,12 @@
 ## 架构
 
 ```
-Browser useChat → /api/chat Route Handler → Valkey cache check
-                                          → Gemini/MLX ToolLoopAgent + tool calling
-                                            → searchKnowledgeBase（LightRAG search-only）
-                                            → webSearch / readPage（Tavily）or google_search（Gemini grounding）
-                                          → Valkey cache write
+Browser useChat → /api/chat Route Handler → isImageModel?
+                                            → YES: generateText + responseModalities → 画像保存 → UIMessageStream
+                                            → NO:  Gemini/MLX ToolLoopAgent + tool calling
+                                              → searchKnowledgeBase（LightRAG search-only）
+                                              → webSearch / readPage（Tavily）or google_search（Gemini grounding）
+                                              → generateImage（Gemini 画像生成ツール）
 ```
 
 - マルチモーダル対応：画像・テキスト・PDF を添付可能（サーバーアップロード → URL 参照 → DB 軽量化）
@@ -31,6 +32,9 @@ Browser useChat → /api/chat Route Handler → Valkey cache check
 - ファイルアップロード: 添付時に即座に `/api/files/upload` → ディスク保存 → DB には URL 参照のみ保存
 - チャット送信時: `resolveServerFiles()` がモデルメッセージ内のサーバー URL / data URL → `Uint8Array` バイナリ変換 → Gemini API へ送信
 - 画像表示: `<img src="/api/files/{id}">` でサーバーから直接配信（immutable cache）、クリックで shadcn Dialog ライトボックス拡大
+- 画像生成: 2つのパス — (A) 画像モデル選択時は `generateText` + `responseModalities` でネイティブ画像出力、(B) テキストモデルから `generateImage` ツールで AI SDK `generateImage()` 呼出
+- 生成画像は `saveFile()` でディスク保存 + `insertChatFile()` で DB 登録 → `/api/files/{id}` で配信
+- 画像モデル使用中はスケルトンプレースホルダー表示 + `beforeunload` + SPA ナビガードで離脱防止
 - 孤立ファイル自動削除: 起動時 + 6時間ごとに未参照ファイル（60分以上）をクリーンアップ
 - 会話削除時にファイルもカスケード削除（DB + ディスク）
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
@@ -124,7 +128,7 @@ rag-ui/
 │   │   └── [slug]/page.tsx            # ナレッジベース詳細（ドキュメント管理）
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # ToolLoopAgent + tool calling + Valkey cache + skills injection
+│       ├── chat/route.ts              # ToolLoopAgent + tool calling + 画像モデルパス + generateImage ツール
 │       ├── kbs/
 │       │   ├── route.ts               # GET/POST ナレッジベース一覧/作成
 │       │   └── [slug]/
@@ -170,8 +174,8 @@ rag-ui/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
 │   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D、リトライ対応）
-│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、正方形サムネイル、shadcn Dialog ライトボックス、4モードドロップダウン）
-│   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、AI 生成画像大表示、ライトボックス、4モードドロップダウン）
+│   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示 + ダウンロードボタン
 │   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
 │   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
 │   ├── html-slide-viewer.tsx  # HTML スライドビューア（DB保存、テンプレート、ドラッグ）
@@ -192,7 +196,7 @@ rag-ui/
 │   ├── ui-config-db.ts    # PostgreSQL UI設定CRUD（single-row、JSONB preferences）
 │   ├── constants.ts       # 環境変数定義
 │   ├── rag-client.ts      # LightRAG/QueryService HTTP クライアント
-│   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替）
+│   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替 + 画像モデル）
 │   ├── embedding-client.ts # Embedding クライアント（Ollama/Gemini 切替）
 │   ├── semantic-cache.ts  # Valkey/Redis 查询缓存（TTL 1h）
 │   ├── slide-provider.ts  # スライド LLM プロバイダー（Gemini/MLX 自動切替）
