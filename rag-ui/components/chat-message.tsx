@@ -220,6 +220,18 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "loadSkill") {
+    const name = typeof args?.name === "string" ? args.name : "";
+    return (
+      <StepIndicator
+        icon={SparklesIcon}
+        activeLabel={name ? `スキルを読み込み中 — 「${name}」` : "スキルを読み込み中..."}
+        completedLabel={name ? `スキルを読み込みました — 「${name}」` : "スキルを読み込みました"}
+        active={!isComplete}
+      />
+    );
+  }
+
   if (toolName === "generateImage") {
     const prompt = typeof args?.prompt === "string" ? args.prompt : "";
     return (
@@ -250,6 +262,7 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 type ToolEntry = { part: any; index: number; toolName: string };
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  loadSkill: "スキル読み込み",
   searchKnowledgeBase: "KB検索",
   webSearch: "ウェブ検索",
   google_search: "ウェブ検索",

@@ -90,6 +90,35 @@ export async function getEnabledSkills(): Promise<Skill[]> {
   }));
 }
 
+/** Lightweight summaries for system prompt (no content) */
+export async function getEnabledSkillSummaries(): Promise<
+  Pick<Skill, "name" | "description">[]
+> {
+  await ensureSkillsTables();
+  const res = await getPool().query(
+    `SELECT name, description FROM skills WHERE enabled = true ORDER BY created_at ASC`,
+  );
+  return res.rows;
+}
+
+/** Load a single skill's full content by name */
+export async function getSkillByName(
+  name: string,
+): Promise<Skill | null> {
+  await ensureSkillsTables();
+  const res = await getPool().query(
+    `SELECT * FROM skills WHERE enabled = true AND LOWER(name) = LOWER($1) LIMIT 1`,
+    [name],
+  );
+  if (res.rows.length === 0) return null;
+  const r = res.rows[0];
+  return {
+    ...r,
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at),
+  };
+}
+
 export async function createSkill(data: {
   name: string;
   description?: string;

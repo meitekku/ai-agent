@@ -24,7 +24,7 @@ import {
 import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } from "@/lib/rag-client";
 
 import { TAVILY_API_KEY, CRM_SERVICE_URL, GEMINI_MODEL } from "@/lib/constants";
-import { getEnabledSkills } from "@/lib/skills-db";
+import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
@@ -684,6 +684,21 @@ export async function POST(req: Request) {
     execute: async () => ({ suggested: true }),
   });
 
+  // loadSkill: progressive disclosure — load full skill content on demand
+  tools.loadSkill = tool({
+    description:
+      "スキルの完全な指示を読み込む。システムプロンプトのスキル一覧に該当するタスクの場合に呼び出す。",
+    inputSchema: z.object({
+      name: z.string().describe("読み込むスキル名"),
+    }),
+    execute: async ({ name }) => {
+      console.log(`[chat] 📖 loadSkill: ${name}`);
+      const skill = await getSkillByName(name);
+      if (!skill) return { error: `スキル「${name}」が見つかりません` };
+      return { name: skill.name, content: skill.content };
+    },
+  });
+
   // CRM tools (only when CRM_SERVICE_URL is configured)
   if (hasCrm) {
     tools.listDeals = tool({
@@ -964,14 +979,14 @@ export async function POST(req: Request) {
     // Inject widget guidelines
     systemPrompt += "\n\n" + WIDGET_SYSTEM_PROMPT;
 
-    // Inject enabled skills into system prompt (non-fatal)
+    // Inject skill summaries into system prompt (progressive disclosure)
     try {
-      const skills = await getEnabledSkills();
-      if (skills.length > 0) {
-        systemPrompt += "\n\n## スキル（追加指示）";
-        for (const skill of skills) {
-          systemPrompt += `\n\n### ${skill.name}\n${skill.content}`;
-        }
+      const skillSummaries = await getEnabledSkillSummaries();
+      if (skillSummaries.length > 0) {
+        const list = skillSummaries
+          .map((s) => `- ${s.name}: ${s.description}`)
+          .join("\n");
+        systemPrompt += `\n\n## スキル\n\nユーザーのリクエストが以下のスキルに該当する場合、\`loadSkill\` ツールでスキルを読み込んでから指示に従ってください。\n\n${list}`;
       }
     } catch (e) {
       console.error("[chat] skills injection failed:", e);
