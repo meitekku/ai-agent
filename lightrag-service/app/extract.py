@@ -81,13 +81,202 @@ def _extract_text_plain(file_bytes: bytes) -> tuple[str, int]:
     return text, 1
 
 
+def _decode_bytes(file_bytes: bytes) -> str:
+    """Auto-detect encoding: try UTF-8 (with/without BOM), then cp932 (Shift_JIS superset)."""
+    for enc in ("utf-8-sig", "utf-8", "cp932"):
+        try:
+            return file_bytes.decode(enc)
+        except (UnicodeDecodeError, ValueError):
+            continue
+    return file_bytes.decode("utf-8", errors="replace")
+
+
+# --- Structured CSV extraction (per-record documents) ---
+
+_GROUP_KEY_RE = re.compile(r"番号|ID|No\.?$|コード|record.?id|key", re.IGNORECASE)
+_NAME_RE = re.compile(r"名$|name|タイトル|件名|title|subject", re.IGNORECASE)
+_DATE_RE = re.compile(r"日$|日時$|date|time", re.IGNORECASE)
+_LONG_TEXT_THRESHOLD = 150
+
+
+def _find_group_column(headers: list[str], data_rows: list[list[str]]) -> int | None:
+    """Detect a column suitable for grouping rows (repeated ID-like values)."""
+    candidates = [i for i, h in enumerate(headers) if _GROUP_KEY_RE.search(h)]
+    for col in candidates:
+        vals = [r[col].strip() for r in data_rows if col < len(r) and r[col].strip()]
+        if len(vals) < 2:
+            continue
+        unique = set(vals)
+        # Good grouping key: has repeated values but not all the same
+        if len(unique) < len(vals) and len(unique) >= 2:
+            return col
+    return None
+
+
+def _grouped_records(
+    headers: list[str], data_rows: list[list[str]], group_col: int,
+) -> str:
+    """Build per-record documents grouped by a key column."""
+    from collections import OrderedDict
+
+    groups: OrderedDict[str, list[list[str]]] = OrderedDict()
+    last_key = ""
+    for row in data_rows:
+        key = row[group_col].strip() if group_col < len(row) else ""
+        if not key:
+            key = last_key  # continuation row inherits previous key
+        if not key:
+            continue
+        last_key = key
+        groups.setdefault(key, []).append(row)
+
+    # Find name/date columns for better titles
+    name_col = next(
+        (i for i, h in enumerate(headers) if _NAME_RE.search(h) and i != group_col),
+        None,
+    )
+    date_col = next(
+        (i for i, h in enumerate(headers) if _DATE_RE.search(h)), None,
+    )
+
+    sections: list[str] = []
+    for key, rows in groups.items():
+        # Classify columns: record-level (same across all rows) vs entry-level (varies)
+        record_pairs: list[tuple[str, str]] = []
+        entry_cols: list[int] = []
+
+        for i, h in enumerate(headers):
+            if i == group_col:
+                continue
+            vals = list(
+                set(r[i].strip() for r in rows if i < len(r) and r[i].strip()),
+            )
+            if len(vals) == 0:
+                continue
+            elif len(vals) == 1:
+                record_pairs.append((h, vals[0]))
+            else:
+                entry_cols.append(i)
+
+        # Build section title
+        name = ""
+        if name_col is not None:
+            name = next(
+                (r[name_col].strip() for r in rows if name_col < len(r) and r[name_col].strip()),
+                "",
+            )
+        title = f"## {headers[group_col]} {key}"
+        if name:
+            title += f" — {name}"
+
+        lines: list[str] = [title]
+
+        # Record-level fields (short → bullet list, long → subsection)
+        for h, v in record_pairs:
+            if len(v) <= _LONG_TEXT_THRESHOLD:
+                lines.append(f"- {h}: {v}")
+        for h, v in record_pairs:
+            if len(v) > _LONG_TEXT_THRESHOLD:
+                lines.append(f"\n### {h}\n{v}")
+
+        # Entry-level data (one sub-entry per row)
+        if entry_cols:
+            has_multiple = len(rows) > 1
+            if has_multiple:
+                lines.append("\n### 活動・更新履歴")
+
+            for row in rows:
+                entry_short: list[str] = []
+                entry_long: list[tuple[str, str]] = []
+                date_val = ""
+
+                for col in entry_cols:
+                    if col >= len(row):
+                        continue
+                    val = row[col].strip()
+                    if not val:
+                        continue
+                    h = headers[col]
+                    if col == date_col:
+                        date_val = val
+                    if len(val) > _LONG_TEXT_THRESHOLD:
+                        entry_long.append((h, val))
+                    else:
+                        entry_short.append(f"- {h}: {val}")
+
+                if not entry_short and not entry_long:
+                    continue
+
+                entry_title = f"#### {date_val}" if date_val else "#### エントリ"
+                lines.append(f"\n{entry_title}")
+                lines.extend(entry_short)
+                for h, v in entry_long:
+                    lines.append(f"\n**{h}:**\n{v}")
+
+        sections.append("\n".join(lines))
+
+    return "\n\n---\n\n".join(sections)
+
+
+def _flat_records(headers: list[str], data_rows: list[list[str]]) -> str:
+    """Build per-row structured documents (no grouping)."""
+    name_col = next(
+        (i for i, h in enumerate(headers) if _NAME_RE.search(h)), 0,
+    )
+
+    sections: list[str] = []
+    for i, row in enumerate(data_rows, 1):
+        title = (
+            row[name_col].strip()
+            if name_col < len(row) and row[name_col].strip()
+            else f"Record {i}"
+        )
+
+        lines: list[str] = [f"## {title}"]
+        long_texts: list[tuple[str, str]] = []
+
+        for j, h in enumerate(headers):
+            if j >= len(row):
+                break
+            v = row[j].strip()
+            if not v:
+                continue
+            if len(v) > _LONG_TEXT_THRESHOLD:
+                long_texts.append((h, v))
+            else:
+                lines.append(f"- {h}: {v}")
+
+        for h, v in long_texts:
+            lines.append(f"\n### {h}\n{v}")
+
+        if len(lines) > 1:  # has content beyond title
+            sections.append("\n".join(lines))
+
+    return "\n\n---\n\n".join(sections)
+
+
 def _extract_csv(file_bytes: bytes) -> tuple[str, int]:
-    text = file_bytes.decode("utf-8", errors="replace")
+    text = _decode_bytes(file_bytes)
     reader = csv.reader(io.StringIO(text))
-    rows = [[c for c in row] for row in reader]
+    rows = list(reader)
     if not rows:
         return "", 1
-    return _md_table(rows), 1
+
+    headers = rows[0]
+    data_rows = rows[1:]
+
+    if not data_rows:
+        return _md_table(rows), 1
+
+    # Small simple tables: keep markdown table format
+    if len(data_rows) <= 10 and len(headers) <= 8:
+        return _md_table(rows), 1
+
+    # Large/wide tables: per-record structured format
+    group_col = _find_group_column(headers, data_rows)
+    if group_col is not None:
+        return _grouped_records(headers, data_rows, group_col), 1
+    return _flat_records(headers, data_rows), 1
 
 
 def _extract_docx(file_bytes: bytes) -> tuple[str, int]:
