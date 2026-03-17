@@ -1,4 +1,6 @@
 import { deleteDocument } from "@/lib/rag-client";
+import { getKbFileByDocId, deleteKbFile } from "@/lib/kb-files-db";
+import { deleteKbStoredFile } from "@/lib/file-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,16 @@ export async function DELETE(
       );
     }
     await deleteDocument(id, kb);
+
+    // Clean up stored KB file (if exists)
+    const kbFile = await getKbFileByDocId(id);
+    if (kbFile) {
+      const storedPath = await deleteKbFile(kbFile.id);
+      if (storedPath) {
+        await deleteKbStoredFile(storedPath).catch(() => {});
+      }
+    }
+
     return Response.json({ success: true });
   } catch (err) {
     return Response.json(

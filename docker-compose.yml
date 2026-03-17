@@ -100,11 +100,13 @@ services:
       PW: ${PW:-}
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
       CHAT_FILES_DIR: /app/data/chat-files
+      KB_FILES_DIR: /app/data/kb-files
       CRM_SERVICE_URL: http://crm-service:8009
     ports:
       - "4002:3000"
     volumes:
       - chat-files:/app/data/chat-files
+      - kb-files:/app/data/kb-files
     depends_on:
       lightrag:
         condition: service_healthy
@@ -119,3 +121,4 @@ volumes:
   valkeydata:
   lightrag-data:
   chat-files:
+  kb-files:

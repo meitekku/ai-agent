@@ -35,8 +35,8 @@ RUN chown bun:bun .next
 COPY --from=builder --chown=bun:bun /app/.next/standalone ./
 COPY --from=builder --chown=bun:bun /app/.next/static ./.next/static
 
-# Chat file uploads directory (volume mount point)
-RUN mkdir -p /app/data/chat-files && chown -R bun:bun /app/data
+# File uploads directory (volume mount points)
+RUN mkdir -p /app/data/chat-files /app/data/kb-files && chown -R bun:bun /app/data
 
 USER bun
 EXPOSE 3000

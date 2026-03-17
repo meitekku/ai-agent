@@ -69,7 +69,13 @@ rag-deploy/
     ├── .dockerignore
     ├── app/                        # ページ + API Routes
     ├── components/                 # UI コンポーネント
+    │   ├── widget-renderer.tsx     # Generative UI: sandbox iframe（CodePilot 方式）
+    │   └── widget-shimmer.tsx      # Widget ローディングシマー
     └── lib/                        # ユーティリティ + プロバイダー
+        ├── widget-parser.ts        # show-widget フェンス解析
+        ├── widget-sanitizer.ts     # HTML 消毒 + iframe srcdoc
+        ├── widget-css-bridge.ts    # CSS 変数ブリッジ
+        └── widget-guidelines.ts    # Widget システムプロンプト
 ```
 
 ## ソースコード同期状態
@@ -135,6 +141,14 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/files/upload/route.ts` | 同上 | 一致 | POST ファイルアップロード |
 | `rag-ui/app/api/files/[id]/route.ts` | 同上 | **rag-deploy のみ** | GET ファイル配信 + `?dl=1` ダウンロードモード |
 | `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック（リトライ対応） |
+| `rag-ui/components/widget-renderer.tsx` | **rag-deploy のみ** | — | Generative UI: sandbox iframe + postMessage（CodePilot 方式） |
+| `rag-ui/components/widget-shimmer.tsx` | **rag-deploy のみ** | — | Widget ローディングシマー |
+| `rag-ui/lib/widget-parser.ts` | **rag-deploy のみ** | — | show-widget コードフェンス解析 |
+| `rag-ui/lib/widget-sanitizer.ts` | **rag-deploy のみ** | — | Widget HTML 消毒 + iframe srcdoc ビルダー |
+| `rag-ui/lib/widget-css-bridge.ts` | **rag-deploy のみ** | — | CSS 変数ブリッジ（oklch → widget 変数） |
+| `rag-ui/lib/widget-guidelines.ts` | **rag-deploy のみ** | — | Widget 生成システムプロンプト |
+| `rag-ui/components/ai-elements/message.tsx` | 同上 | **rag-deploy のみ** | MessageResponse に widget セグメント分割ロジック追加 |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools + 画像モデルパス + generateImage ツール + WIDGET_SYSTEM_PROMPT 注入 |
 | `rag-ui/components/image-lightbox.tsx` | 同上 | **rag-deploy のみ** | shadcn Dialog ベース画像拡大表示 + ダウンロードボタン |
 | `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
@@ -297,6 +311,9 @@ docker compose --profile prod build --no-cache
 | `LightRAG.__init__() got an unexpected keyword argument 'namespace'` | lightrag-hku v1.4.9.11 で `namespace` が `workspace` にリネーム | `rag.py` の `namespace=kb_slug` → `workspace=kb_slug` に変更 |
 | Gemini OCR 中に他の HTTP リクエストがタイムアウト | `ocr.py` の `client.models.generate_content()` が同期呼出で uvicorn イベントループをブロック | `await client.aio.models.generate_content()` に変更 |
 | コンテナ再起動後 extracting 状態のジョブが永久停止 | 再起動で asyncio タスクが消失、復旧ロジックが `processing` のみ対応 | `main.py` lifespan で全非終端ジョブを検出し、track_id 有→再キュー、無→failed マーク |
+| Widget: streamdown `renderers` API の `isIncomplete` が false に遷移しない | streamdown の CustomRenderer はフェンス完了後も `isIncomplete=true` のまま | streamdown 外で widget 解析する CodePilot 方式に変更。`isStreaming` はフェンス閉じ検出で自前判定 |
+| Widget: `tmp.innerHTML` で script 内容が切断される | sandbox iframe 内の `tmp` div で `innerHTML` 解析時に script `textContent` が不完全になるケース | CodePilot 原版の `finalizeHtml`（`tmp` div + `querySelectorAll` + `appendChild`）をそのまま採用 |
+| Widget: CDN script の `onload` attribute が動的 script で発火しない場合がある | `setAttribute('onload', ...)` は動的生成 script 要素で不安定 | `addEventListener('load', ...)` + 動的 inline script 生成で対処 |
 
 ## トラブルシューティング
 

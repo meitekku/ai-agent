@@ -44,6 +44,14 @@ Browser useChat → /api/chat Route Handler → isImageModel?
 - 文档上传（異步）: rag-ui → LightRAG /ingest → OCR 完了即応答 → 後台 LLM 実体抽出
 - 前端 5秒ポーリングで入庫状態更新（processing → processed / failed）
 - 文档管理 API 直接代理到 LightRAG 服务（/documents 含 status 字段）
+- Generative UI（Widget）: モデルが `show-widget` コードフェンスを出力 → MessageResponse が streamdown 外でパース → WidgetRenderer が sandbox iframe でレンダリング
+  - 参考実装: CodePilot（`/mnt/c/Users/wzhao/Downloads/CodePilot-main`）。rag-deploy のみの機能、ソース rag-ui には同期しない
+  - アーキテクチャ: MessageResponse → parseAllShowWidgets() でテキスト/widget セグメント分割 → テキストは Streamdown、widget は WidgetRenderer
+  - isStreaming 判定: コードフェンスの閉じ ``` 検出（streamdown の isIncomplete に依存しない）
+  - セキュリティ: `sandbox="allow-scripts"` + CSP（script-src CDN 白名単 + unsafe-inline、connect-src 'none'）
+  - Streaming: sanitizeForStreaming（script 除去）→ postMessage widget:update
+  - Finalize: sanitizeForIframe（embedding タグのみ除去）→ postMessage widget:finalize → script clone + replaceChild で実行
+  - テーマ同期: MutationObserver で html class 変化検出 → postMessage widget:theme
 
 ## LLM 后端自動切替
 
@@ -175,6 +183,8 @@ rag-ui/
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
 │   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D、リトライ対応）
 │   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、AI 生成画像大表示、ライトボックス、4モードドロップダウン）
+│   ├── widget-renderer.tsx    # Generative UI: sandbox iframe + postMessage（CodePilot 方式）
+│   ├── widget-shimmer.tsx     # Widget ローディングシマーオーバーレイ
 │   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示 + ダウンロードボタン
 │   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
 │   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
@@ -209,7 +219,11 @@ rag-ui/
 │   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
 │   ├── chat-files-db.ts   # chat_files テーブル CRUD
-│   └── file-cleanup.ts    # 孤立ファイル自動削除
+│   ├── file-cleanup.ts    # 孤立ファイル自動削除
+│   ├── widget-parser.ts   # show-widget コードフェンス解析（セグメント分割 + JSON 抽出）
+│   ├── widget-sanitizer.ts # Widget HTML 消毒 + iframe srcdoc ビルダー（CSP + postMessage）
+│   ├── widget-css-bridge.ts # CSS 変数ブリッジ（rag-ui oklch → widget 標準変数名）
+│   └── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
 ├── hooks/
 │   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
 ├── instrumentation.ts     # 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ

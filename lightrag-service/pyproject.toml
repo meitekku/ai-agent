@@ -14,4 +14,8 @@ dependencies = [
     "asyncpg",
     "pgvector",
     "pymupdf",
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "beautifulsoup4",
 ]

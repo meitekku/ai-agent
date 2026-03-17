@@ -1,4 +1,7 @@
 import { listDocuments, deleteAllDocuments } from "@/lib/rag-client";
+import { getKbFilesByDocIds } from "@/lib/kb-files-db";
+import { deleteKbFilesByKb } from "@/lib/kb-files-db";
+import { deleteKbStoredFile } from "@/lib/file-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +16,20 @@ export async function GET(req: Request) {
       );
     }
     const result = await listDocuments(kb);
-    return Response.json(result);
+    const docs = result.documents || [];
+
+    // Enrich with file_id for download buttons
+    if (docs.length > 0) {
+      const docIds = docs.map((d) => d.id);
+      const fileMap = await getKbFilesByDocIds(docIds);
+      const enriched = docs.map((doc) => ({
+        ...doc,
+        file_id: fileMap[doc.id]?.id ?? null,
+      }));
+      return Response.json({ documents: enriched });
+    }
+
+    return Response.json({ documents: docs });
   } catch (err) {
     return Response.json(
       {
@@ -34,6 +50,13 @@ export async function DELETE(req: Request) {
         { status: 400 },
       );
     }
+
+    // Delete stored KB files from disk + DB
+    const storedPaths = await deleteKbFilesByKb(kb);
+    await Promise.all(
+      storedPaths.map((p) => deleteKbStoredFile(p).catch(() => {})),
+    );
+
     const result = await deleteAllDocuments(kb);
     return Response.json(result);
   } catch (err) {

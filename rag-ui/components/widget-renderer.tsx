@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
+import { motion } from "motion/react";
 import {
   resolveThemeVars,
   getWidgetIframeStyleBlock,
@@ -195,32 +196,41 @@ export function WidgetRenderer({
   const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
   return (
-    <div className="group/widget relative my-2 w-full" style={{ minWidth: "min(100%, 600px)" }}>
+    <motion.div
+      className="group/widget relative my-2 w-full overflow-hidden"
+      style={{ minWidth: "min(100%, 600px)" }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+    >
       {title && (
         <div className="mb-1 text-xs font-medium text-muted-foreground">
           {title.replace(/_/g, " ")}
         </div>
       )}
 
-      <iframe
-        ref={iframeRef}
-        sandbox="allow-scripts"
-        srcDoc={srcdoc}
-        title={title || "Widget"}
-        onLoad={() => setIframeReady(true)}
-        style={{
-          width: "100%",
-          height: iframeHeight || 200,
-          border: "none",
-          display: showCode ? "none" : "block",
-          overflow: "hidden",
-          colorScheme: "auto",
-          borderRadius: "var(--radius)",
-          transition: hasFirstHeight.current
-            ? "height 0.3s ease-out"
-            : "none",
-        }}
-      />
+      <motion.div
+        className="overflow-hidden"
+        animate={{ height: iframeHeight || "auto" }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+      >
+        <iframe
+          ref={iframeRef}
+          sandbox="allow-scripts"
+          srcDoc={srcdoc}
+          title={title || "Widget"}
+          onLoad={() => setIframeReady(true)}
+          style={{
+            width: "100%",
+            height: iframeHeight || 200,
+            border: "none",
+            display: showCode ? "none" : "block",
+            overflow: "hidden",
+            colorScheme: "auto",
+            borderRadius: "var(--radius)",
+          }}
+        />
+      </motion.div>
 
       {(showCdnOverlay || showOverlay) && <WidgetShimmer />}
 
@@ -236,6 +246,6 @@ export function WidgetRenderer({
       >
         {showCode ? "Hide Code" : "Show Code"}
       </button>
-    </div>
+    </motion.div>
   );
 }

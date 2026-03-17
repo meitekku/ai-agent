@@ -91,12 +91,17 @@ export function ChatPage({
   const setActiveKb = useChatSettingsStore((s) => s.setActiveKb);
   const chatModel = useChatSettingsStore((s) => s.chatModel);
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
+  const setChatTitle = useChatSettingsStore((s) => s.setChatTitle);
+  const chatTitle = useChatSettingsStore((s) => s.chatTitle);
   const queryClient = useQueryClient();
 
-  // Chat title (for document.title)
-  const [chatTitle, setChatTitle] = useState(
-    initialData?.conversation.title ?? "",
-  );
+  // Init chat title from loaded conversation
+  useEffect(() => {
+    setChatTitle(initialData?.conversation.title ?? "");
+    return () => {
+      setChatTitle("");
+    };
+  }, [initialData?.conversation.title, setChatTitle]);
 
   // Sync document.title
   useEffect(() => {

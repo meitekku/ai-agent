@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useState, useRef, useEffect, lazy, Suspense } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import type { UIMessage } from "ai";
 import { isToolUIPart, getToolName } from "ai";
 import { useChatSettingsStore } from "@/lib/store";
@@ -30,6 +31,7 @@ import {
   FileIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
   XIcon,
   SendIcon,
   Maximize2Icon,
@@ -247,6 +249,158 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 });
 
 // ---------------------------------------------------------------------------
+// Tool call grouping — consecutive tool calls collapse into a summary
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ToolEntry = { part: any; index: number; toolName: string };
+
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  searchKnowledgeBase: "KB検索",
+  webSearch: "ウェブ検索",
+  google_search: "ウェブ検索",
+  readPage: "ページ読み込み",
+  readUrl: "ページ読み込み",
+  generateSlides: "スライド生成",
+  listDeals: "商談一覧",
+  fetchDealData: "商談データ取得",
+  analyzeDeal: "商談分析",
+  generateProposal: "提案書生成",
+  generateImage: "画像生成",
+};
+
+function getGroupSummary(tools: ToolEntry[]): string {
+  const counts = new Map<string, number>();
+  for (const t of tools) {
+    const name = TOOL_DISPLAY_NAMES[t.toolName] ?? t.toolName;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return Array.from(counts)
+    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+    .join("、");
+}
+
+type GroupedSegment =
+  | { type: "tool-group"; tools: ToolEntry[] }
+  | { type: "part"; part: UIMessage["parts"][number]; index: number };
+
+function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
+  const result: GroupedSegment[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (isToolUIPart(part)) {
+      const tn = getToolName(part);
+      if (tn === "suggestSlides") continue;
+      const last = result[result.length - 1];
+      if (last?.type === "tool-group") {
+        last.tools.push({ part, index: i, toolName: tn });
+      } else {
+        result.push({
+          type: "tool-group",
+          tools: [{ part, index: i, toolName: tn }],
+        });
+      }
+    } else {
+      result.push({ type: "part", part, index: i });
+    }
+  }
+  return result;
+}
+
+const ToolCallGroup = memo(function ToolCallGroup({
+  messageId,
+  tools,
+}: {
+  messageId: string;
+  tools: ToolEntry[];
+}) {
+  const allComplete = tools.every(
+    (t) => t.part.state === "output-available",
+  );
+  const [collapsed, setCollapsed] = useState(
+    () => allComplete && tools.length >= 2,
+  );
+
+  // Auto-collapse when all tools finish during streaming
+  const prevCompleteRef = useRef(allComplete);
+  useEffect(() => {
+    if (allComplete && !prevCompleteRef.current && tools.length >= 2) {
+      const timer = setTimeout(() => setCollapsed(true), 800);
+      prevCompleteRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    if (!allComplete) prevCompleteRef.current = false;
+  }, [allComplete, tools.length]);
+
+  // Single tool — just fade in
+  if (tools.length === 1) {
+    const t = tools[0];
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <ToolCallIndicator
+          toolName={t.toolName}
+          state={t.part.state}
+          args={t.part.input as Record<string, unknown> | undefined}
+        />
+      </motion.div>
+    );
+  }
+
+  // Multiple tools — collapsible
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      {collapsed ? (
+        <motion.button
+          key="summary"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={() => setCollapsed(false)}
+          className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
+        >
+          <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
+          <span>{getGroupSummary(tools)} 完了</span>
+          <ChevronDownIcon className="size-3 ml-0.5 opacity-40" />
+        </motion.button>
+      ) : (
+        <motion.div
+          key="details"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
+          style={{ overflow: "hidden" }}
+        >
+          <div className="space-y-1 py-0.5">
+            {tools.map((t) => (
+              <motion.div
+                key={`${messageId}-${t.index}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              >
+                <ToolCallIndicator
+                  toolName={t.toolName}
+                  state={t.part.state}
+                  args={
+                    t.part.input as Record<string, unknown> | undefined
+                  }
+                />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Streaming phase indicators
 // ---------------------------------------------------------------------------
 
@@ -437,7 +591,17 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <Message from={message.role} className="animate-fade-in-up">
       <MessageContent>
-        {message.parts.map((part, i) => {
+        {groupParts(message.parts).map((segment) => {
+          if (segment.type === "tool-group") {
+            return (
+              <ToolCallGroup
+                key={`${message.id}-tg-${segment.tools[0].index}`}
+                messageId={message.id}
+                tools={segment.tools}
+              />
+            );
+          }
+          const { part, index: i } = segment;
           const key = `${message.id}-${i}`;
           switch (part.type) {
             case "text":
@@ -494,19 +658,6 @@ export const ChatMessage = memo(function ChatMessage({
               );
             }
             default:
-              if (isToolUIPart(part)) {
-                const tn = getToolName(part);
-                // suggestSlides is a silent signal — don't render any UI for it
-                if (tn === "suggestSlides") return null;
-                return (
-                  <ToolCallIndicator
-                    key={key}
-                    toolName={tn}
-                    state={part.state}
-                    args={(part as Record<string, unknown>).input as Record<string, unknown> | undefined}
-                  />
-                );
-              }
               return null;
           }
         })}

@@ -63,6 +63,10 @@ interface ChatSettingsState {
   imageGenerating: boolean;
   setImageGenerating: (v: boolean) => void;
 
+  // Chat title (shown in header)
+  chatTitle: string;
+  setChatTitle: (title: string) => void;
+
   // Chat reset counter (used as key to force ChatPage remount on /new)
   chatResetCounter: number;
   incrementChatReset: () => void;
@@ -102,6 +106,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   // Image generating
   imageGenerating: false,
   setImageGenerating: (v) => set({ imageGenerating: v }),
+
+  // Chat title
+  chatTitle: "",
+  setChatTitle: (title) => set({ chatTitle: title }),
 
   // Chat reset
   chatResetCounter: 0,

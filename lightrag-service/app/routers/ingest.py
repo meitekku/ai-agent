@@ -1,13 +1,18 @@
 import asyncio
 import hashlib
-import re
+import os
 import uuid
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 
 from ..rag import get_rag
-from ..ocr import ocr_pdf
+from ..extract import extract_text
 from .. import db
+
+SUPPORTED_EXTENSIONS = {
+    ".pdf", ".txt", ".md", ".csv", ".docx", ".xlsx", ".pptx",
+    ".html", ".htm", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+}
 
 router = APIRouter()
 
@@ -83,30 +88,19 @@ def _ensure_processor():
 
 
 async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, filename: str, kb_slug: str):
-    """Background task: OCR → enqueue → submit to processing queue."""
+    """Background task: extract text → enqueue → submit to processing queue."""
     try:
-        # 1. OCR (can run concurrently for multiple files)
+        # 1. Text extraction (can run concurrently for multiple files)
         await db.update_job_status(doc_id, "ocr")
-        print(f"[ingest] OCR processing: {filename}")
-        pages = await ocr_pdf(file_bytes, filename)
-        page_count = len(pages)
-        print(f"[ingest] OCR done: {page_count} pages")
+        print(f"[ingest] Extracting text: {filename}")
+        markdown, page_count = await extract_text(file_bytes, filename)
+        print(f"[ingest] Extraction done: {page_count} pages")
 
-        # Check if job was deleted during OCR
+        # Check if job was deleted during extraction
         job = await db.get_job(doc_id)
         if not job:
-            print(f"[ingest] Job {doc_id} was deleted during OCR, skipping")
+            print(f"[ingest] Job {doc_id} was deleted during extraction, skipping")
             return
-
-        # 2. Merge Markdown
-        markdown = "\n\n".join(
-            (
-                f"## Page {p['page']}\n\n{p['text']}"
-                if not re.match(r"^#{1,6}\s", p["text"].strip())
-                else p["text"]
-            )
-            for p in pages
-        )
 
         # 3. Enqueue into LightRAG (fast, just writes to doc_status storage)
         await db.update_job_status(doc_id, "indexing")
@@ -142,15 +136,19 @@ async def ingest(
     name: str = Form(None),
     kb: str = Query(..., description="KB slug"),
 ):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "Only PDF files accepted")
+    if not file.filename:
+        raise HTTPException(400, "No filename provided")
+
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported file format: {file_ext}")
 
     # Verify KB exists
     kb_info = await db.get_kb(kb)
     if not kb_info:
         raise HTTPException(404, f"KB '{kb}' not found")
 
-    doc_name = name or file.filename.replace(".pdf", "").replace(".PDF", "")
+    doc_name = name or os.path.splitext(file.filename)[0]
     file_bytes = await file.read()
 
     # Deduplication: check by content hash first, then by name (fallback for old docs without hash)

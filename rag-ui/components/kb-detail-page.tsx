@@ -27,6 +27,7 @@ import {
   CheckIcon,
   XIcon,
   NetworkIcon,
+  DownloadIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -61,6 +62,7 @@ interface DocumentInfo {
   page_count: number;
   status?: string;
   error_msg?: string | null;
+  file_id?: string | null;
 }
 
 interface KBInfo {
@@ -82,6 +84,11 @@ const IN_PROGRESS_STATUSES = [
   "extracting",
   "processing",
 ];
+
+const SUPPORTED_EXTENSIONS = new Set([
+  ".pdf", ".txt", ".md", ".csv", ".docx", ".xlsx", ".pptx",
+  ".html", ".htm", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+]);
 
 async function fetchDocuments(kb: string): Promise<DocumentInfo[]> {
   const res = await fetch(`/api/documents?kb=${encodeURIComponent(kb)}`);
@@ -269,20 +276,21 @@ export const KBDetailPage = memo(function KBDetailPage({
   // Shared upload logic
   const processFiles = useCallback(
     (fileList: File[]) => {
-      const pdfFiles = fileList.filter((f) =>
-        f.name.toLowerCase().endsWith(".pdf"),
-      );
-      if (pdfFiles.length === 0) {
-        setError("PDF ファイルのみアップロードできます");
+      const supported = fileList.filter((f) => {
+        const ext = f.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
+        return SUPPORTED_EXTENSIONS.has(ext);
+      });
+      if (supported.length === 0) {
+        setError("サポートされていないファイル形式です");
         return;
       }
       setError(null);
 
-      const names = pdfFiles.map((f) => f.name.replace(/\.pdf$/i, ""));
+      const names = supported.map((f) => f.name.replace(/\.[^.]+$/, ""));
       setUploadingNames((prev) => [...names, ...prev]);
 
-      const tasks = pdfFiles.map((file) => async () => {
-        const name = file.name.replace(/\.pdf$/i, "");
+      const tasks = supported.map((file) => async () => {
+        const name = file.name.replace(/\.[^.]+$/, "");
         const formData = new FormData();
         formData.append("file", file);
         try {
@@ -407,7 +415,7 @@ export const KBDetailPage = memo(function KBDetailPage({
               <UploadIcon className="size-8 text-primary" />
             </div>
             <p className="text-sm font-medium text-primary">
-              PDF をドロップしてアップロード
+              ファイルをドロップしてアップロード
             </p>
           </div>
         </div>
@@ -483,7 +491,7 @@ export const KBDetailPage = memo(function KBDetailPage({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.txt,.md,.csv,.docx,.xlsx,.pptx,.html,.htm,.png,.jpg,.jpeg,.gif,.webp"
                 multiple
                 className="hidden"
                 onChange={handleUpload}
@@ -558,7 +566,7 @@ export const KBDetailPage = memo(function KBDetailPage({
               <div className="space-y-1">
                 <p className="text-sm font-medium">ドキュメントがありません</p>
                 <p className="text-sm text-muted-foreground">
-                  PDF をドラッグ&ドロップ、またはボタンからアップロード
+                  ファイルをドラッグ&ドロップ、またはボタンからアップロード
                 </p>
               </div>
             </div>
@@ -594,6 +602,16 @@ export const KBDetailPage = memo(function KBDetailPage({
                         />
                       </div>
                     </div>
+                    {doc.file_id && (
+                      <a
+                        href={`/api/kb-files/${doc.file_id}?dl=1`}
+                        download
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        aria-label={`${doc.name} をダウンロード`}
+                      >
+                        <DownloadIcon className="size-3.5" />
+                      </a>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon-sm"

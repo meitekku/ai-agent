@@ -65,11 +65,16 @@ export function ChatHeader() {
     persistSidebarState(next);
   }, [toggleSidebar]);
 
+  const chatTitle = useChatSettingsStore((s) => s.chatTitle);
+
+  const isChat = pathname.startsWith("/chat") || pathname.startsWith("/new");
   const config =
     Object.entries(VIEW_CONFIG).find(([prefix]) =>
       pathname.startsWith(prefix),
     )?.[1] ?? VIEW_CONFIG["/new"];
   const ViewIcon = config.icon;
+  const displayTitle = isChat && chatTitle ? chatTitle : config.title;
+  const displaySubtitle = isChat && chatTitle ? "" : config.subtitle;
 
   return (
     <header className="glass-header sticky top-0 z-30 flex h-13 shrink-0 items-center gap-3 px-4">
@@ -87,11 +92,13 @@ export function ChatHeader() {
         <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
           <ViewIcon className="size-3.5 text-primary" />
         </div>
-        <h1 className="text-sm font-semibold tracking-tight">{config.title}</h1>
+        <h1 className="text-sm font-semibold tracking-tight truncate max-w-[200px] sm:max-w-[400px]">{displayTitle}</h1>
       </div>
-      <span className="text-[11px] text-muted-foreground/70 ml-1 hidden sm:inline">
-        {config.subtitle}
-      </span>
+      {displaySubtitle && (
+        <span className="text-[11px] text-muted-foreground/70 ml-1 hidden sm:inline">
+          {displaySubtitle}
+        </span>
+      )}
       <div className="ml-auto">
         <ThemeToggle />
       </div>
