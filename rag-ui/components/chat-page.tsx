@@ -303,6 +303,7 @@ export function ChatPage({
         openProposal(
           result.data as Record<string, unknown>,
           result.analysis as Record<string, unknown>,
+          result.additionalContext as string | undefined,
         );
         break;
       }

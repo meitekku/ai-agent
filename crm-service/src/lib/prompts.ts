@@ -1,6 +1,6 @@
 import type { SFData, AnalysisResult, R } from "./types";
 
-export function buildRationalePrompt(data: SFData, availableTemplateServices: string[]): string {
+export function buildRationalePrompt(data: SFData, availableTemplateServices: string[], additionalContext?: string): string {
   const parts: string[] = [`顧客情報:
 - 会社名: ${data.account.Name || "不明"}
 - 業界: ${data.account.Industry || "未設定"}
@@ -36,6 +36,7 @@ ${parts.join("\n")}
 3. **書きあげクン**: AI音声文字起こし、会議録・議事録自動作成、多言語対応、要約・キーポイント抽出
 
 ${templateSection}
+${additionalContext ? `\n## 追加コンテキスト（ナレッジベース・ウェブ検索等の外部情報）\n以下の情報も分析に反映してください。顧客の業界動向、競合情報、技術トレンド等が含まれる場合は、課題分析やサービス推薦の根拠として活用してください。\n\n${additionalContext}` : ""}
 
 ## 提案判定ルール（proposalJudgment）
 以下の優先順位で判定してください：
@@ -71,7 +72,7 @@ ${templateSection}
 }`;
 }
 
-export function buildRevisionPrompt(analysis: AnalysisResult, feedback: string): string {
+export function buildRevisionPrompt(analysis: AnalysisResult, feedback: string, additionalContext?: string): string {
   const r = analysis.rationale;
   return `あなたはDXソリューション企業の法人営業コンサルタントです。
 以下の分析結果と分析根拠に対して、ユーザーから補足・修正のフィードバックがありました。
@@ -107,6 +108,7 @@ ${r.existingProposalHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 
 ## ユーザーからのフィードバック
 ${feedback}
+${additionalContext ? `\n## 追加コンテキスト（ナレッジベース・ウェブ検索等の外部情報）\n${additionalContext}` : ""}
 
 ## 弊社の製品・サービス
 1. **DX開発サービス**: カスタムDXソリューション設計・開発、レガシーシステム刷新、業務プロセス自動化、API連携、Web/モバイルアプリ開発、データ基盤構築
@@ -155,7 +157,7 @@ ${feedback}
 }`;
 }
 
-export function buildPptxPrompt(data: SFData, analysis: AnalysisResult, templateContent: string): string {
+export function buildPptxPrompt(data: SFData, analysis: AnalysisResult, templateContent: string, additionalContext?: string): string {
   const sections: string[] = [];
 
   function fmtAmount(amt: number): string {
@@ -238,6 +240,7 @@ export function buildPptxPrompt(data: SFData, analysis: AnalysisResult, template
 
 ${sections.join("\n\n")}
 ${templateContent}
+${additionalContext ? `\n## 追加コンテキスト（ナレッジベース・ウェブ検索等の外部情報）\n以下の情報を提案書の内容に反映してください。業界動向、顧客の最新ニュース、競合情報等があれば、提案の説得力を高める根拠として活用してください。\n\n${additionalContext}` : ""}
 
 ## 要件
 商談の内容・規模・業界に合わせて最適なスライド構成を自由に設計してください。

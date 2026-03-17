@@ -147,12 +147,12 @@ async function renderPPTX(plan: PresentationPlan, title: string): Promise<Buffer
 
 app.post("/proposal/generate-pptx", async (c) => {
   try {
-    const { data, analysis } = await c.req.json();
+    const { data, analysis, additionalContext } = await c.req.json();
     if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const templateContent = await fetchTemplateContent();
-    const prompt = buildPptxPrompt(data, analysis, templateContent);
+    const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
     const text = await generateText(prompt, 8000);
     const plan = JSON.parse(text.replace(/```json|```/g, "").trim()) as PresentationPlan;
 

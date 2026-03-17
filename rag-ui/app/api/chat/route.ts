@@ -179,15 +179,18 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
 ## CRM・提案書ツール
 - **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得。「商談」「案件」「CRM」等のキーワードで使用
 - **fetchDealData**: 特定商談の詳細データを取得。分析前に必ず呼ぶ
-- **analyzeDeal**: 商談を分析（受注確率、スコア、シナリオ、AI 提案根拠）。fetchDealData の結果を渡す
-- **generateProposal**: 提案書 PPTX を生成。analyzeDeal の結果を渡す
-- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正
+- **analyzeDeal**: 商談を分析（受注確率、スコア、シナリオ、AI 提案根拠）。fetchDealData の結果を渡す。additionalContext にナレッジベースやウェブ検索で得た情報を渡すと分析精度が向上する
+- **generateProposal**: 提案書 PPTX を生成。analyzeDeal の結果を渡す。additionalContext に外部情報を含めると提案書に反映される
+- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正。additionalContext で補足情報を追加可能
+
+**重要**: analyzeDeal / generateProposal / reviseRationale を呼ぶ前に、可能な限り searchKnowledgeBase やウェブ検索で関連情報を収集し、additionalContext として渡してください。これにより知識ベースの情報や最新の業界動向が分析・提案書に反映されます。
 
 ワークフロー例:
 1. listDeals → 商談一覧表示
 2. fetchDealData → 詳細取得
-3. analyzeDeal → 分析結果提示
-4. ユーザー確認後 → generateProposal で提案書生成`;
+3. searchKnowledgeBase / webSearch → 顧客・業界の関連情報収集
+4. analyzeDeal(data, additionalContext) → 分析結果提示
+5. ユーザー確認後 → generateProposal(data, analysis, additionalContext) で提案書生成`;
   }
 
   // 情報の信頼度ヒエラルキー
@@ -740,18 +743,19 @@ export async function POST(req: Request) {
     });
 
     tools.analyzeDeal = tool({
-      description: "商談データを分析します（受注確率、スコア、シナリオ、AI提案根拠）。fetchDealData の結果を渡してください。",
+      description: "商談データを分析します（受注確率、スコア、シナリオ、AI提案根拠）。fetchDealData の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると分析精度が向上します。",
       inputSchema: z.object({
         data: z.any().describe("fetchDealData で取得した商談データ（SFData 形式）"),
+        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た関連情報（業界動向、顧客ニュース、競合情報等）"),
       }),
-      execute: async ({ data }) => {
-        console.log(`[chat] 📊 analyzeDeal: ${data?.opportunity?.Name || "unknown"}`);
+      execute: async ({ data, additionalContext }) => {
+        console.log(`[chat] 📊 analyzeDeal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
         const t0 = Date.now();
         try {
           const res = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data }),
+            body: JSON.stringify({ data, additionalContext }),
           });
           const result = await res.json();
           console.log(`[chat] 📊 analyzeDeal done: ${Date.now() - t0}ms`);
@@ -764,31 +768,33 @@ export async function POST(req: Request) {
     });
 
     tools.generateProposal = tool({
-      description: "提案書 PPTX を生成します。analyzeDeal の結果を渡してください。",
+      description: "提案書 PPTX を生成します。analyzeDeal の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると提案書に反映されます。",
       inputSchema: z.object({
         data: z.any().describe("商談データ（SFData 形式）"),
         analysis: z.any().describe("analyzeDeal で取得した分析結果"),
+        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た関連情報"),
       }),
-      execute: async ({ data, analysis }) => {
-        console.log(`[chat] 📊 generateProposal: ${data?.opportunity?.Name || "unknown"}`);
-        return { triggered: true, data, analysis };
+      execute: async ({ data, analysis, additionalContext }) => {
+        console.log(`[chat] 📊 generateProposal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
+        return { triggered: true, data, analysis, additionalContext };
       },
     });
 
     tools.reviseRationale = tool({
-      description: "ユーザーのフィードバックに基づいて分析根拠を修正します。",
+      description: "ユーザーのフィードバックに基づいて分析根拠を修正します。additionalContext で補足情報を追加できます。",
       inputSchema: z.object({
         currentAnalysis: z.any().describe("現在の分析結果"),
         feedback: z.string().describe("ユーザーからの修正フィードバック"),
+        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た補足情報"),
       }),
-      execute: async ({ currentAnalysis, feedback }) => {
-        console.log(`[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."`);
+      execute: async ({ currentAnalysis, feedback, additionalContext }) => {
+        console.log(`[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
         const t0 = Date.now();
         try {
           const res = await fetch(`${CRM_SERVICE_URL}/deals/revise-rationale`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ currentAnalysis, feedback }),
+            body: JSON.stringify({ currentAnalysis, feedback, additionalContext }),
           });
           const result = await res.json();
           console.log(`[chat] 📊 reviseRationale done: ${Date.now() - t0}ms`);

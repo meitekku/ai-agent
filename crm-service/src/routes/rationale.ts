@@ -12,7 +12,7 @@ app.post("/deals/rationale", async (c) => {
 
 app.post("/deals/revise-rationale", async (c) => {
   try {
-    const { currentRationale, currentAnalysis, feedback } = await c.req.json();
+    const { currentRationale, currentAnalysis, feedback, additionalContext } = await c.req.json();
 
     if ((!currentRationale && !currentAnalysis) || !feedback?.trim()) {
       return c.json({ error: "フィードバック内容が必要です" }, 400);
@@ -37,7 +37,7 @@ app.post("/deals/revise-rationale", async (c) => {
       analysis.rationale = currentRationale;
     }
 
-    const prompt = buildRevisionPrompt(analysis, feedback);
+    const prompt = buildRevisionPrompt(analysis, feedback, additionalContext);
     const text = await generateText(prompt, 4000);
 
     try {

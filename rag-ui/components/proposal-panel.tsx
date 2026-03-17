@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useProposalPanelStore } from "@/lib/proposal-panel-store";
 
 export function ProposalPanel() {
-  const { isOpen, data, analysis, close } = useProposalPanelStore();
+  const { isOpen, data, analysis, additionalContext, close } = useProposalPanelStore();
   const [generating, setGenerating] = useState(false);
 
   if (!isOpen || !data || !analysis) return null;
@@ -26,7 +26,7 @@ export function ProposalPanel() {
       const res = await fetch("/api/crm/generate-pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, analysis }),
+        body: JSON.stringify({ data, analysis, ...(additionalContext ? { additionalContext } : {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
