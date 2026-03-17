@@ -23,7 +23,7 @@ export const GEMINI_MODELS: ModelOption[] = [
   { id: "gemini-2.5-flash-image", label: "2.5 Flash 画像", description: "画像生成・編集" },
   { id: "gemini-2.5-pro", label: "2.5 Pro", description: "高精度推論" },
   { id: "gemini-2.5-flash-lite", label: "2.5 Flash-Lite", description: "最安・高速" },
-  { id: "gemini-3-flash", label: "3 Flash", description: "最新世代" },
+  { id: "gemini-3-flash-preview", label: "3 Flash", description: "最新世代（Preview）" },
   { id: "gemini-3.1-pro-preview", label: "3.1 Pro", description: "最上位" },
 ];
 
