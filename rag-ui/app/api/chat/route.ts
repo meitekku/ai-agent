@@ -24,6 +24,7 @@ import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } fro
 
 import { TAVILY_API_KEY, CRM_SERVICE_URL, GEMINI_MODEL } from "@/lib/constants";
 import { getEnabledSkills } from "@/lib/skills-db";
+import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
 
@@ -936,6 +937,9 @@ export async function POST(req: Request) {
     let firstTokenTime = 0;
 
     let systemPrompt = buildSystemPrompt(!!kb || autoDiscovery, clientTime, autoDiscovery);
+
+    // Inject widget guidelines
+    systemPrompt += "\n\n" + WIDGET_SYSTEM_PROMPT;
 
     // Inject enabled skills into system prompt (non-fatal)
     try {

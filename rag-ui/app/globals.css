@@ -227,6 +227,22 @@
     );
   }
 
+  /* Widget container */
+  .widget-container {
+    transition: height 0.2s ease-out;
+    overflow: hidden;
+    border-radius: var(--radius);
+  }
+  .widget-container--no-transition {
+    transition: none;
+  }
+  .widget-loading-placeholder {
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   /* Fade-in for messages */
   @keyframes fade-in-up {
     from {

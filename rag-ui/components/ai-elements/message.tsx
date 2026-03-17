@@ -16,6 +16,7 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
+import { WidgetRenderer } from "@/components/widget-renderer";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import {
   createContext,
@@ -325,7 +326,13 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = { cjk, code, math, mermaid } as PluginConfig;
+const streamdownPlugins = {
+  cjk,
+  code,
+  math,
+  mermaid,
+  renderers: [{ language: "show-widget", component: WidgetRenderer }],
+} as PluginConfig;
 
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
