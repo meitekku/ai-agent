@@ -37,6 +37,9 @@ export async function ensureSkillsTables(): Promise<void> {
     await client.query(`
       ALTER TABLE skills ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'manual'
     `);
+    await client.query(`
+      ALTER TABLE skills ADD COLUMN IF NOT EXISTS registry_id VARCHAR(300)
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -53,7 +56,8 @@ export interface Skill {
   description: string;
   content: string;
   enabled: boolean;
-  source_type: "manual" | "zip";
+  source_type: "manual" | "zip" | "registry";
+  registry_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -91,12 +95,13 @@ export async function createSkill(data: {
   description?: string;
   content: string;
   enabled?: boolean;
-  source_type?: "manual" | "zip";
+  source_type?: "manual" | "zip" | "registry";
+  registry_id?: string;
 }): Promise<number> {
   await ensureSkillsTables();
   const res = await getPool().query(
-    `INSERT INTO skills (name, description, content, enabled, source_type)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO skills (name, description, content, enabled, source_type, registry_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id`,
     [
       data.name,
@@ -104,9 +109,18 @@ export async function createSkill(data: {
       data.content,
       data.enabled ?? true,
       data.source_type || "manual",
+      data.registry_id || null,
     ],
   );
   return res.rows[0].id as number;
+}
+
+export async function getInstalledRegistryIds(): Promise<string[]> {
+  await ensureSkillsTables();
+  const res = await getPool().query(
+    `SELECT registry_id FROM skills WHERE registry_id IS NOT NULL`,
+  );
+  return res.rows.map((r) => r.registry_id as string);
 }
 
 export async function updateSkill(

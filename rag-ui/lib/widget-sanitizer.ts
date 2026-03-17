@@ -121,19 +121,32 @@ tmp.innerHTML=html;
 var ss=tmp.querySelectorAll('script');
 var scripts=[];
 for(var i=0;i<ss.length;i++){
-scripts.push({src:ss[i].src||'',text:ss[i].textContent||'',attrs:[]});
+var s={src:ss[i].src||'',text:ss[i].textContent||'',onload:'',attrs:[]};
 for(var j=0;j<ss[i].attributes.length;j++){
 var a=ss[i].attributes[j];
-if(a.name!=='src')scripts[scripts.length-1].attrs.push({name:a.name,value:a.value});
+if(a.name==='src')continue;
+if(a.name==='onload'){s.onload=a.value;continue;}
+s.attrs.push({name:a.name,value:a.value});
 }
+scripts.push(s);
 ss[i].remove();
 }
 var visualHtml=tmp.innerHTML;
 if(root.innerHTML!==visualHtml)root.innerHTML=visualHtml;
 for(var i=0;i<scripts.length;i++){
 var n=document.createElement('script');
-if(scripts[i].src)n.src=scripts[i].src;
-else if(scripts[i].text)n.textContent=scripts[i].text;
+if(scripts[i].src){
+n.src=scripts[i].src;
+if(scripts[i].onload){
+(function(code){
+n.addEventListener('load',function(){
+try{var s=document.createElement('script');s.textContent=code;root.appendChild(s);}catch(e){}
+});
+})(scripts[i].onload);
+}
+}else if(scripts[i].text){
+n.textContent=scripts[i].text;
+}
 for(var j=0;j<scripts[i].attrs.length;j++)n.setAttribute(scripts[i].attrs[j].name,scripts[i].attrs[j].value);
 root.appendChild(n);
 }

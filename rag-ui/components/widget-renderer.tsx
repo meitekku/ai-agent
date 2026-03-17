@@ -56,12 +56,18 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     (_heightCache.get(getHeightCacheKey(code)) || 0) > 0,
   );
   const heightLockedRef = useRef(false);
+  // Track isIncomplete in a ref so onLoad callback can access current value
+  const isIncompleteRef = useRef(isIncomplete);
+  isIncompleteRef.current = isIncomplete;
 
   // Parse widget content
   const parsed = useMemo(
     () => parseWidgetContent(code, isIncomplete),
     [code, isIncomplete],
   );
+  // Keep parsed in a ref for use in callbacks
+  const parsedRef = useRef(parsed);
+  parsedRef.current = parsed;
 
   // Detect CDN scripts for overlay
   const hasCDN = useMemo(
@@ -78,6 +84,28 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     return buildReceiverSrcdoc(styleBlock, isDark);
   }, []);
 
+  // ── Finalize helper (extracted so it can be called from multiple places) ──
+  const doFinalize = useCallback(() => {
+    if (finalizedRef.current) return;
+    const html = parsedRef.current.widgetHtml;
+    if (!html) return;
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    const sanitized = sanitizeForIframe(html);
+    console.log("[widget] finalize: sending", sanitized.length, "chars");
+    finalizedRef.current = true;
+    lastSentRef.current = sanitized;
+    heightLockedRef.current = true;
+    iframe.contentWindow.postMessage(
+      { type: "widget:finalize", html: sanitized },
+      "*",
+    );
+    setTimeout(() => {
+      heightLockedRef.current = false;
+      setFinalized(true);
+    }, 400);
+  }, []);
+
   // ── postMessage handler ────────────────────────────────────────────────
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
@@ -90,7 +118,12 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
 
       switch (e.data.type) {
         case "widget:ready":
+          console.log("[widget] iframe ready (postMessage)");
           setIframeReady(true);
+          // If content is already complete, finalize immediately
+          if (!isIncompleteRef.current) {
+            doFinalize();
+          }
           break;
 
         case "widget:resize":
@@ -135,7 +168,18 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [code]);
+  }, [code, doFinalize]);
+
+  // ── iframe onLoad — fallback for missed widget:ready postMessage ────────
+  const handleIframeLoad = useCallback(() => {
+    console.log("[widget] iframe onLoad fired");
+    setIframeReady(true);
+    // If content is already complete, finalize immediately
+    if (!isIncompleteRef.current) {
+      // Small delay to ensure receiver script is listening
+      setTimeout(() => doFinalize(), 50);
+    }
+  }, [doFinalize]);
 
   // ── Streaming updates ──────────────────────────────────────────────────
   const sendUpdate = useCallback((html: string) => {
@@ -164,25 +208,28 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
     };
   }, [parsed.widgetHtml, parsed.scriptsTruncated, isIncomplete, iframeReady, sendUpdate]);
 
-  // ── Finalize ───────────────────────────────────────────────────────────
+  // ── Finalize (effect-based — primary path) ─────────────────────────────
   useEffect(() => {
     if (isIncomplete || !iframeReady || finalizedRef.current) return;
     if (!parsed.widgetHtml) return;
-    const sanitized = sanitizeForIframe(parsed.widgetHtml);
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow) return;
-    finalizedRef.current = true;
-    lastSentRef.current = sanitized;
-    heightLockedRef.current = true;
-    iframe.contentWindow.postMessage(
-      { type: "widget:finalize", html: sanitized },
-      "*",
-    );
-    setTimeout(() => {
-      heightLockedRef.current = false;
-      setFinalized(true);
-    }, 400);
-  }, [isIncomplete, iframeReady, parsed.widgetHtml]);
+    console.log("[widget] finalize effect triggered");
+    doFinalize();
+  }, [isIncomplete, iframeReady, parsed.widgetHtml, doFinalize]);
+
+  // ── Finalize fallback — retry after timeout if effect didn't fire ──────
+  useEffect(() => {
+    if (isIncomplete || finalizedRef.current) return;
+    if (!parsed.widgetHtml) return;
+    // If finalization hasn't happened within 800ms, force it
+    const timer = setTimeout(() => {
+      if (!finalizedRef.current) {
+        console.log("[widget] finalize fallback (800ms timeout)");
+        setIframeReady(true);
+        doFinalize();
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [isIncomplete, parsed.widgetHtml, doFinalize]);
 
   // ── Theme sync ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -241,15 +288,16 @@ export function WidgetRenderer({ code, isIncomplete }: CustomRendererProps) {
         sandbox="allow-scripts"
         srcDoc={srcdoc}
         title={parsed.title || "Widget"}
-        onLoad={() => setIframeReady(true)}
+        onLoad={handleIframeLoad}
         style={{
           width: "100%",
-          height: iframeHeight,
+          height: iframeHeight || (parsed.widgetHtml ? 200 : 0),
           border: "none",
           display: showCode ? "none" : "block",
           overflow: "hidden",
           colorScheme: "auto",
           borderRadius: "var(--radius)",
+          transition: hasReceivedFirstHeight.current ? "height 0.3s ease-out" : "none",
         }}
       />
 
