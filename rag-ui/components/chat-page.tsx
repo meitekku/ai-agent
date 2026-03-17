@@ -132,7 +132,7 @@ export function ChatPage({
     error,
   } = useChat({
     id: initialConvId ?? "new-chat",
-    experimental_throttle: 50,
+    experimental_throttle: 20,
   });
 
   // Load initial data into tree AND sync to useChat
