@@ -116,11 +116,9 @@ _h();
 }
 
 function finalizeHtml(html){
-console.log('[widget-iframe] finalizeHtml called, html length:',html.length);
 var tmp=document.createElement('div');
 tmp.innerHTML=html;
 var ss=tmp.querySelectorAll('script');
-console.log('[widget-iframe] found',ss.length,'scripts');
 var scripts=[];
 for(var i=0;i<ss.length;i++){
 scripts.push({src:ss[i].src||'',text:ss[i].textContent||'',attrs:[]});
@@ -133,8 +131,6 @@ ss[i].remove();
 var visualHtml=tmp.innerHTML;
 if(root.innerHTML!==visualHtml)root.innerHTML=visualHtml;
 for(var i=0;i<scripts.length;i++){
-console.log('[widget-iframe] script['+i+'] src:',scripts[i].src?'CDN':'inline','text length:',scripts[i].text.length,'attrs:',scripts[i].attrs.map(function(a){return a.name}).join(','));
-if(scripts[i].text)console.log('[widget-iframe] script['+i+'] first 200 chars:',scripts[i].text.slice(0,200));
 var n=document.createElement('script');
 if(scripts[i].src)n.src=scripts[i].src;
 else if(scripts[i].text)n.textContent=scripts[i].text;

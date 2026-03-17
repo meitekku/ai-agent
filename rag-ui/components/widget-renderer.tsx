@@ -195,7 +195,7 @@ export function WidgetRenderer({
   const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
   return (
-    <div className="group/widget relative my-2">
+    <div className="group/widget relative my-2 w-full" style={{ minWidth: "min(100%, 600px)" }}>
       {title && (
         <div className="mb-1 text-xs font-medium text-muted-foreground">
           {title.replace(/_/g, " ")}
