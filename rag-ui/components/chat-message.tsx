@@ -351,52 +351,55 @@ const ToolCallGroup = memo(function ToolCallGroup({
   }
 
   // Multiple tools — collapsible
+  const summaryRow = allComplete && (
+    <button
+      onClick={() => setCollapsed(!collapsed)}
+      className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
+    >
+      <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
+      <span>{getGroupSummary(tools)} 完了</span>
+      <motion.span
+        animate={{ rotate: collapsed ? 0 : 90 }}
+        transition={{ duration: 0.2 }}
+        className="inline-flex"
+      >
+        <ChevronRightIcon className="size-3 ml-0.5 opacity-40" />
+      </motion.span>
+    </button>
+  );
+
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      {collapsed ? (
-        <motion.button
-          key="summary"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={() => setCollapsed(false)}
-          className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
-        >
-          <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
-          <span>{getGroupSummary(tools)} 完了</span>
-          <ChevronDownIcon className="size-3 ml-0.5 opacity-40" />
-        </motion.button>
-      ) : (
-        <motion.div
-          key="details"
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.25, ease: "easeInOut" }}
-          style={{ overflow: "hidden" }}
-        >
-          <div className="space-y-1 py-0.5">
-            {tools.map((t) => (
-              <motion.div
-                key={`${messageId}-${t.index}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-              >
-                <ToolCallIndicator
-                  toolName={t.toolName}
-                  state={t.part.state}
-                  args={
-                    t.part.input as Record<string, unknown> | undefined
-                  }
-                />
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div>
+      {summaryRow}
+      <motion.div
+        animate={{
+          height: collapsed ? 0 : "auto",
+          opacity: collapsed ? 0 : 1,
+        }}
+        initial={false}
+        transition={{ duration: 0.25, ease: "easeInOut" }}
+        style={{ overflow: "hidden" }}
+      >
+        <div className="space-y-1 py-0.5">
+          {tools.map((t) => (
+            <motion.div
+              key={`${messageId}-${t.index}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              <ToolCallIndicator
+                toolName={t.toolName}
+                state={t.part.state}
+                args={
+                  t.part.input as Record<string, unknown> | undefined
+                }
+              />
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
   );
 });
 
