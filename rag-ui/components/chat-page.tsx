@@ -300,18 +300,20 @@ export function ChatPage({
       const title = generateTitle(firstText);
       setChatTitle(title);
 
-      // Create in DB (URL stays at /new to avoid Next.js re-mount)
-      fetch("/api/history/chats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title, kb_slug: activeKb }),
-      })
-        .then(() =>
-          queryClient.invalidateQueries({ queryKey: ["chat-history"] }),
-        )
-        .catch((e) =>
-          console.error("[chat-page] create conversation failed:", e),
-        );
+      // Create in DB first, then update URL
+      try {
+        await fetch("/api/history/chats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, title, kb_slug: activeKb }),
+        });
+      } catch (e) {
+        console.error("[chat-page] create conversation failed:", e);
+      }
+      queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+
+      // Update URL to /chat/[id] without re-mounting the component
+      window.history.replaceState(null, "", `/chat/${id}`);
 
       return id;
     },
