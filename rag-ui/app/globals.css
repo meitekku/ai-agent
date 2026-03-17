@@ -195,6 +195,38 @@
     animation: soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  /* Skeleton shimmer wave for active indicators */
+  @keyframes shimmer-wave {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  .animate-shimmer {
+    background-size: 200% 100%;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.72 0.17 165 / 8%) 40%,
+      oklch(0.72 0.17 165 / 15%) 50%,
+      oklch(0.72 0.17 165 / 8%) 60%,
+      transparent 100%
+    );
+    animation: shimmer-wave 2s ease-in-out infinite;
+  }
+  .dark .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.72 0.17 165 / 6%) 40%,
+      oklch(0.72 0.17 165 / 12%) 50%,
+      oklch(0.72 0.17 165 / 6%) 60%,
+      transparent 100%
+    );
+  }
+
   /* Fade-in for messages */
   @keyframes fade-in-up {
     from {

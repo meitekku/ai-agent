@@ -46,7 +46,7 @@ export const StepIndicator = memo(function StepIndicator({
     <div
       className={`inline-flex w-fit items-center gap-2.5 rounded-lg px-3 py-2 text-xs transition-all duration-300 ${
         active
-          ? "border border-primary/30 bg-primary/10 text-foreground/70"
+          ? "border border-primary/30 bg-primary/10 text-foreground/70 animate-shimmer"
           : "text-muted-foreground/60"
       }`}
       role="status"
@@ -57,7 +57,7 @@ export const StepIndicator = memo(function StepIndicator({
       ) : (
         <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
       )}
-      <span>{active ? activeLabel : completedLabel}</span>
+      <span className="truncate max-w-xs">{active ? activeLabel : completedLabel}</span>
       {elapsed > 0 && (
         <span className="ml-auto tabular-nums text-[10px] opacity-50">
           {elapsed}秒

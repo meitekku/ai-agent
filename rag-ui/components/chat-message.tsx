@@ -114,40 +114,60 @@ const BranchSelector = memo(function BranchSelector({
 export const ToolCallIndicator = memo(function ToolCallIndicator({
   toolName,
   state,
+  args,
 }: {
   toolName: string;
   state: string;
+  args?: Record<string, unknown>;
 }) {
   const isComplete = state === "output-available";
 
   if (toolName === "searchKnowledgeBase") {
+    const query = typeof args?.query === "string" ? args.query : "";
+    const kb = typeof args?.kb === "string" ? args.kb : "";
+    const detail = [kb && `KB: ${kb}`, query && `「${query}」`]
+      .filter(Boolean)
+      .join(" ");
     return (
       <StepIndicator
         icon={SearchIcon}
-        activeLabel="ナレッジベースを検索中..."
-        completedLabel="ナレッジベースを検索しました"
+        activeLabel={detail ? `ナレッジベースを検索中 — ${detail}` : "ナレッジベースを検索中..."}
+        completedLabel={detail ? `ナレッジベースを検索しました — ${detail}` : "ナレッジベースを検索しました"}
         active={!isComplete}
       />
     );
   }
 
-  if (toolName === "webSearch") {
+  if (toolName === "webSearch" || toolName === "google_search") {
+    const query = typeof args?.query === "string" ? args.query : "";
     return (
       <StepIndicator
         icon={GlobeIcon}
-        activeLabel="ウェブを検索中..."
-        completedLabel="ウェブ検索完了"
+        activeLabel={query ? `ウェブを検索中 — 「${query}」` : "ウェブを検索中..."}
+        completedLabel={query ? `ウェブ検索完了 — 「${query}」` : "ウェブ検索完了"}
         active={!isComplete}
       />
     );
   }
 
   if (toolName === "readPage" || toolName === "readUrl") {
+    const url = typeof args?.url === "string" ? args.url : "";
+    const urls = Array.isArray(args?.urls) ? args.urls as string[] : [];
+    const target = url || (urls.length > 0 ? urls[0] : "");
+    let host = "";
+    try {
+      if (target) host = new URL(target).hostname;
+    } catch {}
+    const detail = host
+      ? urls.length > 1
+        ? `${host} 他${urls.length - 1}件`
+        : host
+      : "";
     return (
       <StepIndicator
         icon={FileTextIcon}
-        activeLabel="ページを読み込み中..."
-        completedLabel="ページ読み込み完了"
+        activeLabel={detail ? `ページを読み込み中 — ${detail}` : "ページを読み込み中..."}
+        completedLabel={detail ? `ページ読み込み完了 — ${detail}` : "ページ読み込み完了"}
         active={!isComplete}
       />
     );
@@ -159,6 +179,50 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
         icon={PresentationIcon}
         activeLabel="スライドを準備中..."
         completedLabel="スライド生成を開始しました"
+        active={!isComplete}
+      />
+    );
+  }
+
+  if (toolName === "listDeals") {
+    return (
+      <StepIndicator
+        icon={DatabaseIcon}
+        activeLabel="商談一覧を取得中..."
+        completedLabel="商談一覧を取得しました"
+        active={!isComplete}
+      />
+    );
+  }
+
+  if (toolName === "fetchDealData") {
+    return (
+      <StepIndicator
+        icon={DatabaseIcon}
+        activeLabel="商談データを取得中..."
+        completedLabel="商談データを取得しました"
+        active={!isComplete}
+      />
+    );
+  }
+
+  if (toolName === "analyzeDeal") {
+    return (
+      <StepIndicator
+        icon={BrainIcon}
+        activeLabel="商談を分析中..."
+        completedLabel="商談分析完了"
+        active={!isComplete}
+      />
+    );
+  }
+
+  if (toolName === "generateProposal") {
+    return (
+      <StepIndicator
+        icon={PresentationIcon}
+        activeLabel="提案書を生成中..."
+        completedLabel="提案書を生成しました"
         active={!isComplete}
       />
     );
@@ -430,6 +494,7 @@ export const ChatMessage = memo(function ChatMessage({
                     key={key}
                     toolName={getToolName(part)}
                     state={part.state}
+                    args={(part as Record<string, unknown>).input as Record<string, unknown> | undefined}
                   />
                 );
               }
