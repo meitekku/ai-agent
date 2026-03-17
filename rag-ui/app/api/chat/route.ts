@@ -1,5 +1,4 @@
 import {
-  consumeStream,
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -1020,23 +1019,42 @@ export async function POST(req: Request) {
       },
     });
 
-    // Server-side persistence: consume stream to completion even if client disconnects
-    void result.consumeStream({ onError: (e) => console.error("[chat] consumeStream error:", e) });
+    // Ensure agent runs to completion even if client disconnects
+    void result.consumeStream({
+      onError: (e) => console.error("[chat] consumeStream error:", e),
+    });
 
     return result.toUIMessageStreamResponse({
       originalMessages: messages,
       onFinish: async ({ responseMessage }) => {
+        // Server-side persistence — fires even on client disconnect (via TransformStream cancel handler)
         if (!chatId) return;
         try {
-          const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+          const lastUserMsg = [...messages]
+            .reverse()
+            .find((m) => m.role === "user");
           if (!lastUserMsg) return;
           const toSave = [
-            { id: lastUserMsg.id, parent_id: parentId, role: "user", parts: lastUserMsg.parts as unknown[] },
-            { id: responseMessage.id, parent_id: lastUserMsg.id, role: "assistant", parts: responseMessage.parts as unknown[] },
+            {
+              id: lastUserMsg.id,
+              parent_id: parentId,
+              role: "user",
+              parts: lastUserMsg.parts as unknown[],
+            },
+            {
+              id: responseMessage.id,
+              parent_id: lastUserMsg.id,
+              role: "assistant",
+              parts: responseMessage.parts as unknown[],
+            },
           ];
           await saveMessages(chatId, toSave);
-          await updateConversation(chatId, { active_leaf_id: responseMessage.id });
-          console.log(`[chat] 💾 Server-side saved ${toSave.length} messages for conv=${chatId}`);
+          await updateConversation(chatId, {
+            active_leaf_id: responseMessage.id,
+          });
+          console.log(
+            `[chat] 💾 Server-side saved ${toSave.length} msgs for conv=${chatId}`,
+          );
         } catch (e) {
           console.error("[chat] server-side save failed:", e);
         }

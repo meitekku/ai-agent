@@ -244,37 +244,39 @@ export function ChatPage({
     // Add to tree store (local state for branching UI)
     treeStore.addMessages(toAdd);
 
-    // If stopped, PATCH server-saved message with partial content
-    if (wasStopped) {
-      const lastAssistant = toAdd.filter(m => m.role === "assistant").pop();
-      if (lastAssistant) {
-        fetch(`/api/history/chats/${convId}/messages/${lastAssistant.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parts: lastAssistant.parts,
-            stopped: true,
-          }),
-        }).catch((e) => console.error("[chat-page] stop patch failed:", e));
-      }
-    }
-
-    // Refresh sidebar + generate title
+    // Persist to DB (convert camelCase parentId → snake_case parent_id for API)
+    const toSave = toAdd.map((m) => ({
+      id: m.id,
+      parent_id: m.parentId,
+      role: m.role,
+      parts: m.parts,
+      ...(m.stopped ? { stopped: true } : {}),
+    }));
+    const leafId = toSave[toSave.length - 1].id;
     const isFirstExchange = known === 0;
-    queryClient.invalidateQueries({ queryKey: ["chat-history"] });
-    if (isFirstExchange) {
-      fetch(`/api/history/chats/${convId}/generate-title`, {
-        method: "POST",
+    fetch(`/api/history/chats/${convId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: toSave, active_leaf_id: leafId }),
+    })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+        // Generate AI title after first exchange
+        if (isFirstExchange) {
+          fetch(`/api/history/chats/${convId}/generate-title`, {
+            method: "POST",
+          })
+            .then(async (res) => {
+              if (res.ok) {
+                const { title } = await res.json();
+                if (title) setChatTitle(title);
+              }
+              queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+            })
+            .catch(() => {});
+        }
       })
-        .then(async (res) => {
-          if (res.ok) {
-            const { title } = await res.json();
-            if (title) setChatTitle(title);
-          }
-          queryClient.invalidateQueries({ queryKey: ["chat-history"] });
-        })
-        .catch(() => {});
-    }
+      .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
   // Detect generateSlides / generateProposal tool result
