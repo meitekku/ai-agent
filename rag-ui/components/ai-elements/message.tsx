@@ -17,6 +17,11 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { WidgetRenderer } from "@/components/widget-renderer";
+import {
+  parseAllShowWidgets,
+  extractPartialWidget,
+  computePartialWidgetKey,
+} from "@/lib/widget-parser";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import {
   createContext,
@@ -326,25 +331,117 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = {
-  cjk,
-  code,
-  math,
-  mermaid,
-  renderers: [{ language: "show-widget", component: WidgetRenderer }],
-} as PluginConfig;
+const streamdownPlugins = { cjk, code, math, mermaid } as PluginConfig;
 
+const sdClassName =
+  "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:pl-5 [&_ol]:pl-5";
+
+/**
+ * Renders markdown with inline widget support.
+ * Widget parsing happens OUTSIDE streamdown (CodePilot pattern) so that
+ * isStreaming is derived from fence-close detection, not streamdown internals.
+ */
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:pl-5 [&_ol]:pl-5",
-        className,
-      )}
-      plugins={streamdownPlugins}
-      {...props}
-    />
-  ),
+  ({ className, ...props }: MessageResponseProps) => {
+    const content =
+      typeof props.children === "string" ? props.children : "";
+    const hasWidgetFence = content.includes("```show-widget");
+
+    // ── Fast path: no widgets — render with Streamdown directly ──────
+    if (!hasWidgetFence) {
+      return (
+        <Streamdown
+          className={cn(sdClassName, className)}
+          plugins={streamdownPlugins}
+          {...props}
+        />
+      );
+    }
+
+    // ── Check if last fence is still being streamed ──────────────────
+    const lastFenceStart = content.lastIndexOf("```show-widget");
+    const afterLastFence = content.slice(lastFenceStart);
+    const lastFenceClosed = /```show-widget\s*\n?[\s\S]*?\n?\s*```/.test(
+      afterLastFence,
+    );
+
+    // All fences complete
+    if (lastFenceClosed) {
+      const segments = parseAllShowWidgets(content);
+      return (
+        <div className={cn(sdClassName, className)}>
+          {segments.map((seg, i) =>
+            seg.type === "text" ? (
+              <Streamdown key={`t-${i}`} plugins={streamdownPlugins}>
+                {seg.content}
+              </Streamdown>
+            ) : (
+              <WidgetRenderer
+                key={`w-${i}`}
+                widgetCode={seg.widgetCode}
+                isStreaming={false}
+                title={seg.title}
+              />
+            ),
+          )}
+        </div>
+      );
+    }
+
+    // ── Last fence still streaming ───────────────────────────────────
+    const beforePart = content.slice(0, lastFenceStart).trim();
+    const hasCompleted = beforePart && /```show-widget/.test(beforePart);
+    const completedSegments = hasCompleted
+      ? parseAllShowWidgets(beforePart)
+      : [];
+
+    // Extract partial widget from the open fence
+    const fenceBody = content
+      .slice(lastFenceStart + "```show-widget".length)
+      .trim();
+    const partial = extractPartialWidget(fenceBody);
+    const partialKey = computePartialWidgetKey(content);
+
+    return (
+      <div className={cn(sdClassName, className)}>
+        {/* Text before first widget (no completed fences) */}
+        {!hasCompleted && beforePart && (
+          <Streamdown key="pre-text" plugins={streamdownPlugins}>
+            {beforePart}
+          </Streamdown>
+        )}
+        {/* Completed fences + interleaved text */}
+        {completedSegments.map((seg, i) =>
+          seg.type === "text" ? (
+            <Streamdown key={`t-${i}`} plugins={streamdownPlugins}>
+              {seg.content}
+            </Streamdown>
+          ) : (
+            <WidgetRenderer
+              key={`w-${i}`}
+              widgetCode={seg.widgetCode}
+              isStreaming={false}
+              title={seg.title}
+            />
+          ),
+        )}
+        {/* Streaming partial widget */}
+        {partial.widgetCode && partial.widgetCode.length > 10 ? (
+          <WidgetRenderer
+            key={partialKey}
+            widgetCode={partial.widgetCode}
+            isStreaming={true}
+            title={partial.title}
+            showOverlay={partial.scriptsTruncated}
+          />
+        ) : (
+          <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+            <span className="animate-soft-pulse">Widget を生成中...</span>
+          </div>
+        )}
+      </div>
+    );
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children,
 );
 
