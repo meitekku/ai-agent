@@ -136,7 +136,7 @@ rag-ui/
 │   │   └── [slug]/page.tsx            # ナレッジベース詳細（ドキュメント管理）
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # ToolLoopAgent + tool calling + 画像モデルパス + generateImage ツール
+│       ├── chat/route.ts              # ToolLoopAgent + tool calling + CRM tools（fetchAndAnalyze 統合）+ 画像
 │       ├── kbs/
 │       │   ├── route.ts               # GET/POST ナレッジベース一覧/作成
 │       │   └── [slug]/
@@ -170,6 +170,12 @@ rag-ui/
 │       │   └── htmlslide/
 │       │       ├── plan/route.ts      # POST HTML スライド構成計画（スタイル対応）
 │       │       └── render/route.ts    # POST HTML スライド生成（テンプレート対応）
+│       ├── crm/
+│       │   ├── generate-pptx/route.ts       # POST crm-service PPTX 一括生成プロキシ（sessionKey 対応）
+│       │   ├── proposal-plan/route.ts       # POST crm-service plan JSON 生成プロキシ
+│       │   ├── proposal-render/route.ts     # POST crm-service PPTX レンダリングプロキシ
+│       │   ├── proposal-revise-slide/route.ts # POST crm-service 1 スライド修正プロキシ
+│       │   └── proposal-session/[key]/route.ts # GET 提案セッションデータ取得
 │       ├── history/
 │       │   └── slides/
 │       │       ├── route.ts           # GET/POST スライド履歴
@@ -194,7 +200,9 @@ rag-ui/
 │   ├── template-manager.tsx   # テンプレート管理モーダル
 │   ├── app-shell.tsx           # AppShell（sidebar + header ラッパー、layout から使用）
 │   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、チャット履歴）
-│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ統合）
+│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ+ProposalPanel 連携）
+│   ├── proposal-panel.tsx     # 提案書パネル（分析 → スライド生成 → プレビュー/修正 → PPTX DL）
+│   ├── slide-preview.tsx      # PresentationPlan → HTML プレビュー（16:9、inch→%変換）
 │   ├── documents-page.tsx     # ナレッジベース一覧ページ
 │   ├── kb-detail-page.tsx     # ナレッジベース詳細（ドキュメント管理+設定編集）
 │   └── skills-page.tsx        # スキル CRUD + ZIP アップロードページコンポーネント
@@ -223,7 +231,9 @@ rag-ui/
 │   ├── widget-parser.ts   # show-widget コードフェンス解析（セグメント分割 + JSON 抽出）
 │   ├── widget-sanitizer.ts # Widget HTML 消毒 + iframe srcdoc ビルダー（CSP + postMessage）
 │   ├── widget-css-bridge.ts # CSS 変数ブリッジ（rag-ui oklch → widget 標準変数名）
-│   └── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
+│   ├── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
+│   ├── proposal-panel-store.ts # Zustand store（sessionKey + phase + plan 管理）
+│   └── proposal-session.ts  # インメモリ提案セッション（Map + TTL 1h）
 ├── hooks/
 │   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
 ├── instrumentation.ts     # 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ
@@ -284,6 +294,11 @@ rag-ui/
 | GET/PUT/PATCH/DELETE | /api/history/slides/[id]         | スライドデッキ詳細/更新/リネーム/削除                                           |
 | GET/POST             | /api/templates/slides            | テンプレート一覧 / 保存                                                         |
 | DELETE               | /api/templates/slides/[id]       | テンプレート削除                                                                |
+| POST                 | /api/crm/generate-pptx           | crm-service PPTX 一括生成プロキシ（sessionKey 対応）                            |
+| POST                 | /api/crm/proposal-plan           | crm-service plan JSON 生成プロキシ                                              |
+| POST                 | /api/crm/proposal-render         | crm-service PPTX レンダリングプロキシ                                           |
+| POST                 | /api/crm/proposal-revise-slide   | crm-service 1 スライド修正プロキシ                                              |
+| GET                  | /api/crm/proposal-session/[key]  | 提案セッションデータ取得                                                        |
 
 ## 开发命令
 
@@ -434,6 +449,50 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 1. `SLIDE_LLM_*` 環境変数 → 専用プロバイダー
 2. `GEMINI_API_KEY` 設定済み → Gemini
 3. フォールバック → MLX
+
+## CRM 提案書フロー
+
+### Tool 構成（v2 統合版）
+
+```
+Before (7 tool calls, ~20K tokens):
+  listDeals → fetchDealData → searchKB → webSearch → analyzeDeal → generateProposal → [PPTX 一発生成]
+
+After (2-3 tool calls, ~6K tokens):
+  listDeals → fetchAndAnalyze(auto KB+Web) → generateProposal(sessionKey)
+  手動入力: fetchAndAnalyze(source:"manual", manualInput) → generateProposal(sessionKey)
+```
+
+### fetchAndAnalyze 内部フロー
+
+1. SFData 取得（CRM fetch or manualInput → SFData 変換）
+2. KB 全検索（`listKBs()` → 各 KB に `searchOnly()` 並列実行）
+3. Web 検索（Tavily あれば会社名+業界で検索）
+4. `additionalContext` = KB 結果 + Web 結果をテキスト結合
+5. `POST crm-service/deals/analyze` で分析実行
+6. `storeSession(data, analysis, additionalContext)` → sessionKey
+7. `{ sessionKey, data, analysis }` を LLM に返却
+
+### ProposalPanel フロー
+
+```
+Phase 1: analysis（分析結果表示 + [スライド生成] ボタン）
+  ↓ ボタンクリック
+Phase 2: generating（ローディング）
+  ↓ POST /api/crm/proposal-plan → PresentationPlan JSON
+Phase 3: preview
+  ├─ スライドナビゲーション [< 1/8 >]
+  ├─ スライド HTML プレビュー（SlidePreview コンポーネント、16:9）
+  ├─ 修正指示入力 → POST /api/crm/proposal-revise-slide → 1 スライドだけ修正
+  └─ [PPTX ダウンロード] → POST /api/crm/proposal-render
+```
+
+### セッション管理
+
+- `lib/proposal-session.ts`: インメモリ Map + TTL 1h
+- `storeSession()` → nanoid(12) のキーを返却
+- `getSession()` / `updateSessionAnalysis()` で取得・更新
+- `reviseRationale` tool 呼出時にセッションの analysis を自動更新
 
 ## TODO
 

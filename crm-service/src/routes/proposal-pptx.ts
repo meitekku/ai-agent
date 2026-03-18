@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import pptxgen from "pptxgenjs";
 import { generateText } from "../lib/gemini";
-import { buildPptxPrompt } from "../lib/prompts";
+import { buildPptxPrompt, buildSlideRevisionPrompt } from "../lib/prompts";
 import { getPool } from "../lib/db";
-import type { PresentationPlan, R } from "../lib/types";
+import type { PresentationPlan, SlideDefinition, R } from "../lib/types";
 
 const app = new Hono();
 
@@ -171,6 +171,75 @@ app.post("/proposal/generate-pptx", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Generate PPTX Error:", err);
     return c.json({ error: `生成エラー: ${message}` }, 500);
+  }
+});
+
+// --- New split endpoints ---
+
+/** Generate plan JSON only (no PPTX rendering) */
+app.post("/proposal/generate-plan", async (c) => {
+  try {
+    const { data, analysis, additionalContext } = await c.req.json();
+    if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
+    if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
+
+    const templateContent = await fetchTemplateContent();
+    const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
+    const text = await generateText(prompt, 8000);
+    const plan = JSON.parse(text.replace(/```json|```/g, "").trim()) as PresentationPlan;
+
+    return c.json({ plan });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Generate Plan Error:", err);
+    return c.json({ error: `Plan生成エラー: ${message}` }, 500);
+  }
+});
+
+/** Render PPTX from plan JSON (no AI needed) */
+app.post("/proposal/render-pptx", async (c) => {
+  try {
+    const { plan, title } = await c.req.json();
+    if (!plan?.slides?.length) return c.json({ error: "plan が不足しています" }, 400);
+
+    const pptxTitle = title || "提案書";
+    const pptxBuffer = await renderPPTX(plan as PresentationPlan, pptxTitle);
+    const fileName = encodeURIComponent(`${pptxTitle}.pptx`);
+
+    return new Response(new Uint8Array(pptxBuffer), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "Content-Disposition": `attachment; filename*=UTF-8''${fileName}`,
+        "Content-Length": String(pptxBuffer.length),
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Render PPTX Error:", err);
+    return c.json({ error: `Render エラー: ${message}` }, 500);
+  }
+});
+
+/** Revise a single slide within a plan */
+app.post("/proposal/revise-slide", async (c) => {
+  try {
+    const { plan, slideIndex, instruction } = await c.req.json();
+    if (!plan?.slides?.length) return c.json({ error: "plan が不足しています" }, 400);
+    if (typeof slideIndex !== "number" || slideIndex < 0 || slideIndex >= plan.slides.length) {
+      return c.json({ error: `slideIndex が範囲外です (0-${plan.slides.length - 1})` }, 400);
+    }
+    if (!instruction) return c.json({ error: "instruction が必要です" }, 400);
+    if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
+
+    const prompt = buildSlideRevisionPrompt(plan as PresentationPlan, slideIndex, instruction);
+    const text = await generateText(prompt, 3000);
+    const revisedSlide = JSON.parse(text.replace(/```json|```/g, "").trim()) as SlideDefinition;
+
+    return c.json({ slide: revisedSlide, slideIndex });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Revise Slide Error:", err);
+    return c.json({ error: `修正エラー: ${message}` }, 500);
   }
 });
 

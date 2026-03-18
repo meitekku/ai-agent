@@ -367,3 +367,49 @@ ${existingSection}
   "similarityReason": "類似の理由（なければnull）"
 }`;
 }
+
+export function buildSlideRevisionPrompt(
+  plan: import("./types").PresentationPlan,
+  slideIndex: number,
+  instruction: string,
+): string {
+  const slide = plan.slides[slideIndex];
+  return `あなたはプレゼンテーションデザイナーです。以下のスライド定義を修正してください。
+
+## 現在のスライド（${slideIndex + 1}/${plan.slides.length}枚目）
+\`\`\`json
+${JSON.stringify(slide, null, 2)}
+\`\`\`
+
+## テーマ
+\`\`\`json
+${JSON.stringify(plan.theme, null, 2)}
+\`\`\`
+
+## 修正指示
+${instruction}
+
+## ルール
+- 修正指示に従ってスライドを更新してください
+- 指示に関係ない部分はそのまま維持してください
+- 座標はインチ単位（スライドは10x5.625）
+- テーマカラーとの整合性を保ってください
+
+## element types
+- **text**: 自由テキスト。content, fontSize, bold, italic, color, align, valign
+- **shape**: 装飾用矩形。fill, borderColor
+- **list**: 箇条書き。items[], fontSize, color
+- **kpi**: 数値カード。label, value, valueColor, fill
+- **table**: テーブル。rows[][]（1行目がヘッダー）, headerBg
+
+## 回答形式（JSON以外のテキストは一切返さないでください）
+修正後のスライド定義を1つのJSONオブジェクトとして返してください（slides配列ではなく、単一のスライドオブジェクト）。
+{
+  "title": "...",
+  "subtitle": "...",
+  "layout": "...",
+  "bgColor": "...",
+  "headerColor": "...",
+  "elements": [...]
+}`;
+}

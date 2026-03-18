@@ -40,12 +40,12 @@ rag-deploy/
 │       │   ├── rationale.ts        # POST /deals/revise-rationale
 │       │   ├── solution-qa.ts      # POST /deals/solution-qa
 │       │   ├── templates.ts        # GET/POST/DELETE/PATCH /templates, POST /templates/detect
-│       │   └── proposal-pptx.ts    # POST /proposal/generate-pptx
+│       │   └── proposal-pptx.ts    # POST /proposal/generate-pptx, /generate-plan, /render-pptx, /revise-slide
 │       └── lib/
 │           ├── gemini.ts           # GoogleGenerativeAI wrapper
 │           ├── db.ts               # pg Pool + ensureCrmTables()
 │           ├── scoring.ts          # 商機評分アルゴリズム
-│           ├── prompts.ts          # AI プロンプトビルダー
+│           ├── prompts.ts          # AI プロンプトビルダー（buildSlideRevisionPrompt 含む）
 │           └── types.ts            # SFData, AnalysisResult, etc.
 ├── lightrag-service/               # Python FastAPI バックエンド
 │   ├── Dockerfile                  # python:3.12-slim + uv
@@ -122,11 +122,17 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
 | `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | generateProposal 検出 + ProposalPanel + 画像スケルトン + beforeunload ガード |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools + 画像モデルパス（generateText + responseModalities）+ generateImage ツール |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理）+ 画像モデルパス + generateImage ツール |
 | `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
-| `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store for ProposalPanel |
-| `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書生成サイドパネル |
-| `rag-ui/app/api/crm/generate-pptx/route.ts` | **rag-deploy のみ** | — | crm-service PPTX 生成プロキシ |
+| `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + plan + preview 状態管理） |
+| `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | インメモリ提案セッション store（Map + TTL 1h） |
+| `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書パネル（分析表示 → スライド生成 → プレビュー/修正 → PPTX DL） |
+| `rag-ui/components/slide-preview.tsx` | **rag-deploy のみ** | — | PresentationPlan → HTML プレビュー（16:9、inch→%変換） |
+| `rag-ui/app/api/crm/generate-pptx/route.ts` | **rag-deploy のみ** | — | crm-service PPTX 生成プロキシ（sessionKey 対応） |
+| `rag-ui/app/api/crm/proposal-plan/route.ts` | **rag-deploy のみ** | — | crm-service /proposal/generate-plan プロキシ |
+| `rag-ui/app/api/crm/proposal-render/route.ts` | **rag-deploy のみ** | — | crm-service /proposal/render-pptx プロキシ |
+| `rag-ui/app/api/crm/proposal-revise-slide/route.ts` | **rag-deploy のみ** | — | crm-service /proposal/revise-slide プロキシ |
+| `rag-ui/app/api/crm/proposal-session/[key]/route.ts` | **rag-deploy のみ** | — | GET 提案セッションデータ取得 |
 | `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
@@ -150,7 +156,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/widget-css-bridge.ts` | **rag-deploy のみ** | — | CSS 変数ブリッジ（oklch → widget 変数） |
 | `rag-ui/lib/widget-guidelines.ts` | **rag-deploy のみ** | — | Widget 生成システムプロンプト |
 | `rag-ui/components/ai-elements/message.tsx` | 同上 | **rag-deploy のみ** | MessageResponse に widget セグメント分割ロジック追加 |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools + 画像モデルパス + generateImage ツール + WIDGET_SYSTEM_PROMPT 注入 |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合）+ 画像モデルパス + generateImage + WIDGET_SYSTEM_PROMPT |
 | `rag-ui/components/image-lightbox.tsx` | 同上 | **rag-deploy のみ** | shadcn Dialog ベース画像拡大表示 + ダウンロードボタン |
 | `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
@@ -318,6 +324,8 @@ docker compose --profile prod build --no-cache
 | Widget: CDN script の `onload` attribute が動的 script で発火しない場合がある | `setAttribute('onload', ...)` は動的生成 script 要素で不安定 | `addEventListener('load', ...)` + 動的 inline script 生成で対処 |
 | CSV アップロードで知識グラフの関係が破壊される | `extract.py` が CSV を 1 枚の巨大 Markdown 表格に変換 → chunk 切割で列ヘッダーと行データが分離 | CSV 構造化抽出に改修: エンコード自動検出(UTF-8/cp932) + グループ列検出 + レコード単位の自然言語ドキュメントに変換。小表格(≤10行×8列)は従来の Markdown 表格を維持 |
 | CRM 分析・提案書が KB/Web 情報を参照できない | `analyzeDeal`/`generateProposal` が CRM データのみで分析、KB/Web 検索結果が断絶 | 3 ツール（analyze/revise/pptx）に `additionalContext` パラメータ追加。LLM が事前に KB/Web 検索した情報を渡し、crm-service の Gemini プロンプトに注入 |
+| CRM Tool chain が不安定（7 ステップ、~20K tokens） | LLM が 7 tool を順次呼出、KB/Web 検索を飛ばすことがある。データ重複 3 回でトークン浪費 | `fetchAndAnalyze` に統合（CRM fetch + KB 全検索 + Web 検索 + analyze を 1 tool 内で実行）。セッション保存で `generateProposal` は sessionKey のみ。2-3 tool、~6K tokens に削減 |
+| PPTX 一発生成でプレビュー/修正不可 | `/proposal/generate-pptx` が plan 生成 + PPTX レンダリングを一括実行 | 3 エンドポイントに分割: `/generate-plan`（JSON のみ）+ `/revise-slide`（1 スライド修正）+ `/render-pptx`（PPTX レンダリング）。ProposalPanel でプレビュー → 部分修正 → DL のフロー |
 
 ## トラブルシューティング
 

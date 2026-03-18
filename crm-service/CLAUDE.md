@@ -12,19 +12,33 @@ AIAgent-performance の提案書機能（Salesforce/Kintone 連携、商機分�
 ```
 rag-ui (chat tool calling)
   │
-  ├── listDeals ────────▶ POST /sf/list or /kintone/list
-  ├── fetchDealData ────▶ POST /sf/fetch or /kintone/fetch
-  ├── searchKnowledgeBase ─▶ KB/Web 検索 → additionalContext として収集
-  ├── analyzeDeal(+additionalContext) ──────▶ POST /deals/analyze
-  ├── reviseRationale(+additionalContext) ──▶ POST /deals/revise-rationale
-  └── generateProposal(+additionalContext) ─▶ signal tool → ProposalPanel → POST /proposal/generate-pptx
+  ├── listDeals ────────────▶ POST /sf/list or /kintone/list
+  ├── fetchAndAnalyze ──────▶ CRM fetch + KB全検索 + Web検索 + POST /deals/analyze → session 保存
+  ├── generateProposal ─────▶ signal tool(sessionKey) → ProposalPanel
+  └── reviseRationale ──────▶ session から分析取得 → POST /deals/revise-rationale
+
+ProposalPanel (フロントエンド)
+  │
+  ├── GET /api/crm/proposal-session/{key} → session データ取得
+  ├── POST /api/crm/proposal-plan ────────▶ POST /proposal/generate-plan → PresentationPlan JSON
+  ├── POST /api/crm/proposal-revise-slide ▶ POST /proposal/revise-slide → 1 スライド修正
+  └── POST /api/crm/proposal-render ──────▶ POST /proposal/render-pptx → PPTX バイナリ
 ```
 
-rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義 → execute 内で `http://crm-service:8009` に HTTP リクエスト → 結果を LLM に返却。
+rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義。`fetchAndAnalyze` が CRM データ取得 + KB 全検索 + Web 検索 + 分析を一括実行し、結果をインメモリセッション（TTL 1h）に保存。`generateProposal` は sessionKey のみ受取り、ProposalPanel を開く。
+
+### Tool 統合（v2）
+
+旧: `fetchDealData` → `searchKnowledgeBase` × N → `webSearch` → `analyzeDeal` → `generateProposal`（7 tool 呼出、~20K tokens）
+新: `fetchAndAnalyze`（内部で CRM + KB + Web + analyze を一括実行）→ `generateProposal`（2-3 tool 呼出、~6K tokens）
+
+### 手動入力対応
+
+`fetchAndAnalyze` は `source: "manual"` + `manualInput: { companyName, industry, dealName, challenges, budget, ... }` で CRM データ源なしのデモも可能。内部で SFData 形式に変換。
 
 ### additionalContext 連携
 
-`analyzeDeal`、`reviseRationale`、`generateProposal` の 3 ツールは `additionalContext?: string` パラメータを持つ。LLM がこれらを呼ぶ前に `searchKnowledgeBase` や `webSearch` で収集した情報を `additionalContext` として渡すことで、分析・提案書生成にナレッジベースやウェブ検索の情報が反映される。crm-service 側では `lib/prompts.ts` の各プロンプトビルダーに注入。
+`fetchAndAnalyze` の execute 内で KB 全検索 + Web 検索を自動実行し、結果を `additionalContext` として crm-service の `/deals/analyze` に渡す。LLM が個別に検索する必要がなくなり、確実性が向上。
 
 ## ディレクトリ構造
 
@@ -45,7 +59,7 @@ crm-service/
     │   ├── rationale.ts          # POST /deals/revise-rationale（フィードバック修正）
     │   ├── solution-qa.ts        # POST /deals/solution-qa（マルチターン Q&A）
     │   ├── templates.ts          # GET/POST/DELETE/PATCH /templates, POST /templates/detect
-    │   └── proposal-pptx.ts      # POST /proposal/generate-pptx（AI 計画 + pptxgenjs）
+    │   └── proposal-pptx.ts      # POST /proposal/generate-pptx, /generate-plan, /render-pptx, /revise-slide
     └── lib/
         ├── gemini.ts             # GoogleGenerativeAI wrapper
         ├── db.ts                 # pg Pool + ensureCrmTables()
@@ -73,7 +87,10 @@ crm-service/
 | DELETE | `/templates` | テンプレート削除 |
 | PATCH | `/templates` | サービス名更新 |
 | POST | `/templates/detect` | AI サービス名自動検出 + 類似度チェック |
-| POST | `/proposal/generate-pptx` | AI スライド計画 → pptxgenjs PPTX 生成 |
+| POST | `/proposal/generate-pptx` | AI スライド計画 → pptxgenjs PPTX 生成（レガシー、一括実行） |
+| POST | `/proposal/generate-plan` | AI スライド計画 JSON のみ生成（PPTX レンダリングなし） |
+| POST | `/proposal/render-pptx` | PresentationPlan JSON → pptxgenjs PPTX 生成（AI 不要） |
+| POST | `/proposal/revise-slide` | 1 スライドのみ AI 修正（plan + slideIndex + instruction） |
 
 ## DB スキーマ
 
@@ -95,10 +112,16 @@ crm-service/
 
 ## 提案書 PPTX 生成（routes/proposal-pptx.ts）
 
+### レガシーエンドポイント（`/proposal/generate-pptx`）
 1. DB から提案テンプレート取得 → content_text をプロンプトに注入
 2. Gemini が JSON でスライド計画生成（theme + slides[]）
 3. pptxgenjs で 5 レイアウト（title/content/two-column/cards/closing）をレンダリング
 4. バイナリ PPTX をレスポンス
+
+### 分割エンドポイント（v2、ProposalPanel 用）
+- **`/proposal/generate-plan`**: ステップ 1-2 のみ実行 → PresentationPlan JSON を返却
+- **`/proposal/render-pptx`**: ステップ 3-4 のみ実行 → plan JSON から PPTX バイナリ生成（AI 不要）
+- **`/proposal/revise-slide`**: plan + slideIndex + instruction → `buildSlideRevisionPrompt()` で Gemini に 1 スライドだけ修正させ、修正後の SlideDefinition を返却
 
 ## 環境変数
 
@@ -145,6 +168,6 @@ Kintone API 未接続時は 5 件のサンプル商談を自動返却:
 ## 注意事項
 
 - **jsforce + Bun 互換性**: jsforce は Node.js ライブラリ。Bun で問題が出た場合は Dockerfile を `node:22-slim` ベースに切替
-- **Tool result サイズ**: rag-ui の `fetchDealData` execute 内で活動/メール/Feed を各 5 件に truncate（トークン過多防止）
+- **Tool result サイズ**: rag-ui の `fetchAndAnalyze` execute 内で活動/メール/Feed を各 5 件に truncate（トークン過多防止）
 - **テンプレートストレージ**: ファイルシステム（元プロジェクト）→ PostgreSQL BYTEA に移行
 - **AI プロバイダー**: 元は Gemini/Claude/ChatGPT 選択式 → Gemini only に統一

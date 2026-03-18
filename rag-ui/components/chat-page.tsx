@@ -307,11 +307,10 @@ export function ChatPage({
       }
 
       if (toolName === "generateProposal" && result?.triggered) {
-        openProposal(
-          result.data as Record<string, unknown>,
-          result.analysis as Record<string, unknown>,
-          result.additionalContext as string | undefined,
-        );
+        const sk = result.sessionKey as string | undefined;
+        if (sk) {
+          openProposal(sk);
+        }
         break;
       }
     }
