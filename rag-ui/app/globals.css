@@ -263,9 +263,9 @@
 .streaming-trailing-fade {
   background: linear-gradient(
     to bottom,
-    oklch(var(--background) / 0) 0%,
-    oklch(var(--background) / 0.7) 60%,
-    oklch(var(--background) / 1) 100%
+    transparent 0%,
+    color-mix(in oklch, var(--background) 70%, transparent) 50%,
+    var(--background) 100%
   );
 }
 
