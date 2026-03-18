@@ -32,9 +32,9 @@ async def _pipeline_processor():
     """
     from lightrag.base import DocStatus
 
-    PIPELINE_TIMEOUT = 600  # 10 min max per batch
-    POLL_INTERVAL = 5       # seconds between status checks
-    POLL_MAX_WAIT = 300     # 5 min max polling after timeout
+    PIPELINE_TIMEOUT = 1800  # 30 min max per batch (large CSV can have 1000+ entities)
+    POLL_INTERVAL = 5        # seconds between status checks
+    POLL_MAX_WAIT = 600      # 10 min max polling after timeout
 
     while True:
         doc_id, track_id, kb_slug = await _process_queue.get()
@@ -65,12 +65,25 @@ async def _pipeline_processor():
 
             # Check final results
             docs = await rag.aget_docs_by_track_id(track_id)
-            failed = [d for d in docs.values() if d.status == DocStatus.FAILED]
-            if failed:
-                error_msgs = [d.error_msg or "unknown error" for d in failed]
-                await db.update_job_status(doc_id, "failed", "; ".join(error_msgs))
+            if not docs:
+                await db.update_job_status(doc_id, "failed", "ドキュメントが見つかりません")
             else:
-                await db.update_job_status(doc_id, "processed")
+                statuses = {d.status for d in docs.values()}
+                failed = [d for d in docs.values() if d.status == DocStatus.FAILED]
+                processed = [d for d in docs.values() if d.status == DocStatus.PROCESSED]
+                if failed:
+                    error_msgs = [d.error_msg or "unknown error" for d in failed]
+                    await db.update_job_status(doc_id, "failed", "; ".join(error_msgs))
+                elif len(processed) == len(docs):
+                    # All docs are PROCESSED — genuinely done
+                    await db.update_job_status(doc_id, "processed")
+                else:
+                    # Still processing after timeout — mark as failed
+                    remaining = [s.value for s in statuses if s not in (DocStatus.PROCESSED, DocStatus.FAILED)]
+                    await db.update_job_status(
+                        doc_id, "failed",
+                        f"処理タイムアウト（残りステータス: {', '.join(remaining)}）。再アップロードしてください。"
+                    )
             print(f"[ingest] Pipeline done: {doc_id} ({track_id})")
         except Exception as e:
             print(f"[ingest] Pipeline failed: {doc_id}: {e}")
