@@ -681,7 +681,6 @@ export const SkillsPage = memo(function SkillsPage() {
 function RegistryEmptyState({ onSearch }: { onSearch: (q: string) => void }) {
   const suggestions = [
     "sales",
-    "営業",
     "proposal",
     "negotiation",
     "crm",
