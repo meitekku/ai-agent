@@ -8,7 +8,7 @@ import {
   LineBasicMaterial,
   LineSegments,
   Points,
-  PointsMaterial,
+  ShaderMaterial,
   AdditiveBlending,
   Color,
 } from "three";
@@ -17,38 +17,20 @@ import type { SimNode, SimLink } from "@/lib/force-simulation";
 interface GraphEdgesProps {
   nodes: SimNode[];
   links: SimLink[];
-  hoveredId: string | null;
   isDark: boolean;
 }
 
-export function GraphEdges({
-  nodes,
-  links,
-  hoveredId,
-  isDark,
-}: GraphEdgesProps) {
+export function GraphEdges({ nodes, links, isDark }: GraphEdgesProps) {
   const linesRef = useRef<LineSegments>(null);
   const particlesRef = useRef<Points>(null);
   const timeRef = useRef(0);
+  const colorSetRef = useRef(false);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, SimNode>();
     nodes.forEach((n) => map.set(n.id, n));
     return map;
   }, [nodes]);
-
-  const hoveredEdgeSet = useMemo(() => {
-    if (!hoveredId) return null;
-    const set = new Set<number>();
-    links.forEach((link, i) => {
-      const sid =
-        typeof link.source === "object" ? link.source.id : link.source;
-      const tid =
-        typeof link.target === "object" ? link.target.id : link.target;
-      if (sid === hoveredId || tid === hoveredId) set.add(i);
-    });
-    return set;
-  }, [hoveredId, links]);
 
   useFrame((_, delta) => {
     timeRef.current += delta;
@@ -58,9 +40,6 @@ export function GraphEdges({
 
     const linePos = lines.geometry.getAttribute(
       "position",
-    ) as Float32BufferAttribute;
-    const lineColor = lines.geometry.getAttribute(
-      "color",
     ) as Float32BufferAttribute;
     const particlePos = particles.geometry.getAttribute(
       "position",
@@ -88,20 +67,8 @@ export function GraphEdges({
       linePos.setXYZ(i * 2, sx, sy, sz);
       linePos.setXYZ(i * 2 + 1, tx, ty, tz);
 
-      const isHighlighted = hoveredEdgeSet?.has(i);
-      if (isHighlighted) {
-        lineColor.setXYZ(i * 2, 0.4, 0.6, 1.0);
-        lineColor.setXYZ(i * 2 + 1, 0.4, 0.6, 1.0);
-      } else if (isDark) {
-        lineColor.setXYZ(i * 2, 0.35, 0.4, 0.5);
-        lineColor.setXYZ(i * 2 + 1, 0.35, 0.4, 0.5);
-      } else {
-        lineColor.setXYZ(i * 2, 0.55, 0.58, 0.65);
-        lineColor.setXYZ(i * 2 + 1, 0.55, 0.58, 0.65);
-      }
-
-      // Flowing particle
-      const phase = (t * 0.25 + i * 0.07) % 1;
+      // Flowing particle (slower)
+      const phase = (t * 0.1 + i * 0.07) % 1;
       particlePos.setXYZ(
         i,
         sx + (tx - sx) * phase,
@@ -111,16 +78,20 @@ export function GraphEdges({
     }
 
     linePos.needsUpdate = true;
-    lineColor.needsUpdate = true;
     particlePos.needsUpdate = true;
 
-    // Update line opacity only when value actually changes
-    if (lineMat) {
-      const targetOpacity = hoveredId ? 0.12 : isDark ? 0.35 : 0.5;
-      if (lineMat.opacity !== targetOpacity) {
-        lineMat.opacity = targetOpacity;
-        lineMat.needsUpdate = true;
+    // Set edge colors once (static — no hover highlight)
+    if (!colorSetRef.current && links.length > 0) {
+      const lineColor = lines.geometry.getAttribute(
+        "color",
+      ) as Float32BufferAttribute;
+      const [r, g, b] = isDark ? [0.35, 0.4, 0.5] : [0.55, 0.58, 0.65];
+      for (let i = 0; i < links.length; i++) {
+        lineColor.setXYZ(i * 2, r, g, b);
+        lineColor.setXYZ(i * 2 + 1, r, g, b);
       }
+      lineColor.needsUpdate = true;
+      colorSetRef.current = true;
     }
   });
 
@@ -139,10 +110,10 @@ export function GraphEdges({
     return new LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.35,
+      opacity: isDark ? 0.35 : 0.5,
       depthWrite: false,
     });
-  }, []);
+  }, [isDark]);
 
   // Particle geometry
   const particleGeo = useMemo(() => {
@@ -152,15 +123,33 @@ export function GraphEdges({
     return geo;
   }, [links.length]);
 
+  // Circle particle shader — primary color, round shape
   const particleMat = useMemo(() => {
-    return new PointsMaterial({
-      color: new Color(isDark ? "#93c5fd" : "#3b82f6"),
-      size: 0.6,
+    return new ShaderMaterial({
       transparent: true,
-      opacity: isDark ? 0.7 : 0.9,
-      blending: isDark ? AdditiveBlending : undefined,
       depthWrite: false,
-      sizeAttenuation: true,
+      blending: isDark ? AdditiveBlending : undefined,
+      uniforms: {
+        uColor: { value: new Color(isDark ? "#34d399" : "#10b981") },
+        uOpacity: { value: isDark ? 0.8 : 0.9 },
+      },
+      vertexShader: /* glsl */ `
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = 4.0 * (200.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          if (d > 0.5) discard;
+          float alpha = smoothstep(0.5, 0.3, d) * uOpacity;
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
     });
   }, [isDark]);
 

@@ -162,12 +162,7 @@ export function GraphCanvas({
         onSelect={onSelect}
         isDark={isDark}
       />
-      <GraphEdges
-        nodes={simNodes}
-        links={simLinks}
-        hoveredId={hoveredId}
-        isDark={isDark}
-      />
+      <GraphEdges nodes={simNodes} links={simLinks} isDark={isDark} />
       <GraphEffects isDark={isDark} />
       <CameraAnimator targetPosition={cameraTarget} controlsRef={controlsRef} />
 
