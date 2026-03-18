@@ -350,9 +350,9 @@ export const MessageResponse = memo(
       typeof props.children === "string" ? props.children : "";
     const hasWidgetFence = content.includes("```show-widget");
 
-    // Shared animation props for smooth per-word streaming
+    // Streamdown native per-word animation (uses defaults from styles.css)
     const animProps = {
-      animated: { animation: "fadeIn" as const, duration: 350, easing: "ease-out" },
+      animated: !!isActiveStreaming,
       isAnimating: !!isActiveStreaming,
     };
 

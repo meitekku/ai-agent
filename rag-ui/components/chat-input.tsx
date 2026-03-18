@@ -27,6 +27,7 @@ import {
   RotateCcwIcon,
   SparklesIcon,
   CheckIcon,
+  BrainIcon,
 } from "lucide-react";
 import { useChatSettingsStore, GEMINI_MODELS } from "@/lib/store";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -358,6 +359,32 @@ function ModelSelector({ disabled }: { disabled: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Thinking Toggle
+// ---------------------------------------------------------------------------
+
+function ThinkingToggle({ disabled }: { disabled: boolean }) {
+  const thinking = useChatSettingsStore((s) => s.thinking);
+  const setThinking = useChatSettingsStore((s) => s.setThinking);
+
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && setThinking(!thinking)}
+      disabled={disabled}
+      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-colors ${
+        thinking
+          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/20"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+      aria-label="思考モード"
+    >
+      <BrainIcon className="size-3.5" />
+      <span>思考</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ChatInput
 // ---------------------------------------------------------------------------
 
@@ -459,6 +486,7 @@ export function ChatInput({
             </PromptInputActionMenu>
             <KBSelector disabled={false} />
             <ModelSelector disabled={false} />
+            <ThinkingToggle disabled={false} />
           </PromptInputTools>
           <ChatSubmitButton status={status} inputText={input} onStop={onStop} />
         </PromptInputFooter>

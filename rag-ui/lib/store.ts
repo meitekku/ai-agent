@@ -63,6 +63,10 @@ interface ChatSettingsState {
   imageGenerating: boolean;
   setImageGenerating: (v: boolean) => void;
 
+  // Thinking mode toggle
+  thinking: boolean;
+  setThinking: (v: boolean) => void;
+
   // Chat title (shown in header)
   chatTitle: string;
   setChatTitle: (title: string) => void;
@@ -106,6 +110,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   // Image generating
   imageGenerating: false,
   setImageGenerating: (v) => set({ imageGenerating: v }),
+
+  // Thinking mode
+  thinking: false,
+  setThinking: (v) => set({ thinking: v }),
 
   // Chat title
   chatTitle: "",

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useChatSettingsStore } from "@/lib/store";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -23,9 +23,11 @@ import {
   XIcon,
   Trash2Icon,
   PlusIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppLogo } from "@/components/icons/app-logo";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 // ---------------------------------------------------------------------------
 // Persist sidebar state to cookie + DB (fire-and-forget)
@@ -86,6 +88,14 @@ function groupByDate(items: ChatItem[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Flat row type for virtual list (header or chat item)
+// ---------------------------------------------------------------------------
+
+type FlatRow =
+  | { type: "header"; label: string }
+  | { type: "chat"; chat: ChatItem };
+
+// ---------------------------------------------------------------------------
 // SidebarInner
 // ---------------------------------------------------------------------------
 
@@ -102,19 +112,68 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
     action?: () => void;
   } | null>(null);
 
-  // Fetch chat history
-  const { data: historyData, isPending: historyLoading } = useQuery({
+  // Fetch chat history (infinite scroll)
+  const PAGE_SIZE = 30;
+  const {
+    data: historyData,
+    isPending: historyLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["chat-history"],
-    queryFn: async () => {
-      const res = await fetch("/api/history/chats?limit=50");
+    queryFn: async ({ pageParam = 0 }) => {
+      const res = await fetch(
+        `/api/history/chats?limit=${PAGE_SIZE}&offset=${pageParam}`,
+      );
       if (!res.ok) return { conversations: [] as ChatItem[] };
       return res.json() as Promise<{ conversations: ChatItem[] }>;
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.conversations.length < PAGE_SIZE) return undefined;
+      return allPages.reduce((acc, p) => acc + p.conversations.length, 0);
     },
     refetchInterval: 30000,
   });
 
-  const conversations = historyData?.conversations ?? [];
-  const groups = groupByDate(conversations);
+  // Flatten pages → conversations → date groups → flat rows (stable memo)
+  const { conversations, flatRows } = useMemo(() => {
+    const convs =
+      historyData?.pages.flatMap((p) => p.conversations) ?? [];
+    const groups = groupByDate(convs);
+    const rows: FlatRow[] = [];
+    for (const group of groups) {
+      rows.push({ type: "header", label: group.label });
+      for (const chat of group.items) {
+        rows.push({ type: "chat", chat });
+      }
+    }
+    return { conversations: convs, flatRows: rows };
+  }, [historyData]);
+
+  // Virtual list
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (flatRows[i].type === "header" ? 28 : 36),
+    overscan: 10,
+  });
+
+  // Infinite scroll: fetch next page when near bottom
+  const virtualItems = virtualizer.getVirtualItems();
+  useEffect(() => {
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+    if (
+      lastItem.index >= flatRows.length - 5 &&
+      hasNextPage &&
+      !isFetchingNextPage
+    ) {
+      fetchNextPage();
+    }
+  }, [virtualItems, hasNextPage, isFetchingNextPage, fetchNextPage, flatRows.length]);
 
   // Delete confirmation dialog state
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -200,7 +259,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
         })}
       </nav>
 
-      {/* Chat History — clicking does NOT close sidebar */}
+      {/* Chat History — virtualized + infinite scroll */}
       {historyLoading ? (
         <>
           <Separator />
@@ -230,56 +289,83 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
       ) : (
         <>
           <Separator />
-          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
-            {groups.map((group) => (
-              <div key={group.label}>
-                <p className="px-3 pb-1 text-[11px] font-medium text-foreground/40 uppercase tracking-wider">
-                  {group.label}
-                </p>
-                <div className="space-y-0.5">
-                  {group.items.map((chat) => {
-                    const isActive = pathname === `/chat/${chat.id}`;
-                    return (
-                      <Link
-                        key={chat.id}
-                        href={`/chat/${chat.id}`}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+            <div
+              className="relative w-full"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {virtualItems.map((vItem) => {
+                const row = flatRows[vItem.index];
+                if (row.type === "header") {
+                  return (
+                    <div
+                      key={`header-${row.label}`}
+                      className="absolute left-0 w-full"
+                      style={{
+                        height: vItem.size,
+                        transform: `translateY(${vItem.start}px)`,
+                      }}
+                    >
+                      <p className="px-3 pb-1 pt-1 text-[11px] font-medium text-foreground/40 uppercase tracking-wider">
+                        {row.label}
+                      </p>
+                    </div>
+                  );
+                }
+                const chat = row.chat;
+                const isActive = pathname === `/chat/${chat.id}`;
+                return (
+                  <div
+                    key={chat.id}
+                    className="absolute left-0 w-full"
+                    style={{
+                      height: vItem.size,
+                      transform: `translateY(${vItem.start}px)`,
+                    }}
+                  >
+                    <Link
+                      href={`/chat/${chat.id}`}
+                      onClick={(e) => {
+                        if (imageGenerating) {
+                          e.preventDefault();
+                          setNavGuardTarget({ href: `/chat/${chat.id}` });
+                        }
+                      }}
+                      className={`
+                        group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors
+                        ${
+                          isActive
+                            ? "bg-primary/15 text-primary font-medium"
+                            : "text-foreground/70 hover:bg-muted/50 hover:text-foreground"
+                        }
+                      `}
+                    >
+                      <MessageSquareIcon className="size-3.5 shrink-0 opacity-60" />
+                      <span className="flex-1 truncate text-left">
+                        {chat.title}
+                      </span>
+                      <span
+                        role="button"
                         onClick={(e) => {
-                          if (imageGenerating) {
-                            e.preventDefault();
-                            setNavGuardTarget({ href: `/chat/${chat.id}` });
-                          }
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTarget({ id: chat.id, title: chat.title });
                         }}
-                        className={`
-                          group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors
-                          ${
-                            isActive
-                              ? "bg-primary/15 text-primary font-medium"
-                              : "text-foreground/70 hover:bg-muted/50 hover:text-foreground"
-                          }
-                        `}
+                        className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5"
+                        aria-label="削除"
                       >
-                        <MessageSquareIcon className="size-3.5 shrink-0 opacity-60" />
-                        <span className="flex-1 truncate text-left">
-                          {chat.title}
-                        </span>
-                        <span
-                          role="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setDeleteTarget({ id: chat.id, title: chat.title });
-                          }}
-                          className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5"
-                          aria-label="削除"
-                        >
-                          <Trash2Icon className="size-3" />
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
+                        <Trash2Icon className="size-3" />
+                      </span>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-2">
+                <Loader2Icon className="size-3.5 animate-spin text-foreground/30" />
               </div>
-            ))}
+            )}
           </div>
         </>
       )}

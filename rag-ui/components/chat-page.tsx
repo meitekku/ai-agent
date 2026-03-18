@@ -22,8 +22,7 @@ import { SlidePanel } from "@/components/slide-panel";
 import { SlideSetupWizard, type WizardConfig } from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
 import { AnimatePresence } from "motion/react";
-import { BookOpenIcon, ZapIcon, AlertCircleIcon, ImageIcon } from "lucide-react";
-import { StepIndicator } from "@/components/step-indicator";
+import { BookOpenIcon, AlertCircleIcon, ImageIcon } from "lucide-react";
 import { useChatSettingsStore, isImageModel } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
 import { useSlidePanelStore } from "@/lib/slide-panel-store";
@@ -93,6 +92,7 @@ export function ChatPage({
   const recordMessageMeta = useChatSettingsStore((s) => s.recordMessageMeta);
   const setChatTitle = useChatSettingsStore((s) => s.setChatTitle);
   const chatTitle = useChatSettingsStore((s) => s.chatTitle);
+  const thinking = useChatSettingsStore((s) => s.thinking);
   const queryClient = useQueryClient();
 
   // Init chat title from loaded conversation
@@ -132,7 +132,7 @@ export function ChatPage({
     error,
   } = useChat({
     id: initialConvId ?? "new-chat",
-    experimental_throttle: 20,
+    experimental_throttle: 50,
   });
 
   // Load initial data into tree AND sync to useChat
@@ -356,7 +356,7 @@ export function ChatPage({
 
       const body = {
         service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-        chatId: convIdRef.current, parentId: currentLeaf,
+        chatId: convIdRef.current, parentId: currentLeaf, thinking,
       };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
@@ -369,6 +369,7 @@ export function ChatPage({
       service,
       activeKb,
       chatModel,
+      thinking,
       ensureConversation,
       treeStore.activeLeafId,
       messages.length,
@@ -386,9 +387,9 @@ export function ChatPage({
     const regenParentId = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
     regenerate({ body: {
       service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-      chatId: convIdRef.current, parentId: regenParentId,
+      chatId: convIdRef.current, parentId: regenParentId, thinking,
     } });
-  }, [regenerate, service, activeKb, chatModel, messages]);
+  }, [regenerate, service, activeKb, chatModel, thinking, messages]);
 
   // Edit message: create new branch
   const handleEdit = useCallback(
@@ -418,10 +419,10 @@ export function ChatPage({
       // Send new message (creates new user+assistant pair as siblings of the edited message)
       sendMessage({ text: newText }, { body: {
         service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-        chatId: convId, parentId,
+        chatId: convId, parentId, thinking,
       } });
     },
-    [treeStore, setMessages, sendMessage, service, activeKb, chatModel],
+    [treeStore, setMessages, sendMessage, service, activeKb, chatModel, thinking],
   );
 
   // Branch switching
@@ -692,12 +693,11 @@ export function ChatPage({
                         <div className="h-64 w-80 animate-pulse rounded-xl bg-muted/40 border border-border/30" />
                       </div>
                     ) : (
-                      <StepIndicator
-                        icon={ZapIcon}
-                        activeLabel="考え中..."
-                        completedLabel="処理完了"
-                        active
-                      />
+                      <div className="flex items-center gap-1 py-1">
+                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+                      </div>
                     )}
                   </MessageContent>
                 </Message>

@@ -38,6 +38,7 @@ import {
   DownloadIcon,
   CheckCircleIcon,
   GlobeIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -478,7 +479,7 @@ export const SkillsPage = memo(function SkillsPage() {
         <div className="mx-auto w-full max-w-3xl px-6 pt-4 pb-2 shrink-0">
           <div className="flex gap-2">
             <Input
-              placeholder="スキルを検索（例: react, typescript, testing）"
+              placeholder="スキルを検索（例: sales, proposal, negotiation）"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -676,14 +677,14 @@ export const SkillsPage = memo(function SkillsPage() {
 
 function RegistryEmptyState({ onSearch }: { onSearch: (q: string) => void }) {
   const suggestions = [
+    "sales",
+    "営業",
+    "proposal",
+    "negotiation",
+    "crm",
     "marketing",
-    "copywriting",
-    "seo",
-    "branding",
-    "social media",
-    "analytics",
-    "email marketing",
-    "content strategy",
+    "lead generation",
+    "presentation",
   ];
 
   return (
@@ -692,7 +693,15 @@ function RegistryEmptyState({ onSearch }: { onSearch: (q: string) => void }) {
         <GlobeIcon className="size-6 text-primary" />
       </div>
       <div className="space-y-1">
-        <p className="text-sm font-medium">skills.sh レジストリ</p>
+        <a
+          href="https://skills.sh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-primary transition-colors"
+        >
+          skills.sh レジストリ
+          <ExternalLinkIcon className="size-3.5" />
+        </a>
         <p className="text-sm text-muted-foreground">
           コミュニティが公開しているスキルを検索してインストール
         </p>

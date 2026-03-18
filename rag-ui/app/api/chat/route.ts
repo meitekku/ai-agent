@@ -180,21 +180,36 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
   if (hasCrm) {
     prompt += `
 
-## CRM・提案書ツール
-- **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得。「商談」「案件」「CRM」等のキーワードで使用
-- **fetchDealData**: 特定商談の詳細データを取得。分析前に必ず呼ぶ
-- **analyzeDeal**: 商談を分析（受注確率、スコア、シナリオ、AI 提案根拠）。fetchDealData の結果を渡す。additionalContext にナレッジベースやウェブ検索で得た情報を渡すと分析精度が向上する
-- **generateProposal**: 提案書 PPTX を生成。analyzeDeal の結果を渡す。additionalContext に外部情報を含めると提案書に反映される
-- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正。additionalContext で補足情報を追加可能
+## CRM・商談分析・提案書ツール
 
-**重要**: analyzeDeal / generateProposal / reviseRationale を呼ぶ前に、可能な限り searchKnowledgeBase やウェブ検索で関連情報を収集し、additionalContext として渡してください。これにより知識ベースの情報や最新の業界動向が分析・提案書に反映されます。
+### ツール一覧
+- **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得
+- **fetchDealData**: 特定商談の詳細データを取得
+- **analyzeDeal**: 商談を AI 分析（受注確率、スコア、リスク、提案根拠）。additionalContext に KB・ウェブ検索の情報を渡す
+- **generateProposal**: 提案書 PPTX を生成。analyzeDeal の結果 + additionalContext を渡す
+- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正
 
-ワークフロー例:
-1. listDeals → 商談一覧表示
-2. fetchDealData → 詳細取得
-3. searchKnowledgeBase / webSearch → 顧客・業界の関連情報収集
-4. analyzeDeal(data, additionalContext) → 分析結果提示
-5. ユーザー確認後 → generateProposal(data, analysis, additionalContext) で提案書生成`;
+### ワークフロー（必須遵守）
+「商談」「案件」「CRM」「提案」「分析」等のキーワードでこのワークフローを開始する。
+
+**ステップ 1: 商談一覧を取得・提示**
+- listDeals を呼び、結果を見やすい表形式で表示
+- 表示後、必ず「どの商談を分析しますか？」と聞く。ユーザーが既に特定の商談を指定している場合はステップ 2 へ直接進む
+
+**ステップ 2: ユーザーが商談を選択したら、以下を一気に実行する（途中で止まらない）**
+1. **fetchDealData** で詳細データを取得
+2. **searchKnowledgeBase** で顧客名・業界・商談内容に関連する情報を検索（最低 1 回、関連 KB が複数あれば複数回）
+3. **webSearch / google_search** で顧客企業の最新ニュース・業界動向・競合情報を検索（最低 1 回）
+4. 取得した KB 情報 + ウェブ情報を結合して additionalContext 文字列を作成
+5. **analyzeDeal**(data, additionalContext) で分析実行
+6. 分析結果の要点（受注確率、主要リスク、推奨アクション）をユーザーに簡潔に提示
+7. **generateProposal**(data, analysis, additionalContext) を呼んで提案書パネルを開く
+
+**重要ルール**:
+- ステップ 2 は **1 回の応答ターンで全て実行する**。「分析しましょうか？」「提案書を作りますか？」と途中で聞かない
+- KB 検索・ウェブ検索は **省略禁止**。additionalContext が空だと提案書の品質が大幅に低下する
+- fetchDealData → KB/Web 検索 → analyzeDeal → generateProposal の順序を守る
+- ユーザーが「提案書を作って」「PPTを生成して」等と直接依頼した場合も、listDeals から始めてこのワークフロー全体を実行する`;
   }
 
   // 情報の信頼度ヒエラルキー
@@ -248,6 +263,7 @@ export async function POST(req: Request) {
   let modelOverride: string | null = null;
   let chatId: string | null = null;
   let parentId: string | null = null;
+  let thinking = false;
   try {
     const body = await req.json();
     messages = body.messages;
@@ -257,6 +273,7 @@ export async function POST(req: Request) {
     modelOverride = body.model ?? null;
     chatId = body.chatId ?? null;
     parentId = body.parentId ?? null;
+    thinking = body.thinking === true;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -692,7 +709,7 @@ export async function POST(req: Request) {
   // loadSkill: progressive disclosure — load full skill content on demand
   tools.loadSkill = tool({
     description:
-      "スキルの完全な指示を読み込む。システムプロンプトのスキル一覧に該当するタスクの場合に呼び出す。",
+      "スキルの完全な指示を読み込む。ユーザーのタスクに関連するスキルがあれば確認せず自動で呼び出す。",
     inputSchema: z.object({
       name: z.string().describe("読み込むスキル名"),
     }),
@@ -991,7 +1008,7 @@ export async function POST(req: Request) {
         const list = skillSummaries
           .map((s) => `- ${s.name}: ${s.description}`)
           .join("\n");
-        systemPrompt += `\n\n## スキル\n\nユーザーのリクエストが以下のスキルに該当する場合、\`loadSkill\` ツールでスキルを読み込んでから指示に従ってください。\n\n${list}`;
+        systemPrompt += `\n\n## スキル（重要・積極活用）\n\n以下のスキルが有効です。ユーザーの質問やタスクに関連するスキルがあれば、**聞かずに自動で** \`loadSkill\` を呼んで読み込み、その指示に従って回答してください。「スキルを使いますか？」と確認しない。関連性が少しでもあれば読み込む — 不要な読み込みのコストは低く、活用漏れのコストは高い。\n\n${list}`;
       }
     } catch (e) {
       console.error("[chat] skills injection failed:", e);
@@ -1006,6 +1023,13 @@ export async function POST(req: Request) {
       tools,
       stopWhen: stepCountIs(10),
       maxOutputTokens: 8192,
+      ...(thinking && useGemini
+        ? {
+            providerOptions: {
+              google: { thinkingConfig: { thinkingBudget: 8192 } },
+            },
+          }
+        : {}),
     });
 
     const result = await agent.stream({
@@ -1035,6 +1059,7 @@ export async function POST(req: Request) {
     });
 
     return result.toUIMessageStreamResponse({
+      sendReasoning: true,
       originalMessages: messages,
       onFinish: async ({ responseMessage }) => {
         // Server-side persistence — fires even on client disconnect (via TransformStream cancel handler)
