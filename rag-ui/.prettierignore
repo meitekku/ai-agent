@@ -2,3 +2,5 @@
 node_modules
 .agents
 .claude
+bun.lock
+*.lockb
