@@ -119,9 +119,9 @@ export function GraphCanvas({
       weight: l.weight,
     }));
 
-    const sim = createSimulation(nodes, links, () => {
-      setSimNodes([...nodes]);
-    });
+    // d3 mutates node positions in place — useFrame reads them directly.
+    // No need to setState on every tick (~300 re-renders eliminated).
+    const sim = createSimulation(nodes, links, () => {});
 
     simRef.current = sim;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync init from simulation setup

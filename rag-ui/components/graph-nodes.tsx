@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useMemo, useCallback, memo } from "react";
+import { useRef, useMemo, useCallback } from "react";
 import { useFrame, ThreeEvent } from "@react-three/fiber";
-import { Billboard, Text } from "@react-three/drei";
+import { Text } from "@react-three/drei";
 import { InstancedMesh, Color, Object3D, Group, Vector3 } from "three";
 import type { SimNode } from "@/lib/force-simulation";
 
@@ -64,6 +64,18 @@ const fragmentShader = /* glsl */ `
 `;
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const LABEL_REF_DIST = 80;
+const LABEL_MIN_SCALE = 0.12;
+const LABEL_MAX_SCALE = 1.2;
+
+const dummy = new Object3D();
+const tempColor = new Color();
+const _labelPos = new Vector3();
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -77,9 +89,6 @@ interface GraphNodesProps {
   isDark: boolean;
 }
 
-const dummy = new Object3D();
-const tempColor = new Color();
-
 export function GraphNodes({
   nodes,
   communityCount,
@@ -90,6 +99,7 @@ export function GraphNodes({
   isDark,
 }: GraphNodesProps) {
   const meshRef = useRef<InstancedMesh>(null);
+  const labelRefs = useRef<(Group | null)[]>([]);
 
   const idToIndex = useMemo(() => {
     const map = new Map<string, number>();
@@ -108,18 +118,33 @@ export function GraphNodes({
     return nodes.map((n) => Math.log2(n.degree + 1) * 1.2 + 1.0);
   }, [nodes]);
 
-  useFrame(() => {
+  // Pre-compute indices for fast integer comparison in useFrame
+  const hoveredIdx = useMemo(
+    () => (hoveredId ? idToIndex.get(hoveredId) ?? -1 : -1),
+    [hoveredId, idToIndex],
+  );
+  const selectedIdx = useMemo(
+    () => (selectedId ? idToIndex.get(selectedId) ?? -1 : -1),
+    [selectedId, idToIndex],
+  );
+
+  // Single useFrame: instanced mesh + all labels (replaces 2N individual useFrame callbacks)
+  useFrame(({ camera }) => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
       const s = sizes[i];
-      const isHovered = n.id === hoveredId;
-      const isSelected = n.id === selectedId;
+      const isHovered = i === hoveredIdx;
+      const isSelected = i === selectedIdx;
       const scale = isHovered || isSelected ? s * 1.5 : s;
+      const nx = n.x || 0;
+      const ny = n.y || 0;
+      const nz = n.z || 0;
 
-      dummy.position.set(n.x || 0, n.y || 0, n.z || 0);
+      // Instanced mesh
+      dummy.position.set(nx, ny, nz);
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
@@ -131,6 +156,23 @@ export function GraphNodes({
         tempColor.set(c);
       }
       mesh.setColorAt(i, tempColor);
+
+      // Label: position + face camera + distance scale
+      const g = labelRefs.current[i];
+      if (g) {
+        g.position.set(nx, ny + s + 2, nz);
+        g.quaternion.copy(camera.quaternion);
+        _labelPos.set(nx, ny, nz);
+        const dist = camera.position.distanceTo(_labelPos);
+        const ls =
+          isHovered || isSelected
+            ? LABEL_MAX_SCALE
+            : Math.max(
+                LABEL_MIN_SCALE,
+                Math.min(LABEL_MAX_SCALE, LABEL_REF_DIST / dist),
+              );
+        g.scale.setScalar(ls);
+      }
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -182,118 +224,46 @@ export function GraphNodes({
         />
       </instancedMesh>
 
-      {/* Labels for all nodes — distance-based visibility */}
-      {nodes.map((n) => {
-        const idx = idToIndex.get(n.id) ?? 0;
-        return (
-          <NodeLabel
-            key={n.id}
-            node={n}
-            yOffset={sizes[idx] + 2}
-            isHovered={hoveredId === n.id}
-            isSelected={selectedId === n.id}
-            onHover={onHover}
-            onSelect={onSelect}
-            isDark={isDark}
-          />
-        );
-      })}
+      {/* Labels — positioned + face-camera + scaled in batch useFrame above */}
+      {nodes.map((n, i) => (
+        <group
+          key={n.id}
+          ref={(el) => {
+            labelRefs.current[i] = el;
+          }}
+          onPointerOver={() => {
+            onHover(n.id);
+            document.body.style.cursor = "pointer";
+          }}
+          onPointerOut={() => {
+            onHover(null);
+            document.body.style.cursor = "auto";
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(n.id);
+          }}
+        >
+          <Text
+            fontSize={3.2}
+            color={
+              hoveredId === n.id || selectedId === n.id
+                ? isDark
+                  ? "#ffffff"
+                  : "#0f172a"
+                : isDark
+                  ? "#cbd5e1"
+                  : "#334155"
+            }
+            anchorX="center"
+            anchorY="bottom"
+            outlineWidth={0.2}
+            outlineColor={isDark ? "#000000" : "#ffffff"}
+          >
+            {n.id.length > 20 ? n.id.slice(0, 20) + "…" : n.id}
+          </Text>
+        </group>
+      ))}
     </>
   );
 }
-
-// ---------------------------------------------------------------------------
-// NodeLabel — memo'd, distance-based scaling via useFrame (no React re-render)
-// ---------------------------------------------------------------------------
-
-const LABEL_REF_DIST = 80; // distance at which scale = 1.0
-const LABEL_MIN_SCALE = 0.12;
-const LABEL_MAX_SCALE = 1.2;
-
-const NodeLabel = memo(function NodeLabel({
-  node,
-  yOffset,
-  isHovered,
-  isSelected,
-  onHover,
-  onSelect,
-  isDark,
-}: {
-  node: SimNode;
-  yOffset: number;
-  isHovered: boolean;
-  isSelected: boolean;
-  onHover: (id: string | null) => void;
-  onSelect: (id: string) => void;
-  isDark: boolean;
-}) {
-  const groupRef = useRef<Group>(null);
-  const _pos = useRef(new Vector3());
-
-  useFrame(({ camera }) => {
-    const g = groupRef.current;
-    if (!g) return;
-
-    const nx = node.x || 0;
-    const ny = node.y || 0;
-    const nz = node.z || 0;
-    g.position.set(nx, ny + yOffset, nz);
-
-    _pos.current.set(nx, ny, nz);
-    const dist = camera.position.distanceTo(_pos.current);
-
-    if (isHovered || isSelected) {
-      g.scale.setScalar(LABEL_MAX_SCALE);
-      g.visible = true;
-      return;
-    }
-
-    const s = Math.max(LABEL_MIN_SCALE, Math.min(LABEL_MAX_SCALE, LABEL_REF_DIST / dist));
-    g.scale.setScalar(s);
-    g.visible = true;
-  });
-
-  const label = node.id.length > 20 ? node.id.slice(0, 20) + "…" : node.id;
-
-  return (
-    <group ref={groupRef}>
-      <Billboard
-        follow
-        lockX={false}
-        lockY={false}
-        lockZ={false}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(node.id);
-        }}
-        onPointerOver={() => {
-          onHover(node.id);
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          onHover(null);
-          document.body.style.cursor = "auto";
-        }}
-      >
-        <Text
-          fontSize={3.2}
-          color={
-            isHovered || isSelected
-              ? isDark
-                ? "#ffffff"
-                : "#0f172a"
-              : isDark
-                ? "#cbd5e1"
-                : "#334155"
-          }
-          anchorX="center"
-          anchorY="bottom"
-          outlineWidth={0.2}
-          outlineColor={isDark ? "#000000" : "#ffffff"}
-        >
-          {label}
-        </Text>
-      </Billboard>
-    </group>
-  );
-});

@@ -113,6 +113,15 @@ export function GraphEdges({
     linePos.needsUpdate = true;
     lineColor.needsUpdate = true;
     particlePos.needsUpdate = true;
+
+    // Update line opacity only when value actually changes
+    if (lineMat) {
+      const targetOpacity = hoveredId ? 0.12 : isDark ? 0.35 : 0.5;
+      if (lineMat.opacity !== targetOpacity) {
+        lineMat.opacity = targetOpacity;
+        lineMat.needsUpdate = true;
+      }
+    }
   });
 
   // Line geometry
@@ -134,12 +143,6 @@ export function GraphEdges({
       depthWrite: false,
     });
   }, []);
-
-  useFrame(() => {
-    if (lineMat) {
-      lineMat.setValues({ opacity: hoveredId ? 0.12 : isDark ? 0.35 : 0.5 });
-    }
-  });
 
   // Particle geometry
   const particleGeo = useMemo(() => {
