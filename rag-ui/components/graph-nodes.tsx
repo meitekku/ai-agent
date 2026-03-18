@@ -203,10 +203,12 @@ export function GraphNodes({
 }
 
 // ---------------------------------------------------------------------------
-// NodeLabel — memo'd, distance-based visibility via useFrame (no React re-render)
+// NodeLabel — memo'd, distance-based scaling via useFrame (no React re-render)
 // ---------------------------------------------------------------------------
 
-const LABEL_DISTANCE_THRESHOLD = 300;
+const LABEL_REF_DIST = 80; // distance at which scale = 1.0
+const LABEL_MIN_SCALE = 0.12;
+const LABEL_MAX_SCALE = 1.2;
 
 const NodeLabel = memo(function NodeLabel({
   node,
@@ -237,14 +239,18 @@ const NodeLabel = memo(function NodeLabel({
     const nz = node.z || 0;
     g.position.set(nx, ny + yOffset, nz);
 
+    _pos.current.set(nx, ny, nz);
+    const dist = camera.position.distanceTo(_pos.current);
+
     if (isHovered || isSelected) {
+      g.scale.setScalar(LABEL_MAX_SCALE);
       g.visible = true;
       return;
     }
-    _pos.current.set(nx, ny, nz);
-    g.visible =
-      camera.position.distanceToSquared(_pos.current) <
-      LABEL_DISTANCE_THRESHOLD * LABEL_DISTANCE_THRESHOLD;
+
+    const s = Math.max(LABEL_MIN_SCALE, Math.min(LABEL_MAX_SCALE, LABEL_REF_DIST / dist));
+    g.scale.setScalar(s);
+    g.visible = true;
   });
 
   const label = node.id.length > 20 ? node.id.slice(0, 20) + "…" : node.id;
