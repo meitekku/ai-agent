@@ -88,7 +88,7 @@ export const SuggestionCard = ({
     className={cn(
       "group/card flex flex-col items-start gap-1.5 rounded-xl border bg-card p-4 text-left",
       "transition-colors hover:bg-accent/50 hover:border-accent-foreground/20",
-      "w-[280px] shrink-0 cursor-pointer whitespace-normal",
+      "min-w-0 cursor-pointer whitespace-normal",
       className,
     )}
     onClick={() => onClick?.(data.prompt)}

@@ -733,7 +733,7 @@ export function ChatPage({
       <Conversation className="flex-1 min-w-0">
         <ConversationContent className="min-h-full !gap-0 !p-0">
           {messages.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center bg-radial-glow">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 pb-32 text-center bg-radial-glow">
               {emptyStateIcon}
               <div className="space-y-1">
                 <h3 className="font-medium text-sm">AI チャットへようこそ</h3>
