@@ -74,10 +74,9 @@ export async function insertKbFile(file: {
 
 export async function getKbFile(id: string): Promise<KbFileRow | null> {
   await ensureKbFilesTables();
-  const res = await getPool().query(
-    `SELECT * FROM kb_files WHERE id = $1`,
-    [id],
-  );
+  const res = await getPool().query(`SELECT * FROM kb_files WHERE id = $1`, [
+    id,
+  ]);
   if (res.rows.length === 0) return null;
   return res.rows[0];
 }

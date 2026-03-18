@@ -128,17 +128,14 @@ export function WidgetRenderer({
   }, [widgetCode]);
 
   // ── Streaming updates ──────────────────────────────────────────────────
-  const sendUpdate = useCallback(
-    (html: string) => {
-      if (finalizedRef.current) return;
-      const iframe = iframeRef.current;
-      if (!iframe?.contentWindow) return;
-      if (html === lastSentRef.current) return;
-      lastSentRef.current = html;
-      iframe.contentWindow.postMessage({ type: "widget:update", html }, "*");
-    },
-    [],
-  );
+  const sendUpdate = useCallback((html: string) => {
+    if (finalizedRef.current) return;
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    if (html === lastSentRef.current) return;
+    lastSentRef.current = html;
+    iframe.contentWindow.postMessage({ type: "widget:update", html }, "*");
+  }, []);
 
   useEffect(() => {
     if (!isStreaming || !iframeReady) return;
@@ -217,7 +214,9 @@ export function WidgetRenderer({
       <motion.div
         className="overflow-hidden"
         animate={{ height: iframeHeight || "auto" }}
-        transition={restored ? { duration: 0 } : { duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        transition={
+          restored ? { duration: 0 } : { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
+        }
       >
         <iframe
           ref={iframeRef}

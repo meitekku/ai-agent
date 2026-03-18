@@ -13,10 +13,7 @@ function parseFrontmatter(md: string) {
   return { frontmatter, body: match[2] };
 }
 
-async function fetchSkillMd(
-  source: string,
-  skillId: string,
-): Promise<string> {
+async function fetchSkillMd(source: string, skillId: string): Promise<string> {
   const branches = ["main", "master"];
   const paths = [
     `skills/${skillId}/SKILL.md`,
@@ -44,7 +41,9 @@ async function fetchSkillMd(
       const entry = tree.tree?.find(
         (e: { path: string }) =>
           e.path.endsWith("/SKILL.md") &&
-          e.path.toLowerCase().includes(skillId.toLowerCase().replace(/^[^/]+-/, "")),
+          e.path
+            .toLowerCase()
+            .includes(skillId.toLowerCase().replace(/^[^/]+-/, "")),
       );
       if (entry) {
         const rawRes = await fetch(

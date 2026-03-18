@@ -139,8 +139,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
 
   // Flatten pages → conversations → date groups → flat rows (stable memo)
   const { conversations, flatRows } = useMemo(() => {
-    const convs =
-      historyData?.pages.flatMap((p) => p.conversations) ?? [];
+    const convs = historyData?.pages.flatMap((p) => p.conversations) ?? [];
     const groups = groupByDate(convs);
     const rows: FlatRow[] = [];
     for (const group of groups) {
@@ -173,7 +172,13 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
     ) {
       fetchNextPage();
     }
-  }, [virtualItems, hasNextPage, isFetchingNextPage, fetchNextPage, flatRows.length]);
+  }, [
+    virtualItems,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    flatRows.length,
+  ]);
 
   // Delete confirmation dialog state
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -235,7 +240,8 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                   e.preventDefault();
                   setNavGuardTarget({
                     href: item.href,
-                    action: item.href === "/new" ? incrementChatReset : undefined,
+                    action:
+                      item.href === "/new" ? incrementChatReset : undefined,
                   });
                   return;
                 }
@@ -270,7 +276,10 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-2">
                     <Skeleton className="size-3.5 shrink-0 rounded" />
-                    <Skeleton className="h-3.5 flex-1" style={{ width: `${60 + (i * 13) % 30}%` }} />
+                    <Skeleton
+                      className="h-3.5 flex-1"
+                      style={{ width: `${60 + ((i * 13) % 30)}%` }}
+                    />
                   </div>
                 ))}
               </div>
@@ -450,7 +459,9 @@ export function AppSidebar({ initialOpen }: { initialOpen: boolean }) {
   // Before hydration use server value; after, use Zustand
   const [hydrated, setHydrated] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration sync
-  useEffect(() => { setHydrated(true); }, []);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   const isOpen = hydrated ? sidebarOpen : initialOpen;
 
   const handleClose = useCallback(() => {

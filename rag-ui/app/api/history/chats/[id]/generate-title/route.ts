@@ -13,7 +13,10 @@ export async function POST(_req: Request, { params }: Params) {
   try {
     const data = await getConversation(id);
     if (!data) {
-      return Response.json({ error: "Conversation not found" }, { status: 404 });
+      return Response.json(
+        { error: "Conversation not found" },
+        { status: 404 },
+      );
     }
 
     // Extract first user message and first assistant reply

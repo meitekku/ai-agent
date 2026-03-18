@@ -151,7 +151,10 @@ function findDraggableBlocks(container: HTMLElement): HTMLElement[] {
       const sigKids = significantChildren(child);
       const isLarge = child.offsetWidth > 640 || child.offsetHeight > 360;
       results.push(child);
-      if (depth < 6 && (sigKids.length >= 2 || (isLarge && sigKids.length >= 1))) {
+      if (
+        depth < 6 &&
+        (sigKids.length >= 2 || (isLarge && sigKids.length >= 1))
+      ) {
         collect(child, depth + 1);
       }
     }
@@ -191,7 +194,9 @@ function setupDragHandles(container: HTMLElement) {
   for (const el of blocks) {
     if (el.hasAttribute("data-draggable")) continue;
     el.setAttribute("data-draggable", "");
-    const cs = (container.ownerDocument.defaultView || window).getComputedStyle(el);
+    const cs = (container.ownerDocument.defaultView || window).getComputedStyle(
+      el,
+    );
     if (cs.position === "static") {
       el.style.position = "relative";
       el.setAttribute("data-drag-pos", "");
@@ -225,7 +230,9 @@ function setupDragHandles(container: HTMLElement) {
 }
 
 function cleanupDragHandles(container: HTMLElement) {
-  container.querySelectorAll("[data-drag-toolbar]").forEach((el) => el.remove());
+  container
+    .querySelectorAll("[data-drag-toolbar]")
+    .forEach((el) => el.remove());
   container.querySelectorAll("[data-resize]").forEach((el) => el.remove());
   container.querySelectorAll("[data-draggable]").forEach((el) => {
     el.removeAttribute("data-draggable");
@@ -431,7 +438,15 @@ function parsePlanMd(md: string): { title: string; slides: SlideSection[] } {
 // ============================================================
 
 export function SlidePanel() {
-  const { open, question, answer, instructions, styleOptions, deckId, closePanel } = useSlidePanelStore();
+  const {
+    open,
+    question,
+    answer,
+    instructions,
+    styleOptions,
+    deckId,
+    closePanel,
+  } = useSlidePanelStore();
 
   // Phase state
   const [phase, setPhase] = useState<Phase>("planning");
@@ -537,7 +552,9 @@ export function SlidePanel() {
     if (!open || initiatedRef.current) return;
 
     // Check if data changed (new generation request)
-    const dataChanged = prevDataRef.current.question !== question || prevDataRef.current.answer !== answer;
+    const dataChanged =
+      prevDataRef.current.question !== question ||
+      prevDataRef.current.answer !== answer;
     if (dataChanged && (question || answer)) {
       // Reset for new generation
       setPhase("planning");
@@ -594,7 +611,9 @@ export function SlidePanel() {
   useEffect(() => {
     if (open) {
       // Check if this is a re-open with same data (cached slides available)
-      const sameData = prevDataRef.current.question === question && prevDataRef.current.answer === answer;
+      const sameData =
+        prevDataRef.current.question === question &&
+        prevDataRef.current.answer === answer;
       if (sameData && generatedSlides.length > 0 && !initiatedRef.current) {
         // Re-open: skip fetch, go straight to done
         initiatedRef.current = true;
@@ -634,7 +653,12 @@ export function SlidePanel() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question, answer, instructions, styleOptions }),
+          body: JSON.stringify({
+            question,
+            answer,
+            instructions,
+            styleOptions,
+          }),
           signal: controller.signal,
         },
         PLAN_TIMEOUT_MS,
@@ -748,8 +772,7 @@ export function SlidePanel() {
             if (e instanceof DOMException && e.name === "AbortError") return;
 
             // Per-slide failure — use fallback, continue
-            const errMsg =
-              e instanceof Error ? e.message : "Generation failed";
+            const errMsg = e instanceof Error ? e.message : "Generation failed";
             console.error(`[slide-panel] Slide ${i + 1} failed:`, errMsg);
             slides[i] = {
               index: i,
@@ -938,12 +961,34 @@ export function SlidePanel() {
           const sourceEls = sourceBody.querySelectorAll("*");
           const cloneEls = wrapper.querySelectorAll("*");
           const styleProps = [
-            "display", "position", "top", "right", "bottom", "left",
-            "width", "height", "margin", "padding", "border", "border-radius",
-            "background", "background-color", "color", "font-size",
-            "font-weight", "font-family", "line-height", "text-align",
-            "flex-direction", "align-items", "justify-content", "gap",
-            "overflow", "opacity", "box-shadow", "transform",
+            "display",
+            "position",
+            "top",
+            "right",
+            "bottom",
+            "left",
+            "width",
+            "height",
+            "margin",
+            "padding",
+            "border",
+            "border-radius",
+            "background",
+            "background-color",
+            "color",
+            "font-size",
+            "font-weight",
+            "font-family",
+            "line-height",
+            "text-align",
+            "flex-direction",
+            "align-items",
+            "justify-content",
+            "gap",
+            "overflow",
+            "opacity",
+            "box-shadow",
+            "transform",
           ];
           for (let j = 0; j < sourceEls.length && j < cloneEls.length; j++) {
             const computed = iframeWin.getComputedStyle(sourceEls[j]);
@@ -1111,12 +1156,17 @@ export function SlidePanel() {
       // Set up contentEditable on text elements
       let editables = container.querySelectorAll('[data-editable="true"]');
       if (editables.length === 0) {
-        editables = container.querySelectorAll("h1, h2, h3, h4, h5, h6, p, li, td, th, span, div");
+        editables = container.querySelectorAll(
+          "h1, h2, h3, h4, h5, h6, p, li, td, th, span, div",
+        );
       }
       editables.forEach((el) => {
         const htmlEl = el as HTMLElement;
         const hasDirectText = Array.from(htmlEl.childNodes).some(
-          (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0,
+          (n) =>
+            n.nodeType === Node.TEXT_NODE &&
+            n.textContent &&
+            n.textContent.trim().length > 0,
         );
         if (!hasDirectText && !htmlEl.hasAttribute("data-editable")) return;
         htmlEl.contentEditable = "true";
@@ -1147,7 +1197,9 @@ export function SlidePanel() {
       // -- JS-based hover tracking --
       let hoveredBlock: HTMLElement | null = null;
       const onHoverMove = (e: MouseEvent) => {
-        const block = (e.target as HTMLElement).closest("[data-draggable]") as HTMLElement | null;
+        const block = (e.target as HTMLElement).closest(
+          "[data-draggable]",
+        ) as HTMLElement | null;
         if (block === hoveredBlock) return;
         if (hoveredBlock) hoveredBlock.removeAttribute("data-hovered");
         if (block) block.setAttribute("data-hovered", "");
@@ -1165,8 +1217,16 @@ export function SlidePanel() {
       const onShiftClick = (e: MouseEvent) => {
         if (!e.shiftKey) return;
         const target = e.target as HTMLElement;
-        if (target.contentEditable === "true" || target.closest('[contenteditable="true"]')) return;
-        if (target.closest("[data-drag-toolbar]") || target.closest("[data-resize]")) return;
+        if (
+          target.contentEditable === "true" ||
+          target.closest('[contenteditable="true"]')
+        )
+          return;
+        if (
+          target.closest("[data-drag-toolbar]") ||
+          target.closest("[data-resize]")
+        )
+          return;
         const block = target.closest("[data-draggable]") as HTMLElement | null;
         if (!block) return;
         e.preventDefault();
@@ -1193,11 +1253,15 @@ export function SlidePanel() {
 
       const onDragMouseDown = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        const actionBtn = target.closest("[data-block-action]") as HTMLElement | null;
+        const actionBtn = target.closest(
+          "[data-block-action]",
+        ) as HTMLElement | null;
         if (actionBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const block = actionBtn.closest("[data-draggable]") as HTMLElement | null;
+          const block = actionBtn.closest(
+            "[data-draggable]",
+          ) as HTMLElement | null;
           if (!block) return;
           const action = actionBtn.getAttribute("data-block-action");
           if (action === "delete") {
@@ -1207,8 +1271,12 @@ export function SlidePanel() {
           }
           if (action === "copy") {
             const clone = block.cloneNode(true) as HTMLElement;
-            clone.querySelectorAll("[data-drag-toolbar]").forEach((el) => el.remove());
-            clone.querySelectorAll("[data-resize]").forEach((el) => el.remove());
+            clone
+              .querySelectorAll("[data-drag-toolbar]")
+              .forEach((el) => el.remove());
+            clone
+              .querySelectorAll("[data-resize]")
+              .forEach((el) => el.remove());
             clone.removeAttribute("data-draggable");
             clone.removeAttribute("data-drag-pos");
             clone.removeAttribute("data-hovered");
@@ -1320,9 +1388,15 @@ export function SlidePanel() {
         const dir = resizeDir;
 
         if (dir.includes("e")) newW = Math.max(48, resizeInitW + rawDx);
-        if (dir.includes("w")) { newW = Math.max(48, resizeInitW - rawDx); translateDx = resizeInitW - newW; }
+        if (dir.includes("w")) {
+          newW = Math.max(48, resizeInitW - rawDx);
+          translateDx = resizeInitW - newW;
+        }
         if (dir.includes("s")) newH = Math.max(24, resizeInitH + rawDy);
-        if (dir.includes("n")) { newH = Math.max(24, resizeInitH - rawDy); translateDy = resizeInitH - newH; }
+        if (dir.includes("n")) {
+          newH = Math.max(24, resizeInitH - rawDy);
+          translateDy = resizeInitH - newH;
+        }
 
         resizeEl.style.width = `${newW}px`;
         resizeEl.style.height = `${newH}px`;
@@ -1449,7 +1523,10 @@ export function SlidePanel() {
     setGeneratedSlides((prev) =>
       prev.map((s, i) => {
         if (i === activeIndex) return { ...s, html: updatedHtml };
-        const cleaned = s.html.replace(/<style id="__font-override">[^<]*<\/style>/g, "");
+        const cleaned = s.html.replace(
+          /<style id="__font-override">[^<]*<\/style>/g,
+          "",
+        );
         return { ...s, html: overrideTag + cleaned };
       }),
     );
@@ -1509,20 +1586,32 @@ export function SlidePanel() {
       if (!res.ok) {
         const text = await res.text();
         let detail = `HTTP ${res.status}`;
-        try { detail = JSON.parse(text).detail || detail; } catch { /* ignore */ }
+        try {
+          detail = JSON.parse(text).detail || detail;
+        } catch {
+          /* ignore */
+        }
         throw new Error(detail);
       }
 
       const data = await res.json();
       setGeneratedSlides((prev) =>
-        prev.map((s, i) => (i === activeIndex ? { ...s, html: data.html || "" } : s)),
+        prev.map((s, i) =>
+          i === activeIndex ? { ...s, html: data.html || "" } : s,
+        ),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Redraw failed");
     } finally {
       setRedrawing(false);
     }
-  }, [generatedSlides, activeIndex, slideSections, deckTitle, persistCurrentSlide]);
+  }, [
+    generatedSlides,
+    activeIndex,
+    slideSections,
+    deckTitle,
+    persistCurrentSlide,
+  ]);
 
   const handleToggleEditing = useCallback(() => {
     if (editing) {
@@ -1534,10 +1623,13 @@ export function SlidePanel() {
   }, [editing, persistCurrentSlide]);
 
   // Persist before switching slides
-  const handleSlideChange = useCallback((newIndex: number) => {
-    if (editing) persistCurrentSlide();
-    setActiveIndex(newIndex);
-  }, [editing, persistCurrentSlide]);
+  const handleSlideChange = useCallback(
+    (newIndex: number) => {
+      if (editing) persistCurrentSlide();
+      setActiveIndex(newIndex);
+    },
+    [editing, persistCurrentSlide],
+  );
 
   // ============================================================
   // Keyboard navigation
@@ -1557,7 +1649,9 @@ export function SlidePanel() {
       switch (e.key) {
         case "ArrowRight":
           e.preventDefault();
-          handleSlideChange(Math.min(activeIndex + 1, generatedSlides.length - 1));
+          handleSlideChange(
+            Math.min(activeIndex + 1, generatedSlides.length - 1),
+          );
           break;
         case "ArrowLeft":
           e.preventDefault();
@@ -1577,7 +1671,17 @@ export function SlidePanel() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [phase, open, generatedSlides.length, closePanel, editing, expanded, activeIndex, handleSlideChange, handleToggleEditing]);
+  }, [
+    phase,
+    open,
+    generatedSlides.length,
+    closePanel,
+    editing,
+    expanded,
+    activeIndex,
+    handleSlideChange,
+    handleToggleEditing,
+  ]);
 
   if (!open) return null;
 
@@ -1597,7 +1701,10 @@ export function SlidePanel() {
       if (!panelResizingRef.current) return;
       // Dragging left edge: moving left = wider, moving right = narrower
       const delta = panelResizeStartXRef.current - ev.clientX;
-      const newW = Math.max(400, Math.min(900, panelResizeStartWRef.current + delta));
+      const newW = Math.max(
+        400,
+        Math.min(900, panelResizeStartWRef.current + delta),
+      );
       setPanelWidth(newW);
     };
     const onUp = () => {
@@ -1645,7 +1752,9 @@ export function SlidePanel() {
             onChange={(e) => applyGlobalFont(e.target.value)}
           >
             {FONT_PRESETS.map((f) => (
-              <option key={f.label} value={f.css}>{f.label}</option>
+              <option key={f.label} value={f.css}>
+                {f.label}
+              </option>
             ))}
           </select>
 
@@ -1672,7 +1781,11 @@ export function SlidePanel() {
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
             title="再描画"
           >
-            {redrawing ? <Loader2Icon className="size-3 animate-spin" /> : <RefreshCwIcon className="size-3" />}
+            {redrawing ? (
+              <Loader2Icon className="size-3 animate-spin" />
+            ) : (
+              <RefreshCwIcon className="size-3" />
+            )}
             再描画
           </button>
 
@@ -1725,7 +1838,11 @@ export function SlidePanel() {
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             title={expanded ? "パネルに戻す" : "全画面編集"}
           >
-            {expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
+            {expanded ? (
+              <Minimize2Icon className="size-3.5" />
+            ) : (
+              <Maximize2Icon className="size-3.5" />
+            )}
           </button>
           <button
             onClick={handleToggleEditing}
@@ -1898,13 +2015,10 @@ export function SlidePanel() {
                       </>
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground/50">
-                        {i ===
-                        generatedSlides.filter((s) => s).length ? (
+                        {i === generatedSlides.filter((s) => s).length ? (
                           <Loader2Icon className="size-4 animate-spin" />
                         ) : null}
-                        <span className="text-[10px]">
-                          {section.title}
-                        </span>
+                        <span className="text-[10px]">{section.title}</span>
                       </div>
                     )}
                   </div>
@@ -1975,7 +2089,11 @@ export function SlidePanel() {
               {activeIndex + 1} / {generatedSlides.length}
             </span>
             <button
-              onClick={() => handleSlideChange(Math.min(activeIndex + 1, generatedSlides.length - 1))}
+              onClick={() =>
+                handleSlideChange(
+                  Math.min(activeIndex + 1, generatedSlides.length - 1),
+                )
+              }
               disabled={activeIndex === generatedSlides.length - 1}
               className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-30"
             >

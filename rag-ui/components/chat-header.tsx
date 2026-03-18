@@ -92,7 +92,9 @@ export function ChatHeader() {
         <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
           <ViewIcon className="size-3.5 text-primary" />
         </div>
-        <h1 className="text-sm font-semibold tracking-tight truncate max-w-[200px] sm:max-w-[400px]">{displayTitle}</h1>
+        <h1 className="text-sm font-semibold tracking-tight truncate max-w-[200px] sm:max-w-[400px]">
+          {displayTitle}
+        </h1>
       </div>
       {displaySubtitle && (
         <span className="text-[11px] text-muted-foreground/70 ml-1 hidden sm:inline">

@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  EffectComposer,
-  Bloom,
-  Vignette,
-} from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 
 export function GraphEffects({ isDark }: { isDark: boolean }) {

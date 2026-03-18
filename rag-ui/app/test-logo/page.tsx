@@ -169,7 +169,12 @@ function HoverLogo() {
           r={n.r}
           fill="currentColor"
           animate={{ scale: hovered ? 1.15 : 1 }}
-          transition={{ type: "spring", stiffness: 300, damping: 18, delay: i * 0.05 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 18,
+            delay: i * 0.05,
+          }}
         />
       ))}
       {/* AI コア — グロー */}
@@ -209,8 +214,16 @@ function DataFlowLogo() {
     <svg viewBox={VIEW} fill="none" className="size-full">
       <defs>
         <radialGradient id="particle-glow">
-          <stop offset="0%" className="[stop-color:var(--color-primary)]" stopOpacity={1} />
-          <stop offset="100%" className="[stop-color:var(--color-primary)]" stopOpacity={0} />
+          <stop
+            offset="0%"
+            className="[stop-color:var(--color-primary)]"
+            stopOpacity={1}
+          />
+          <stop
+            offset="100%"
+            className="[stop-color:var(--color-primary)]"
+            stopOpacity={0}
+          />
         </radialGradient>
       </defs>
 
@@ -377,7 +390,12 @@ function ComboLogo({ replay }: { replay: number }) {
           className="fill-primary"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 14, delay: 0.5 }}
+          transition={{
+            type: "spring",
+            stiffness: 200,
+            damping: 14,
+            delay: 0.5,
+          }}
         />
       )}
     </motion.svg>
@@ -448,7 +466,9 @@ export default function TestLogoPage() {
                   {demo.id === "flow" && <DataFlowLogo />}
                   {demo.id === "combo" && <ComboLogo replay={replay} />}
                 </div>
-                <span className="text-xs text-muted-foreground">16px (sidebar)</span>
+                <span className="text-xs text-muted-foreground">
+                  16px (sidebar)
+                </span>
 
                 <div className="flex size-8 items-center justify-center text-foreground">
                   {demo.id === "draw" && <DrawOnLogo replay={replay} />}

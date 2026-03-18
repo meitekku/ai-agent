@@ -57,7 +57,9 @@ export const StepIndicator = memo(function StepIndicator({
       ) : (
         <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
       )}
-      <span className="truncate max-w-xs">{active ? activeLabel : completedLabel}</span>
+      <span className="truncate max-w-xs">
+        {active ? activeLabel : completedLabel}
+      </span>
       {elapsed > 0 && (
         <span className="ml-auto tabular-nums text-[10px] opacity-50">
           {elapsed}秒

@@ -54,16 +54,21 @@ export async function insertChatFile(file: {
   await getPool().query(
     `INSERT INTO chat_files (id, original_name, stored_path, media_type, size_bytes)
      VALUES ($1, $2, $3, $4, $5)`,
-    [file.id, file.originalName, file.storedPath, file.mediaType, file.sizeBytes],
+    [
+      file.id,
+      file.originalName,
+      file.storedPath,
+      file.mediaType,
+      file.sizeBytes,
+    ],
   );
 }
 
 export async function getChatFile(id: string): Promise<ChatFileRow | null> {
   await ensureChatFilesTables();
-  const res = await getPool().query(
-    `SELECT * FROM chat_files WHERE id = $1`,
-    [id],
-  );
+  const res = await getPool().query(`SELECT * FROM chat_files WHERE id = $1`, [
+    id,
+  ]);
   if (res.rows.length === 0) return null;
   return res.rows[0];
 }
@@ -93,9 +98,7 @@ export async function getFileIdsByConversation(
 /**
  * Delete file records by IDs. Returns stored_path list for disk cleanup.
  */
-export async function deleteChatFiles(
-  ids: string[],
-): Promise<string[]> {
+export async function deleteChatFiles(ids: string[]): Promise<string[]> {
   if (ids.length === 0) return [];
   await ensureChatFilesTables();
   const res = await getPool().query(

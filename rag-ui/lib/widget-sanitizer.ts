@@ -34,8 +34,7 @@ export const CDN_WHITELIST = [
 
 const DANGEROUS_TAGS =
   /<(iframe|object|embed|meta|link|base|form)[\s>][\s\S]*?<\/\1>/gi;
-const DANGEROUS_VOID =
-  /<(iframe|object|embed|meta|link|base)\b[^>]*\/?>/gi;
+const DANGEROUS_VOID = /<(iframe|object|embed|meta|link|base)\b[^>]*\/?>/gi;
 
 /**
  * Sanitize widget HTML for streaming preview (no interactivity).

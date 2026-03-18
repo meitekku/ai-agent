@@ -21,7 +21,10 @@ export default function SystemErrorPage() {
           className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
           style={{ background: "rgba(255,255,255,0.03)" }}
         >
-          <AlertTriangle className="h-6 w-6 text-red-400/80" strokeWidth={1.5} />
+          <AlertTriangle
+            className="h-6 w-6 text-red-400/80"
+            strokeWidth={1.5}
+          />
         </div>
 
         <div className="flex flex-col items-center gap-3 text-center">

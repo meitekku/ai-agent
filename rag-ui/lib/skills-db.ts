@@ -102,9 +102,7 @@ export async function getEnabledSkillSummaries(): Promise<
 }
 
 /** Load a single skill's full content by name */
-export async function getSkillByName(
-  name: string,
-): Promise<Skill | null> {
+export async function getSkillByName(name: string): Promise<Skill | null> {
   await ensureSkillsTables();
   const res = await getPool().query(
     `SELECT * FROM skills WHERE enabled = true AND LOWER(name) = LOWER($1) LIMIT 1`,

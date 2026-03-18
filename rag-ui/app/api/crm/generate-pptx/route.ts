@@ -5,7 +5,10 @@ export const maxDuration = 120;
 
 export async function POST(req: Request) {
   if (!CRM_SERVICE_URL) {
-    return Response.json({ error: "CRM service not configured" }, { status: 503 });
+    return Response.json(
+      { error: "CRM service not configured" },
+      { status: 503 },
+    );
   }
 
   try {
@@ -25,13 +28,20 @@ export async function POST(req: Request) {
     const buffer = await res.arrayBuffer();
     return new Response(buffer, {
       headers: {
-        "Content-Type": res.headers.get("Content-Type") || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "Content-Disposition": res.headers.get("Content-Disposition") || 'attachment; filename="proposal.pptx"',
+        "Content-Type":
+          res.headers.get("Content-Type") ||
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "Content-Disposition":
+          res.headers.get("Content-Disposition") ||
+          'attachment; filename="proposal.pptx"',
         "Content-Length": String(buffer.byteLength),
       },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "不明なエラー";
-    return Response.json({ error: `PPTX生成エラー: ${message}` }, { status: 500 });
+    return Response.json(
+      { error: `PPTX生成エラー: ${message}` },
+      { status: 500 },
+    );
   }
 }

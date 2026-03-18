@@ -319,9 +319,7 @@ export const SkillsPage = memo(function SkillsPage() {
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                スキル
-              </h2>
+              <h2 className="text-lg font-semibold tracking-tight">スキル</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 システムプロンプトに注入されるドメイン知識・ワークフロー指示
                 {skills.length > 0 && (
@@ -503,7 +501,12 @@ export const SkillsPage = memo(function SkillsPage() {
         <ScrollArea className="flex-1">
           <div className="mx-auto max-w-3xl px-6 py-2">
             {!registryQuery ? (
-              <RegistryEmptyState onSearch={(q) => { setSearchInput(q); setRegistryQuery(q); }} />
+              <RegistryEmptyState
+                onSearch={(q) => {
+                  setSearchInput(q);
+                  setRegistryQuery(q);
+                }}
+              />
             ) : registryLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2Icon className="size-6 animate-spin text-muted-foreground" />

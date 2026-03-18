@@ -37,7 +37,13 @@ export async function POST(req: Request) {
     }
 
     const model = getSlideModel();
-    const prompt = buildPlanPrompt(question, answer, max_slides, style_options, instructions);
+    const prompt = buildPlanPrompt(
+      question,
+      answer,
+      max_slides,
+      style_options,
+      instructions,
+    );
     const startTime = Date.now();
 
     let planMd: string;

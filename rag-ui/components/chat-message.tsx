@@ -1,6 +1,14 @@
 "use client";
 
-import { memo, useCallback, useState, useRef, useEffect, lazy, Suspense } from "react";
+import {
+  memo,
+  useCallback,
+  useState,
+  useRef,
+  useEffect,
+  lazy,
+  Suspense,
+} from "react";
 import { motion } from "motion/react";
 import type { UIMessage } from "ai";
 import { isToolUIPart, getToolName } from "ai";
@@ -141,8 +149,12 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     return (
       <StepIndicator
         icon={GlobeIcon}
-        activeLabel={query ? `ウェブを検索中 — 「${query}」` : "ウェブを検索中..."}
-        completedLabel={query ? `ウェブ検索完了 — 「${query}」` : "ウェブ検索完了"}
+        activeLabel={
+          query ? `ウェブを検索中 — 「${query}」` : "ウェブを検索中..."
+        }
+        completedLabel={
+          query ? `ウェブ検索完了 — 「${query}」` : "ウェブ検索完了"
+        }
         active={!isComplete}
       />
     );
@@ -150,7 +162,7 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 
   if (toolName === "readPage" || toolName === "readUrl") {
     const url = typeof args?.url === "string" ? args.url : "";
-    const urls = Array.isArray(args?.urls) ? args.urls as string[] : [];
+    const urls = Array.isArray(args?.urls) ? (args.urls as string[]) : [];
     const target = url || (urls.length > 0 ? urls[0] : "");
     let host = "";
     try {
@@ -164,8 +176,12 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     return (
       <StepIndicator
         icon={FileTextIcon}
-        activeLabel={detail ? `ページを読み込み中 — ${detail}` : "ページを読み込み中..."}
-        completedLabel={detail ? `ページ読み込み完了 — ${detail}` : "ページ読み込み完了"}
+        activeLabel={
+          detail ? `ページを読み込み中 — ${detail}` : "ページを読み込み中..."
+        }
+        completedLabel={
+          detail ? `ページ読み込み完了 — ${detail}` : "ページ読み込み完了"
+        }
         active={!isComplete}
       />
     );
@@ -231,8 +247,14 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     return (
       <StepIndicator
         icon={SparklesIcon}
-        activeLabel={name ? `スキルを読み込み中 — 「${name}」` : "スキルを読み込み中..."}
-        completedLabel={name ? `スキルを読み込みました — 「${name}」` : "スキルを読み込みました"}
+        activeLabel={
+          name ? `スキルを読み込み中 — 「${name}」` : "スキルを読み込み中..."
+        }
+        completedLabel={
+          name
+            ? `スキルを読み込みました — 「${name}」`
+            : "スキルを読み込みました"
+        }
         active={!isComplete}
       />
     );
@@ -243,8 +265,16 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     return (
       <StepIndicator
         icon={ImageIcon}
-        activeLabel={prompt ? `画像を生成中 — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」` : "画像を生成中..."}
-        completedLabel={prompt ? `画像を生成しました — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」` : "画像を生成しました"}
+        activeLabel={
+          prompt
+            ? `画像を生成中 — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
+            : "画像を生成中..."
+        }
+        completedLabel={
+          prompt
+            ? `画像を生成しました — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
+            : "画像を生成しました"
+        }
         active={!isComplete}
       />
     );
@@ -301,7 +331,8 @@ type GroupedSegment =
 function isTransparentPart(part: UIMessage["parts"][number]): boolean {
   if (part.type === "step-start") return true;
   if (part.type === "reasoning") return true;
-  if (part.type === "text") return stripThinkTags(part.text).trim().length === 0;
+  if (part.type === "text")
+    return stripThinkTags(part.text).trim().length === 0;
   return false;
 }
 
@@ -349,9 +380,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
   tools: ToolEntry[];
   isStreaming?: boolean;
 }) {
-  const allComplete = tools.every(
-    (t) => t.part.state === "output-available",
-  );
+  const allComplete = tools.every((t) => t.part.state === "output-available");
   const [collapsed, setCollapsed] = useState(
     () => allComplete && tools.length >= 2,
   );
@@ -418,7 +447,9 @@ const ToolCallGroup = memo(function ToolCallGroup({
             <ToolCallIndicator
               toolName={latestTool.toolName}
               state={latestTool.part.state}
-              args={latestTool.part.input as Record<string, unknown> | undefined}
+              args={
+                latestTool.part.input as Record<string, unknown> | undefined
+              }
             />
           </motion.div>
           {tools.length > 1 && (
@@ -767,9 +798,10 @@ export const ChatMessage = memo(function ChatMessage({
                     <img
                       src={part.url}
                       alt={filename}
-                      className={isGenerated
-                        ? "block max-w-md rounded-xl"
-                        : "block size-14 object-cover"
+                      className={
+                        isGenerated
+                          ? "block max-w-md rounded-xl"
+                          : "block size-14 object-cover"
                       }
                     />
                     {/* Hover overlay */}
@@ -851,7 +883,9 @@ export const ChatMessage = memo(function ChatMessage({
           <MessageAction tooltip="再生成" onClick={onRegenerate}>
             <RotateCcwIcon className="size-3.5" />
           </MessageAction>
-          {onGenerateSlides && getMessageText(message) && message.parts.some(
+          {onGenerateSlides &&
+          getMessageText(message) &&
+          message.parts.some(
             (p) => isToolUIPart(p) && getToolName(p) === "suggestSlides",
           ) ? (
             <DropdownMenu>

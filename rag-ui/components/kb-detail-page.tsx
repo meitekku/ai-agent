@@ -86,8 +86,20 @@ const IN_PROGRESS_STATUSES = [
 ];
 
 const SUPPORTED_EXTENSIONS = new Set([
-  ".pdf", ".txt", ".md", ".csv", ".docx", ".xlsx", ".pptx",
-  ".html", ".htm", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+  ".pdf",
+  ".txt",
+  ".md",
+  ".csv",
+  ".docx",
+  ".xlsx",
+  ".pptx",
+  ".html",
+  ".htm",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
 ]);
 
 async function fetchDocuments(kb: string): Promise<DocumentInfo[]> {
@@ -496,12 +508,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                 className="hidden"
                 onChange={handleUpload}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                asChild
-              >
+              <Button variant="outline" size="sm" className="gap-1.5" asChild>
                 <Link href={`/graph/${slug}`}>
                   <NetworkIcon className="size-3.5" />
                   グラフ

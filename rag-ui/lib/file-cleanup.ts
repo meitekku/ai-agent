@@ -6,9 +6,7 @@ import { deleteStoredFile } from "@/lib/file-storage";
  * Default: files older than 60 minutes.
  * Returns count of deleted files.
  */
-export async function cleanupOrphanFiles(
-  maxAgeMinutes = 60,
-): Promise<number> {
+export async function cleanupOrphanFiles(maxAgeMinutes = 60): Promise<number> {
   const orphans = await getOrphanFiles(maxAgeMinutes);
   if (orphans.length === 0) return 0;
 
@@ -17,8 +15,6 @@ export async function cleanupOrphanFiles(
 
   await Promise.allSettled(paths.map((p) => deleteStoredFile(p)));
 
-  console.log(
-    `[file-cleanup] deleted ${paths.length} orphan file(s)`,
-  );
+  console.log(`[file-cleanup] deleted ${paths.length} orphan file(s)`);
   return paths.length;
 }

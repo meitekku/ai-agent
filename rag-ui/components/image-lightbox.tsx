@@ -24,9 +24,7 @@ export function ImageLightbox({
         showCloseButton={false}
         className="max-w-[95vw] sm:max-w-[95vw] w-auto border-none bg-black/90 shadow-2xl ring-0 p-2 gap-0 rounded-2xl"
       >
-        <DialogTitle className="sr-only">
-          {alt ?? "画像プレビュー"}
-        </DialogTitle>
+        <DialogTitle className="sr-only">{alt ?? "画像プレビュー"}</DialogTitle>
         <DialogDescription className="sr-only">
           画像の拡大表示
         </DialogDescription>

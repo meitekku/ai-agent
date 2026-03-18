@@ -45,9 +45,7 @@ export interface RateLimitResult {
   remainingSeconds?: number;
 }
 
-export async function checkGateRateLimit(
-  ip: string,
-): Promise<RateLimitResult> {
+export async function checkGateRateLimit(ip: string): Promise<RateLimitResult> {
   const redis = await getClient();
   if (!redis) return { allowed: true };
 

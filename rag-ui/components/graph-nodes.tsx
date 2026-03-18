@@ -3,13 +3,7 @@
 import { useRef, useMemo, useCallback, memo } from "react";
 import { useFrame, ThreeEvent } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
-import {
-  InstancedMesh,
-  Color,
-  Object3D,
-  Group,
-  Vector3,
-} from "three";
+import { InstancedMesh, Color, Object3D, Group, Vector3 } from "three";
 import type { SimNode } from "@/lib/force-simulation";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +26,8 @@ const PALETTE = [
 ];
 
 function communityColor(community: number, communityCount: number): string {
-  if (communityCount <= PALETTE.length) return PALETTE[community % PALETTE.length];
+  if (communityCount <= PALETTE.length)
+    return PALETTE[community % PALETTE.length];
   const hue = (community / communityCount) * 360;
   return `hsl(${hue}, 80%, 65%)`;
 }
@@ -103,7 +98,9 @@ export function GraphNodes({
   }, [nodes]);
 
   const colors = useMemo(() => {
-    return nodes.map((n) => new Color(communityColor(n.community, communityCount)));
+    return nodes.map(
+      (n) => new Color(communityColor(n.community, communityCount)),
+    );
   }, [nodes, communityCount]);
 
   // Bigger nodes: base 1.0, scale up with degree
@@ -276,8 +273,12 @@ const NodeLabel = memo(function NodeLabel({
           fontSize={3.2}
           color={
             isHovered || isSelected
-              ? isDark ? "#ffffff" : "#0f172a"
-              : isDark ? "#cbd5e1" : "#334155"
+              ? isDark
+                ? "#ffffff"
+                : "#0f172a"
+              : isDark
+                ? "#cbd5e1"
+                : "#334155"
           }
           anchorX="center"
           anchorY="bottom"

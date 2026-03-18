@@ -88,13 +88,16 @@ export function extractPartialWidget(fenceBody: string): {
 
   // Manual string-search extraction for truncated JSON
   const keyIdx = fenceBody.indexOf('"widget_code"');
-  if (keyIdx === -1) return { title: undefined, widgetCode: null, scriptsTruncated: false };
+  if (keyIdx === -1)
+    return { title: undefined, widgetCode: null, scriptsTruncated: false };
 
   const colonIdx = fenceBody.indexOf(":", keyIdx + 13);
-  if (colonIdx === -1) return { title: undefined, widgetCode: null, scriptsTruncated: false };
+  if (colonIdx === -1)
+    return { title: undefined, widgetCode: null, scriptsTruncated: false };
 
   const quoteIdx = fenceBody.indexOf('"', colonIdx + 1);
-  if (quoteIdx === -1) return { title: undefined, widgetCode: null, scriptsTruncated: false };
+  if (quoteIdx === -1)
+    return { title: undefined, widgetCode: null, scriptsTruncated: false };
 
   let raw = fenceBody.slice(quoteIdx + 1);
   // Strip trailing close-quote + brace if present

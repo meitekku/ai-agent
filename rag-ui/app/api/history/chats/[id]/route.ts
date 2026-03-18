@@ -4,10 +4,7 @@ import {
   updateConversation,
   deleteConversation,
 } from "@/lib/chat-db";
-import {
-  getFileIdsByConversation,
-  deleteChatFiles,
-} from "@/lib/chat-files-db";
+import { getFileIdsByConversation, deleteChatFiles } from "@/lib/chat-files-db";
 import { deleteStoredFile } from "@/lib/file-storage";
 
 type Params = { params: Promise<{ id: string }> };

@@ -19,7 +19,10 @@ import { VisualSlideViewer } from "@/components/visual-slide-viewer";
 import { HtmlSlideViewer } from "@/components/html-slide-viewer";
 import { SlideStudio } from "@/components/slide-studio";
 import { SlidePanel } from "@/components/slide-panel";
-import { SlideSetupWizard, type WizardConfig } from "@/components/slide-setup-wizard";
+import {
+  SlideSetupWizard,
+  type WizardConfig,
+} from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
 import { AnimatePresence } from "motion/react";
 import { BookOpenIcon, AlertCircleIcon, ImageIcon } from "lucide-react";
@@ -181,7 +184,6 @@ export function ChatPage({
     stop();
   }, [stop]);
 
-
   // Slide panel (declared early so effects can reference it)
   const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
 
@@ -292,7 +294,8 @@ export function ChatPage({
     for (const part of lastAssistant.parts) {
       if (!isToolUIPart(part) || part.state !== "output-available") continue;
       const toolName = getToolName(part);
-      const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
+      const result = (("result" in part ? part.result : part.output) ??
+        {}) as Record<string, unknown>;
 
       if (toolName === "generateSlides" && result?.triggered) {
         setWizardData({
@@ -355,8 +358,13 @@ export function ChatPage({
       knownCountRef.current = messages.length;
 
       const body = {
-        service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-        chatId: convIdRef.current, parentId: currentLeaf, thinking,
+        service,
+        kb: activeKb,
+        clientTime: getClientTime(),
+        model: chatModel,
+        chatId: convIdRef.current,
+        parentId: currentLeaf,
+        thinking,
       };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
@@ -385,10 +393,17 @@ export function ChatPage({
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
     const regenParentId = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
-    regenerate({ body: {
-      service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-      chatId: convIdRef.current, parentId: regenParentId, thinking,
-    } });
+    regenerate({
+      body: {
+        service,
+        kb: activeKb,
+        clientTime: getClientTime(),
+        model: chatModel,
+        chatId: convIdRef.current,
+        parentId: regenParentId,
+        thinking,
+      },
+    });
   }, [regenerate, service, activeKb, chatModel, thinking, messages]);
 
   // Edit message: create new branch
@@ -417,12 +432,30 @@ export function ChatPage({
       knownCountRef.current = truncated.length;
 
       // Send new message (creates new user+assistant pair as siblings of the edited message)
-      sendMessage({ text: newText }, { body: {
-        service, kb: activeKb, clientTime: getClientTime(), model: chatModel,
-        chatId: convId, parentId, thinking,
-      } });
+      sendMessage(
+        { text: newText },
+        {
+          body: {
+            service,
+            kb: activeKb,
+            clientTime: getClientTime(),
+            model: chatModel,
+            chatId: convId,
+            parentId,
+            thinking,
+          },
+        },
+      );
     },
-    [treeStore, setMessages, sendMessage, service, activeKb, chatModel, thinking],
+    [
+      treeStore,
+      setMessages,
+      sendMessage,
+      service,
+      activeKb,
+      chatModel,
+      thinking,
+    ],
   );
 
   // Branch switching
@@ -470,12 +503,24 @@ export function ChatPage({
 
   const handleWizardComplete = useCallback(
     (config: WizardConfig) => {
-      const styleOptions: import("@/components/style-options-panel").StyleOptions = {};
-      if (config.industries.length > 0) styleOptions.industry = config.industries[0];
+      const styleOptions: import("@/components/style-options-panel").StyleOptions =
+        {};
+      if (config.industries.length > 0)
+        styleOptions.industry = config.industries[0];
       if (config.audience.length > 0) {
         // Check if it's a profession or age group
         const professions = config.audience.filter((a) =>
-          ["人事", "営業", "経営企画", "マーケティング", "管理・経理", "設計・開発", "研究・R&D", "カスタマーサポート", "コンサルティング"].includes(a),
+          [
+            "人事",
+            "営業",
+            "経営企画",
+            "マーケティング",
+            "管理・経理",
+            "設計・開発",
+            "研究・R&D",
+            "カスタマーサポート",
+            "コンサルティング",
+          ].includes(a),
         );
         const ages = config.audience.filter((a) =>
           ["10代〜20代", "30代〜40代", "50代以上", "全年代"].includes(a),
@@ -491,17 +536,11 @@ export function ChatPage({
         parts.push(`産業: ${config.industries.join(", ")}`);
       if (config.audience.length > 0)
         parts.push(`対象者: ${config.audience.join(", ")}`);
-      if (config.colorStyle)
-        parts.push(`配色: ${config.colorStyle}`);
-      if (config.slideCount)
-        parts.push(`枚数: ${config.slideCount}枚`);
-      if (config.additionalNotes)
-        parts.push(config.additionalNotes);
+      if (config.colorStyle) parts.push(`配色: ${config.colorStyle}`);
+      if (config.slideCount) parts.push(`枚数: ${config.slideCount}枚`);
+      if (config.additionalNotes) parts.push(config.additionalNotes);
 
-      const mergedInstructions = [
-        wizardData?.instructions,
-        ...parts,
-      ]
+      const mergedInstructions = [wizardData?.instructions, ...parts]
         .filter(Boolean)
         .join("\n");
 
@@ -556,7 +595,11 @@ export function ChatPage({
   }, [messages]);
 
   const handleGenerateSlides = useCallback(
-    (answerText: string, mode: "html" | "visual" | "studio" | "simple", messageId?: string) => {
+    (
+      answerText: string,
+      mode: "html" | "visual" | "studio" | "simple",
+      messageId?: string,
+    ) => {
       const question = getQuestion();
       switch (mode) {
         case "simple":
@@ -670,7 +713,9 @@ export function ChatPage({
                     stopped={treeStore.nodes[message.id]?.stopped}
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
-                    onGenerateSlides={(text, mode) => handleGenerateSlides(text, mode, message.id)}
+                    onGenerateSlides={(text, mode) =>
+                      handleGenerateSlides(text, mode, message.id)
+                    }
                     onEdit={message.role === "user" ? handleEdit : undefined}
                     branchInfo={branchInfo}
                     onSwitchBranch={handleSwitchBranch}
@@ -724,7 +769,11 @@ export function ChatPage({
                   />
                 )}
               </AnimatePresence>
-              <ChatInput status={status} onSend={handleSend} onStop={handleStop} />
+              <ChatInput
+                status={status}
+                onSend={handleSend}
+                onStop={handleStop}
+              />
             </div>
           </div>
         </ConversationContent>

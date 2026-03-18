@@ -346,8 +346,7 @@ const sdClassName =
  */
 export const MessageResponse = memo(
   ({ className, isActiveStreaming, ...props }: MessageResponseProps) => {
-    const content =
-      typeof props.children === "string" ? props.children : "";
+    const content = typeof props.children === "string" ? props.children : "";
     const hasWidgetFence = content.includes("```show-widget");
 
     // Streamdown native per-word animation (uses defaults from styles.css)
@@ -382,7 +381,11 @@ export const MessageResponse = memo(
         <div className={cn(sdClassName, className)}>
           {segments.map((seg, i) =>
             seg.type === "text" ? (
-              <Streamdown key={`t-${i}`} plugins={streamdownPlugins} {...animProps}>
+              <Streamdown
+                key={`t-${i}`}
+                plugins={streamdownPlugins}
+                {...animProps}
+              >
                 {seg.content}
               </Streamdown>
             ) : (
@@ -423,7 +426,11 @@ export const MessageResponse = memo(
         {/* Completed fences + interleaved text */}
         {completedSegments.map((seg, i) =>
           seg.type === "text" ? (
-            <Streamdown key={`t-${i}`} plugins={streamdownPlugins} {...animProps}>
+            <Streamdown
+              key={`t-${i}`}
+              plugins={streamdownPlugins}
+              {...animProps}
+            >
               {seg.content}
             </Streamdown>
           ) : (

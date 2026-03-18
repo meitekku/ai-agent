@@ -106,8 +106,8 @@ export function SlideSetupWizard({
   const [selectedAudience, setSelectedAudience] = useState<string[]>(() =>
     inferred.profession ? [inferred.profession] : [],
   );
-  const [selectedColor, setSelectedColor] = useState(() =>
-    inferred.colorStyle ?? "",
+  const [selectedColor, setSelectedColor] = useState(
+    () => inferred.colorStyle ?? "",
   );
   const [selectedCount, setSelectedCount] = useState(8);
   const [additionalNotes, setAdditionalNotes] = useState(instructions ?? "");

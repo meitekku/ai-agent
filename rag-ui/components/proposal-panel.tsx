@@ -1,13 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { X, Download, FileText, TrendingUp, AlertTriangle, Target } from "lucide-react";
+import {
+  X,
+  Download,
+  FileText,
+  TrendingUp,
+  AlertTriangle,
+  Target,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useProposalPanelStore } from "@/lib/proposal-panel-store";
 
 export function ProposalPanel() {
-  const { isOpen, data, analysis, additionalContext, close } = useProposalPanelStore();
+  const { isOpen, data, analysis, additionalContext, close } =
+    useProposalPanelStore();
   const [generating, setGenerating] = useState(false);
 
   if (!isOpen || !data || !analysis) return null;
@@ -26,7 +34,11 @@ export function ProposalPanel() {
       const res = await fetch("/api/crm/generate-pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, analysis, ...(additionalContext ? { additionalContext } : {}) }),
+        body: JSON.stringify({
+          data,
+          analysis,
+          ...(additionalContext ? { additionalContext } : {}),
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
@@ -37,8 +49,12 @@ export function ProposalPanel() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const opp = (data as Record<string, unknown>).opportunity as Record<string, unknown> | undefined;
-      const acc = (data as Record<string, unknown>).account as Record<string, unknown> | undefined;
+      const opp = (data as Record<string, unknown>).opportunity as
+        | Record<string, unknown>
+        | undefined;
+      const acc = (data as Record<string, unknown>).account as
+        | Record<string, unknown>
+        | undefined;
       link.download = `提案書_${acc?.Name || ""}_${opp?.Name || ""}.pptx`;
       link.click();
       URL.revokeObjectURL(url);
@@ -50,7 +66,10 @@ export function ProposalPanel() {
   }
 
   const recommendations = (rationale?.serviceRecommendations || []) as Array<{
-    service: string; relevance: string; reason: string; features: string[];
+    service: string;
+    relevance: string;
+    reason: string;
+    features: string[];
   }>;
 
   return (
@@ -71,15 +90,21 @@ export function ProposalPanel() {
         {/* Scores */}
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-lg border p-3 text-center">
-            <div className="text-2xl font-bold text-blue-500">{winProbability}%</div>
+            <div className="text-2xl font-bold text-blue-500">
+              {winProbability}%
+            </div>
             <div className="text-xs text-muted-foreground">受注確率</div>
           </div>
           <div className="rounded-lg border p-3 text-center">
-            <div className="text-2xl font-bold text-green-500">{dealHealthScore}</div>
+            <div className="text-2xl font-bold text-green-500">
+              {dealHealthScore}
+            </div>
             <div className="text-xs text-muted-foreground">健全度</div>
           </div>
           <div className="rounded-lg border p-3 text-center">
-            <div className="text-2xl font-bold text-amber-500">{proposalReadiness}</div>
+            <div className="text-2xl font-bold text-amber-500">
+              {proposalReadiness}
+            </div>
             <div className="text-xs text-muted-foreground">準備度</div>
           </div>
         </div>
@@ -92,7 +117,9 @@ export function ProposalPanel() {
             </h3>
             <ul className="space-y-1">
               {keyDrivers.map((d, i) => (
-                <li key={i} className="text-sm text-muted-foreground">• {d}</li>
+                <li key={i} className="text-sm text-muted-foreground">
+                  • {d}
+                </li>
               ))}
             </ul>
           </div>
@@ -106,7 +133,9 @@ export function ProposalPanel() {
             </h3>
             <ul className="space-y-1">
               {riskFactors.map((r, i) => (
-                <li key={i} className="text-sm text-muted-foreground">• {r}</li>
+                <li key={i} className="text-sm text-muted-foreground">
+                  • {r}
+                </li>
               ))}
             </ul>
           </div>
@@ -124,7 +153,12 @@ export function ProposalPanel() {
                 <div key={i} className="rounded-lg border p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-sm">{rec.service}</span>
-                    <Badge variant={rec.relevance === "primary" ? "default" : "secondary"} className="text-xs">
+                    <Badge
+                      variant={
+                        rec.relevance === "primary" ? "default" : "secondary"
+                      }
+                      className="text-xs"
+                    >
                       {rec.relevance}
                     </Badge>
                   </div>
@@ -136,12 +170,15 @@ export function ProposalPanel() {
         )}
 
         {/* Combined Solution */}
-        {typeof rationale?.combinedSolution === "string" && rationale.combinedSolution && (
-          <div>
-            <h3 className="mb-2 font-medium text-sm">総合ソリューション</h3>
-            <p className="text-sm text-muted-foreground">{rationale.combinedSolution}</p>
-          </div>
-        )}
+        {typeof rationale?.combinedSolution === "string" &&
+          rationale.combinedSolution && (
+            <div>
+              <h3 className="mb-2 font-medium text-sm">総合ソリューション</h3>
+              <p className="text-sm text-muted-foreground">
+                {rationale.combinedSolution}
+              </p>
+            </div>
+          )}
       </div>
 
       {/* Footer */}

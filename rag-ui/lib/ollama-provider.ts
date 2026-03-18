@@ -36,9 +36,10 @@ export const geminiImageModel = gemini?.image("gemini-2.5-flash-image");
 /** Auto-select: Gemini if API key is set, otherwise MLX. Accepts optional model override. */
 export function getChatModel(modelOverride?: string | null) {
   if (gemini) {
-    const model = modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
-      ? modelOverride
-      : GEMINI_MODEL;
+    const model =
+      modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
+        ? modelOverride
+        : GEMINI_MODEL;
     return gemini(model);
   }
   return mlx.chat(MLX_MODEL);

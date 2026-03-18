@@ -69,11 +69,7 @@ export function useFileUpload(
       }));
 
       const formData = new FormData();
-      formData.append(
-        "file",
-        blob,
-        file.filename ?? "file",
-      );
+      formData.append("file", blob, file.filename ?? "file");
 
       try {
         // Use XMLHttpRequest for progress tracking

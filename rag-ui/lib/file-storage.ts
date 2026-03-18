@@ -42,10 +42,7 @@ function _readFile(storedPath: string, baseDir: string): Promise<Buffer> {
   return readFile(join(baseDir, storedPath));
 }
 
-async function _deleteFile(
-  storedPath: string,
-  baseDir: string,
-): Promise<void> {
+async function _deleteFile(storedPath: string, baseDir: string): Promise<void> {
   try {
     await unlink(join(baseDir, storedPath));
   } catch (err: unknown) {

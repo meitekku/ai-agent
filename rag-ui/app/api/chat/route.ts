@@ -21,7 +21,13 @@ import {
   isImageModel,
   geminiImageModel,
 } from "@/lib/ollama-provider";
-import { searchOnly, getKB, listKBs, type SearchResult, type KnowledgeBase } from "@/lib/rag-client";
+import {
+  searchOnly,
+  getKB,
+  listKBs,
+  type SearchResult,
+  type KnowledgeBase,
+} from "@/lib/rag-client";
 
 import { TAVILY_API_KEY, CRM_SERVICE_URL, GEMINI_MODEL } from "@/lib/constants";
 import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
@@ -64,13 +70,13 @@ async function resolveServerFiles(
           const row = await getChatFile(fileId);
           if (!row) continue;
           const buffer = await readStoredFile(row.stored_path);
-          (part as unknown as Record<string, unknown>).data = new Uint8Array(buffer);
-          (part as unknown as Record<string, unknown>).mimeType = row.media_type;
-        } catch (err) {
-          console.error(
-            `[chat] resolveServerFiles failed for ${fileId}:`,
-            err,
+          (part as unknown as Record<string, unknown>).data = new Uint8Array(
+            buffer,
           );
+          (part as unknown as Record<string, unknown>).mimeType =
+            row.media_type;
+        } catch (err) {
+          console.error(`[chat] resolveServerFiles failed for ${fileId}:`, err);
         }
         continue;
       }
@@ -84,7 +90,9 @@ async function resolveServerFiles(
           const base64 = dataStr.slice(commaIdx + 1);
           const mimeType = header.slice(5).split(";")[0];
           const binary = Buffer.from(base64, "base64");
-          (part as unknown as Record<string, unknown>).data = new Uint8Array(binary);
+          (part as unknown as Record<string, unknown>).data = new Uint8Array(
+            binary,
+          );
           (part as unknown as Record<string, unknown>).mimeType = mimeType;
         } catch (err) {
           console.error(
@@ -97,7 +105,11 @@ async function resolveServerFiles(
   }
 }
 
-function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: boolean): string {
+function buildSystemPrompt(
+  hasKb: boolean,
+  clientTime?: string,
+  autoDiscovery?: boolean,
+): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   const hasWeb = hasTavily || hasGoogleSearch;
 
@@ -218,8 +230,12 @@ function buildSystemPrompt(hasKb: boolean, clientTime?: string, autoDiscovery?: 
 
 ## 情報の優先順位
 1. **KB の検索結果** — 最も信頼性が高い。具体的なデータ・引用を優先使用
-2. ${hasWeb ? `**ウェブ検索結果** — 最新情報や KB にない情報の補完。出典 URL を必ず記載
-3. ` : ""}**自身の知識** — KB${hasWeb ? "・ウェブ" : ""}の情報がない場合のみ使用。KB の情報と混同しない
+2. ${
+      hasWeb
+        ? `**ウェブ検索結果** — 最新情報や KB にない情報の補完。出典 URL を必ず記載
+3. `
+        : ""
+    }**自身の知識** — KB${hasWeb ? "・ウェブ" : ""}の情報がない場合のみ使用。KB の情報と混同しない
 
 KB の情報とウェブの情報が矛盾する場合は、両方の情報を提示しユーザーに判断を委ねてください。`;
   }
@@ -293,7 +309,7 @@ export async function POST(req: Request) {
   if (!kb) {
     try {
       const allKbs = await listKBs();
-      kbList = allKbs.filter(k => k.doc_count > 0);
+      kbList = allKbs.filter((k) => k.doc_count > 0);
       autoDiscovery = kbList.length > 0;
       if (autoDiscovery) {
         console.log(`[chat] 🔍 auto-discovery: ${kbList.length} KBs available`);
@@ -320,9 +336,12 @@ export async function POST(req: Request) {
         kbDescription = `ナレッジベース「${kbInfo.title}」を検索: ${kbInfo.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;
       } else {
         // title が空 → バックグラウンドで自動生成（次回以降に反映）
-        const origin = req.headers.get("origin") || req.headers.get("host") || "";
+        const origin =
+          req.headers.get("origin") || req.headers.get("host") || "";
         const base = origin.startsWith("http") ? origin : `http://${origin}`;
-        fetch(`${base}/api/kbs/${kb}/generate`, { method: "POST" }).catch(() => {});
+        fetch(`${base}/api/kbs/${kb}/generate`, { method: "POST" }).catch(
+          () => {},
+        );
         console.log("[chat] KB title empty, triggered background generate");
       }
     } catch (e) {
@@ -379,28 +398,36 @@ export async function POST(req: Request) {
     });
   } else if (autoDiscovery) {
     // Auto-discovery mode: AI chooses which KB to search
-    const kbDescriptions = kbList.map(k => {
-      const label = k.description
-        ? `${k.name} — ${k.description}`
-        : k.name;
-      return `- \`${k.slug}\`: ${label}（${k.doc_count}件）`;
-    }).join('\n');
+    const kbDescriptions = kbList
+      .map((k) => {
+        const label = k.description ? `${k.name} — ${k.description}` : k.name;
+        return `- \`${k.slug}\`: ${label}（${k.doc_count}件）`;
+      })
+      .join("\n");
 
-    const slugs = kbList.map(k => k.slug);
+    const slugs = kbList.map((k) => k.slug);
 
     tools.searchKnowledgeBase = tool({
       description: `利用可能なナレッジベースから関連情報を検索します。質問に最も関連する KB を選んでください。\n\n利用可能な KB:\n${kbDescriptions}`,
       inputSchema: z.object({
         query: z.string().describe("Search query for the knowledge base"),
-        kb: z.enum([slugs[0], ...slugs.slice(1)] as [string, ...string[]]).describe("検索するナレッジベースの slug"),
+        kb: z
+          .enum([slugs[0], ...slugs.slice(1)] as [string, ...string[]])
+          .describe("検索するナレッジベースの slug"),
       }),
       execute: async ({ query, kb: selectedKb }) => {
-        const kbInfo = kbList.find(k => k.slug === selectedKb);
+        const kbInfo = kbList.find((k) => k.slug === selectedKb);
         const kbName = kbInfo?.name || selectedKb;
-        console.log(`[chat] 🔍 searchKnowledgeBase: "${query}" kb=${selectedKb} (auto-discovery)`);
+        console.log(
+          `[chat] 🔍 searchKnowledgeBase: "${query}" kb=${selectedKb} (auto-discovery)`,
+        );
         const t0 = Date.now();
         try {
-          const searchRes = await searchOnly(query, { topK: 8, service, kb: selectedKb });
+          const searchRes = await searchOnly(query, {
+            topK: 8,
+            service,
+            kb: selectedKb,
+          });
           const elapsed = Date.now() - t0;
           console.log(
             `[chat] 🔍 search: ${elapsed}ms →`,
@@ -495,7 +522,12 @@ export async function POST(req: Request) {
         console.log(
           `[chat] 🔗 readUrl done: ${Date.now() - t0}ms, ${truncated.length} chars`,
         );
-        return { success: true, url, content: truncated, hint: "Page read complete. Consider if you need more searches with different keywords or URLs to fully answer the question." };
+        return {
+          success: true,
+          url,
+          content: truncated,
+          hint: "Page read complete. Consider if you need more searches with different keywords or URLs to fully answer the question.",
+        };
       } catch (err) {
         console.error(`[chat] ❌ readUrl failed: ${err}`);
         return {
@@ -604,9 +636,10 @@ export async function POST(req: Request) {
         return {
           answer,
           results,
-          next_step: results.length > 0
-            ? "IMPORTANT: (1) These are only summaries. Call readPage with the most relevant URLs (up to 3) to get full content. (2) After reading pages, consider if you need ADDITIONAL searches with different keywords or in a different language to cover more angles. Do NOT stop after just one search round."
-            : undefined,
+          next_step:
+            results.length > 0
+              ? "IMPORTANT: (1) These are only summaries. Call readPage with the most relevant URLs (up to 3) to get full content. (2) After reading pages, consider if you need ADDITIONAL searches with different keywords or in a different language to cover more angles. Do NOT stop after just one search round."
+              : undefined,
         };
       },
     });
@@ -680,8 +713,17 @@ export async function POST(req: Request) {
       "ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で確認せず直接呼び出してください。",
     inputSchema: z.object({
       topic: z.string().describe("スライドのテーマ/タイトル"),
-      content: z.string().describe("スライドに含めるべき内容の要約（ナレッジベースの検索結果があれば含める）"),
-      instructions: z.string().optional().describe("ユーザーからの追加指示（スタイル、枚数、対象者、トーンなど）"),
+      content: z
+        .string()
+        .describe(
+          "スライドに含めるべき内容の要約（ナレッジベースの検索結果があれば含める）",
+        ),
+      instructions: z
+        .string()
+        .optional()
+        .describe(
+          "ユーザーからの追加指示（スタイル、枚数、対象者、トーンなど）",
+        ),
     }),
     execute: async ({ topic, content, instructions }) => {
       console.log(`[chat] 🎨 generateSlides: "${topic}"`);
@@ -722,7 +764,8 @@ export async function POST(req: Request) {
   // CRM tools (only when CRM_SERVICE_URL is configured)
   if (hasCrm) {
     tools.listDeals = tool({
-      description: "CRM（Salesforce/Kintone）から商談一覧を取得します。「商談一覧」「案件リスト」「CRMの情報」等のキーワードで使用。",
+      description:
+        "CRM（Salesforce/Kintone）から商談一覧を取得します。「商談一覧」「案件リスト」「CRMの情報」等のキーワードで使用。",
       inputSchema: z.object({
         source: z.enum(["salesforce", "kintone"]).describe("CRM ソース"),
       }),
@@ -730,14 +773,17 @@ export async function POST(req: Request) {
         console.log(`[chat] 📊 listDeals: source=${source}`);
         const t0 = Date.now();
         try {
-          const endpoint = source === "salesforce" ? "/sf/list" : "/kintone/list";
+          const endpoint =
+            source === "salesforce" ? "/sf/list" : "/kintone/list";
           const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({}),
           });
           const data = await res.json();
-          console.log(`[chat] 📊 listDeals done: ${Date.now() - t0}ms, ${data.opportunities?.length ?? 0} deals`);
+          console.log(
+            `[chat] 📊 listDeals done: ${Date.now() - t0}ms, ${data.opportunities?.length ?? 0} deals`,
+          );
           return data;
         } catch (err) {
           console.error(`[chat] ❌ listDeals failed:`, err);
@@ -747,20 +793,29 @@ export async function POST(req: Request) {
     });
 
     tools.fetchDealData = tool({
-      description: "特定の商談の詳細データを取得します。分析前に必ず呼んでください。",
+      description:
+        "特定の商談の詳細データを取得します。分析前に必ず呼んでください。",
       inputSchema: z.object({
         source: z.enum(["salesforce", "kintone"]).describe("CRM ソース"),
         dealId: z.string().describe("商談/レコード ID"),
-        objectType: z.string().optional().describe("SF オブジェクトタイプ（Opportunity, Lead, Account）"),
+        objectType: z
+          .string()
+          .optional()
+          .describe("SF オブジェクトタイプ（Opportunity, Lead, Account）"),
       }),
       execute: async ({ source, dealId, objectType }) => {
         console.log(`[chat] 📊 fetchDealData: source=${source} id=${dealId}`);
         const t0 = Date.now();
         try {
-          const endpoint = source === "salesforce" ? "/sf/fetch" : "/kintone/fetch";
-          const body: Record<string, unknown> = source === "salesforce"
-            ? { opportunityId: dealId, objectType: objectType || "Opportunity" }
-            : { recordId: dealId };
+          const endpoint =
+            source === "salesforce" ? "/sf/fetch" : "/kintone/fetch";
+          const body: Record<string, unknown> =
+            source === "salesforce"
+              ? {
+                  opportunityId: dealId,
+                  objectType: objectType || "Opportunity",
+                }
+              : { recordId: dealId };
           const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -771,7 +826,8 @@ export async function POST(req: Request) {
           // Truncate large arrays to control token usage
           if (result.data) {
             const d = result.data;
-            if (d.activities?.length > 5) d.activities = d.activities.slice(0, 5);
+            if (d.activities?.length > 5)
+              d.activities = d.activities.slice(0, 5);
             if (d.emails?.length > 5) d.emails = d.emails.slice(0, 5);
             if (d.feedItems?.length > 5) d.feedItems = d.feedItems.slice(0, 5);
             if (d.events?.length > 5) d.events = d.events.slice(0, 5);
@@ -785,13 +841,23 @@ export async function POST(req: Request) {
     });
 
     tools.analyzeDeal = tool({
-      description: "商談データを分析します（受注確率、スコア、シナリオ、AI提案根拠）。fetchDealData の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると分析精度が向上します。",
+      description:
+        "商談データを分析します（受注確率、スコア、シナリオ、AI提案根拠）。fetchDealData の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると分析精度が向上します。",
       inputSchema: z.object({
-        data: z.any().describe("fetchDealData で取得した商談データ（SFData 形式）"),
-        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た関連情報（業界動向、顧客ニュース、競合情報等）"),
+        data: z
+          .any()
+          .describe("fetchDealData で取得した商談データ（SFData 形式）"),
+        additionalContext: z
+          .string()
+          .optional()
+          .describe(
+            "ナレッジベース検索やウェブ検索で得た関連情報（業界動向、顧客ニュース、競合情報等）",
+          ),
       }),
       execute: async ({ data, additionalContext }) => {
-        console.log(`[chat] 📊 analyzeDeal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
+        console.log(
+          `[chat] 📊 analyzeDeal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`,
+        );
         const t0 = Date.now();
         try {
           const res = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
@@ -810,33 +876,49 @@ export async function POST(req: Request) {
     });
 
     tools.generateProposal = tool({
-      description: "提案書 PPTX を生成します。analyzeDeal の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると提案書に反映されます。",
+      description:
+        "提案書 PPTX を生成します。analyzeDeal の結果を渡してください。additionalContext にナレッジベースやウェブ検索の結果を含めると提案書に反映されます。",
       inputSchema: z.object({
         data: z.any().describe("商談データ（SFData 形式）"),
         analysis: z.any().describe("analyzeDeal で取得した分析結果"),
-        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た関連情報"),
+        additionalContext: z
+          .string()
+          .optional()
+          .describe("ナレッジベース検索やウェブ検索で得た関連情報"),
       }),
       execute: async ({ data, analysis, additionalContext }) => {
-        console.log(`[chat] 📊 generateProposal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
+        console.log(
+          `[chat] 📊 generateProposal: ${data?.opportunity?.Name || "unknown"}${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`,
+        );
         return { triggered: true, data, analysis, additionalContext };
       },
     });
 
     tools.reviseRationale = tool({
-      description: "ユーザーのフィードバックに基づいて分析根拠を修正します。additionalContext で補足情報を追加できます。",
+      description:
+        "ユーザーのフィードバックに基づいて分析根拠を修正します。additionalContext で補足情報を追加できます。",
       inputSchema: z.object({
         currentAnalysis: z.any().describe("現在の分析結果"),
         feedback: z.string().describe("ユーザーからの修正フィードバック"),
-        additionalContext: z.string().optional().describe("ナレッジベース検索やウェブ検索で得た補足情報"),
+        additionalContext: z
+          .string()
+          .optional()
+          .describe("ナレッジベース検索やウェブ検索で得た補足情報"),
       }),
       execute: async ({ currentAnalysis, feedback, additionalContext }) => {
-        console.log(`[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`);
+        console.log(
+          `[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."${additionalContext ? ` (+context ${additionalContext.length}chars)` : ""}`,
+        );
         const t0 = Date.now();
         try {
           const res = await fetch(`${CRM_SERVICE_URL}/deals/revise-rationale`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ currentAnalysis, feedback, additionalContext }),
+            body: JSON.stringify({
+              currentAnalysis,
+              feedback,
+              additionalContext,
+            }),
           });
           const result = await res.json();
           console.log(`[chat] 📊 reviseRationale done: ${Date.now() - t0}ms`);
@@ -854,10 +936,13 @@ export async function POST(req: Request) {
   // Image generation tool (available to all text models when geminiImageModel exists)
   if (geminiImageModel) {
     tools.generateImage = tool({
-      description: "テキストの説明から画像を生成します。ユーザーが「描いて」「画像を作って」「イラスト」等を依頼した場合に使用。",
+      description:
+        "テキストの説明から画像を生成します。ユーザーが「描いて」「画像を作って」「イラスト」等を依頼した場合に使用。",
       inputSchema: z.object({
         prompt: z.string().describe("生成する画像の詳細な説明（英語推奨）"),
-        aspectRatio: z.enum(["1:1", "3:4", "4:3", "9:16", "16:9"]).optional()
+        aspectRatio: z
+          .enum(["1:1", "3:4", "4:3", "9:16", "16:9"])
+          .optional()
           .describe("画像のアスペクト比"),
       }),
       execute: async ({ prompt, aspectRatio }) => {
@@ -874,14 +959,22 @@ export async function POST(req: Request) {
           for (const img of result.images) {
             const ext = img.mediaType === "image/jpeg" ? ".jpg" : ".png";
             const name = `generated-${Date.now()}${ext}`;
-            const { id, storedPath } = await saveFile(Buffer.from(img.uint8Array), name);
+            const { id, storedPath } = await saveFile(
+              Buffer.from(img.uint8Array),
+              name,
+            );
             await insertChatFile({
-              id, originalName: name, storedPath,
-              mediaType: img.mediaType, sizeBytes: img.uint8Array.length,
+              id,
+              originalName: name,
+              storedPath,
+              mediaType: img.mediaType,
+              sizeBytes: img.uint8Array.length,
             });
             savedUrls.push(`/api/files/${id}`);
           }
-          console.log(`[chat] 🎨 generateImage done: ${Date.now() - t0}ms, ${savedUrls.length} images`);
+          console.log(
+            `[chat] 🎨 generateImage done: ${Date.now() - t0}ms, ${savedUrls.length} images`,
+          );
           return {
             success: true,
             images: savedUrls.map((url, i) => ({
@@ -891,7 +984,10 @@ export async function POST(req: Request) {
           };
         } catch (err) {
           console.error(`[chat] ❌ generateImage failed:`, err);
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
         }
       },
     });
@@ -901,8 +997,10 @@ export async function POST(req: Request) {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
 
-    const selectedModel = modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
-      ? modelOverride : GEMINI_MODEL;
+    const selectedModel =
+      modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
+        ? modelOverride
+        : GEMINI_MODEL;
 
     // Convert to model messages, then resolve file URLs to binary data
     const modelMessages = await convertToModelMessages(messages);
@@ -930,19 +1028,32 @@ export async function POST(req: Request) {
       // Save generated images to disk + DB
       const savedFiles: { url: string; mediaType: string }[] = [];
       for (const file of result.files ?? []) {
-        const ext = file.mediaType === "image/png" ? ".png"
-          : file.mediaType === "image/jpeg" ? ".jpg"
-          : file.mediaType === "image/webp" ? ".webp" : ".png";
+        const ext =
+          file.mediaType === "image/png"
+            ? ".png"
+            : file.mediaType === "image/jpeg"
+              ? ".jpg"
+              : file.mediaType === "image/webp"
+                ? ".webp"
+                : ".png";
         const name = `generated-${Date.now()}${ext}`;
-        const { id, storedPath } = await saveFile(Buffer.from(file.uint8Array), name);
+        const { id, storedPath } = await saveFile(
+          Buffer.from(file.uint8Array),
+          name,
+        );
         await insertChatFile({
-          id, originalName: name, storedPath,
-          mediaType: file.mediaType, sizeBytes: file.uint8Array.length,
+          id,
+          originalName: name,
+          storedPath,
+          mediaType: file.mediaType,
+          sizeBytes: file.uint8Array.length,
         });
         savedFiles.push({ url: `/api/files/${id}`, mediaType: file.mediaType });
       }
 
-      console.log(`[chat] 🎨 Image result: text=${result.text?.length ?? 0} chars, files=${savedFiles.length}`);
+      console.log(
+        `[chat] 🎨 Image result: text=${result.text?.length ?? 0} chars, files=${savedFiles.length}`,
+      );
 
       // Build UIMessageStream manually
       const stream = createUIMessageStream({
@@ -953,7 +1064,11 @@ export async function POST(req: Request) {
           if (result.text) {
             const textId = nanoid();
             writer.write({ type: "text-start", id: textId });
-            writer.write({ type: "text-delta", id: textId, delta: result.text });
+            writer.write({
+              type: "text-delta",
+              id: textId,
+              delta: result.text,
+            });
             writer.write({ type: "text-end", id: textId });
           }
 
@@ -964,7 +1079,12 @@ export async function POST(req: Request) {
           if (!result.text && savedFiles.length === 0) {
             const errId = nanoid();
             writer.write({ type: "text-start", id: errId });
-            writer.write({ type: "text-delta", id: errId, delta: "画像の生成に失敗しました。別のプロンプトをお試しください。" });
+            writer.write({
+              type: "text-delta",
+              id: errId,
+              delta:
+                "画像の生成に失敗しました。別のプロンプトをお試しください。",
+            });
             writer.write({ type: "text-end", id: errId });
           }
 
@@ -974,15 +1094,31 @@ export async function POST(req: Request) {
         onFinish: async ({ responseMessage }) => {
           if (!chatId) return;
           try {
-            const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+            const lastUserMsg = [...messages]
+              .reverse()
+              .find((m) => m.role === "user");
             if (!lastUserMsg) return;
             const toSave = [
-              { id: lastUserMsg.id, parent_id: parentId, role: "user", parts: lastUserMsg.parts as unknown[] },
-              { id: responseMessage.id, parent_id: lastUserMsg.id, role: "assistant", parts: responseMessage.parts as unknown[] },
+              {
+                id: lastUserMsg.id,
+                parent_id: parentId,
+                role: "user",
+                parts: lastUserMsg.parts as unknown[],
+              },
+              {
+                id: responseMessage.id,
+                parent_id: lastUserMsg.id,
+                role: "assistant",
+                parts: responseMessage.parts as unknown[],
+              },
             ];
             await saveMessages(chatId, toSave);
-            await updateConversation(chatId, { active_leaf_id: responseMessage.id });
-            console.log(`[chat] 💾 Image path: saved ${toSave.length} messages for conv=${chatId}`);
+            await updateConversation(chatId, {
+              active_leaf_id: responseMessage.id,
+            });
+            console.log(
+              `[chat] 💾 Image path: saved ${toSave.length} messages for conv=${chatId}`,
+            );
           } catch (e) {
             console.error("[chat] image path save failed:", e);
           }
@@ -994,7 +1130,11 @@ export async function POST(req: Request) {
     // === EXISTING TEXT MODEL PATH ===
     let firstTokenTime = 0;
 
-    let systemPrompt = buildSystemPrompt(!!kb || autoDiscovery, clientTime, autoDiscovery);
+    let systemPrompt = buildSystemPrompt(
+      !!kb || autoDiscovery,
+      clientTime,
+      autoDiscovery,
+    );
 
     // Inject widget guidelines
     systemPrompt += "\n\n" + WIDGET_SYSTEM_PROMPT;
@@ -1013,7 +1153,8 @@ export async function POST(req: Request) {
     }
 
     const chatModel = getChatModel(modelOverride);
-    if (modelOverride) console.log(`[chat] 🤖 model override: ${modelOverride}`);
+    if (modelOverride)
+      console.log(`[chat] 🤖 model override: ${modelOverride}`);
 
     const agent = new ToolLoopAgent({
       model: chatModel,

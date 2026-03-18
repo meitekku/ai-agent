@@ -236,14 +236,14 @@ rag-ui/
 
 ## ページルーティング
 
-| パス         | 説明                                           |
-| ------------ | ---------------------------------------------- |
-| `/`          | `/new` にリダイレクト                          |
-| `/new`       | 新規チャット                                   |
-| `/chat/[id]` | 既存チャット（DB からロード、ブランチ対応）    |
-| `/documents` | ナレッジベース一覧                             |
-| `/documents/[slug]` | ナレッジベース詳細（ドキュメント管理）   |
-| `/skills`    | スキル管理（CRUD + 有効/無効切替）             |
+| パス                | 説明                                        |
+| ------------------- | ------------------------------------------- |
+| `/`                 | `/new` にリダイレクト                       |
+| `/new`              | 新規チャット                                |
+| `/chat/[id]`        | 既存チャット（DB からロード、ブランチ対応） |
+| `/documents`        | ナレッジベース一覧                          |
+| `/documents/[slug]` | ナレッジベース詳細（ドキュメント管理）      |
+| `/skills`           | スキル管理（CRUD + 有効/無効切替）          |
 
 - `AppShell`（sidebar + header）は `layout.tsx` で全ページ共通
 - sidebar は `usePathname()` でアクティブなナビを判定 + チャット履歴一覧表示
@@ -252,38 +252,38 @@ rag-ui/
 
 ## API Routes
 
-| メソッド             | パス                             | 説明                                                       |
-| -------------------- | -------------------------------- | ---------------------------------------------------------- |
+| メソッド             | パス                             | 説明                                                                            |
+| -------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache + resolveServerFiles） |
-| POST                 | /api/files/upload                | ファイルアップロード（multipart/form-data → ディスク保存 + DB 記録） |
-| GET                  | /api/files/[id]                  | ファイル配信（immutable cache、Content-Type 付き）         |
-| GET/POST             | /api/kbs                         | ナレッジベース一覧 / 新規作成                              |
-| GET/PUT/DELETE       | /api/kbs/[slug]                  | ナレッジベース詳細 / 更新 / 削除                           |
-| POST                 | /api/kbs/[slug]/generate         | LLM で title+description 自動生成                          |
-| GET/PUT              | /api/ui-config                   | UI設定（サイドバー状態等、JSONB preferences）              |
-| GET                  | /api/documents                   | 文档列表                                                   |
-| POST                 | /api/documents/upload            | PDF 上传（→ LightRAG /ingest）                             |
-| DELETE               | /api/documents/[id]              | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）         |
-| GET/POST             | /api/skills                      | スキル一覧 / 新規作成                                      |
-| PUT/DELETE           | /api/skills/[id]                 | スキル更新 / 削除                                          |
-| POST                 | /api/skills/upload               | ZIP スキルアップロード（SKILL.md + references）            |
-| GET/POST             | /api/history/chats               | チャット履歴一覧 / 新規会話作成                            |
-| GET/PATCH/DELETE     | /api/history/chats/[id]          | 会話詳細 / 更新 / 削除                                     |
-| POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                       |
-| POST                 | /api/slides/plan                 | 簡易スライド構成計画                                       |
-| POST                 | /api/slides/render               | 簡易スライド HTML 生成                                     |
-| POST                 | /api/slides/generate             | 構造化デッキ JSON 生成（generateObject + Zod）             |
-| POST                 | /api/slides/pptx                 | PPTX 生成（Mode A: 画像 / Mode B: 構造化）                 |
-| POST                 | /api/slides/pdf                  | PDF 生成（jsPDF landscape）                                |
-| POST                 | /api/slides/refine               | AI デッキリファイン（generateObject）                      |
-| POST                 | /api/slides/visual/outline       | ビジュアルアウトライン生成                                 |
-| POST                 | /api/slides/visual/renderhtml    | ビジュアルスライド HTML 生成                               |
-| POST                 | /api/slides/htmlslide/plan       | HTML スライド構成計画（スタイル+テンプレート対応）         |
-| POST                 | /api/slides/htmlslide/render     | HTML スライド生成（テンプレート参考対応）                  |
-| GET/POST             | /api/history/slides              | スライド履歴一覧 / 新規保存                                |
-| GET/PUT/PATCH/DELETE | /api/history/slides/[id]         | スライドデッキ詳細/更新/リネーム/削除                      |
-| GET/POST             | /api/templates/slides            | テンプレート一覧 / 保存                                    |
-| DELETE               | /api/templates/slides/[id]       | テンプレート削除                                           |
+| POST                 | /api/files/upload                | ファイルアップロード（multipart/form-data → ディスク保存 + DB 記録）            |
+| GET                  | /api/files/[id]                  | ファイル配信（immutable cache、Content-Type 付き）                              |
+| GET/POST             | /api/kbs                         | ナレッジベース一覧 / 新規作成                                                   |
+| GET/PUT/DELETE       | /api/kbs/[slug]                  | ナレッジベース詳細 / 更新 / 削除                                                |
+| POST                 | /api/kbs/[slug]/generate         | LLM で title+description 自動生成                                               |
+| GET/PUT              | /api/ui-config                   | UI設定（サイドバー状態等、JSONB preferences）                                   |
+| GET                  | /api/documents                   | 文档列表                                                                        |
+| POST                 | /api/documents/upload            | PDF 上传（→ LightRAG /ingest）                                                  |
+| DELETE               | /api/documents/[id]              | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）                              |
+| GET/POST             | /api/skills                      | スキル一覧 / 新規作成                                                           |
+| PUT/DELETE           | /api/skills/[id]                 | スキル更新 / 削除                                                               |
+| POST                 | /api/skills/upload               | ZIP スキルアップロード（SKILL.md + references）                                 |
+| GET/POST             | /api/history/chats               | チャット履歴一覧 / 新規会話作成                                                 |
+| GET/PATCH/DELETE     | /api/history/chats/[id]          | 会話詳細 / 更新 / 削除                                                          |
+| POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                                            |
+| POST                 | /api/slides/plan                 | 簡易スライド構成計画                                                            |
+| POST                 | /api/slides/render               | 簡易スライド HTML 生成                                                          |
+| POST                 | /api/slides/generate             | 構造化デッキ JSON 生成（generateObject + Zod）                                  |
+| POST                 | /api/slides/pptx                 | PPTX 生成（Mode A: 画像 / Mode B: 構造化）                                      |
+| POST                 | /api/slides/pdf                  | PDF 生成（jsPDF landscape）                                                     |
+| POST                 | /api/slides/refine               | AI デッキリファイン（generateObject）                                           |
+| POST                 | /api/slides/visual/outline       | ビジュアルアウトライン生成                                                      |
+| POST                 | /api/slides/visual/renderhtml    | ビジュアルスライド HTML 生成                                                    |
+| POST                 | /api/slides/htmlslide/plan       | HTML スライド構成計画（スタイル+テンプレート対応）                              |
+| POST                 | /api/slides/htmlslide/render     | HTML スライド生成（テンプレート参考対応）                                       |
+| GET/POST             | /api/history/slides              | スライド履歴一覧 / 新規保存                                                     |
+| GET/PUT/PATCH/DELETE | /api/history/slides/[id]         | スライドデッキ詳細/更新/リネーム/削除                                           |
+| GET/POST             | /api/templates/slides            | テンプレート一覧 / 保存                                                         |
+| DELETE               | /api/templates/slides/[id]       | テンプレート削除                                                                |
 
 ## 开发命令
 

@@ -95,9 +95,7 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
       <div className="flex flex-1 items-center justify-center bg-slate-100 dark:bg-[#030712]">
         <div className="flex flex-col items-center gap-3">
           <Loader2Icon className="size-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">
-            グラフを読み込み中...
-          </p>
+          <p className="text-sm text-muted-foreground">グラフを読み込み中...</p>
         </div>
       </div>
     );
@@ -131,7 +129,10 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
             ドキュメントをアップロードしてグラフを構築しましょう
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.push(`/documents/${slug}`)}>
+        <Button
+          variant="outline"
+          onClick={() => router.push(`/documents/${slug}`)}
+        >
           <ArrowLeftIcon className="size-4 mr-1.5" />
           ドキュメント管理に戻る
         </Button>
@@ -170,9 +171,21 @@ export const GraphPage = memo(function GraphPage({ slug }: { slug: string }) {
 
           {/* Stats */}
           <div className="flex items-center gap-3 ml-auto">
-            <StatBadge icon={CircleDotIcon} value={data.stats.node_count} label="ノード" />
-            <StatBadge icon={LinkIcon} value={data.stats.edge_count} label="エッジ" />
-            <StatBadge icon={LayersIcon} value={data.stats.community_count} label="コミュニティ" />
+            <StatBadge
+              icon={CircleDotIcon}
+              value={data.stats.node_count}
+              label="ノード"
+            />
+            <StatBadge
+              icon={LinkIcon}
+              value={data.stats.edge_count}
+              label="エッジ"
+            />
+            <StatBadge
+              icon={LayersIcon}
+              value={data.stats.community_count}
+              label="コミュニティ"
+            />
           </div>
         </div>
       </div>

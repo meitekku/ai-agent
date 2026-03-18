@@ -32,14 +32,19 @@ declare module "d3-force-3d" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars
   export interface Force<N extends SimulationNodeDatum> {}
 
-  export interface ForceLink<N extends SimulationNodeDatum, L extends SimulationLinkDatum<N>> extends Force<N> {
+  export interface ForceLink<
+    N extends SimulationNodeDatum,
+    L extends SimulationLinkDatum<N>,
+  > extends Force<N> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     id(accessor: (d: any) => string): ForceLink<N, L>;
     distance(value: number | ((d: L) => number)): ForceLink<N, L>;
     strength(value: number | ((d: L) => number)): ForceLink<N, L>;
   }
 
-  export interface ForceManyBody<N extends SimulationNodeDatum> extends Force<N> {
+  export interface ForceManyBody<
+    N extends SimulationNodeDatum,
+  > extends Force<N> {
     strength(value: number | ((d: N) => number)): ForceManyBody<N>;
     distanceMin(value: number): ForceManyBody<N>;
     distanceMax(value: number): ForceManyBody<N>;
@@ -56,11 +61,14 @@ declare module "d3-force-3d" {
     numDimensions?: number,
   ): Simulation<N>;
 
-  export function forceLink<N extends SimulationNodeDatum, L extends SimulationLinkDatum<N>>(
-    links?: L[],
-  ): ForceLink<N, L>;
+  export function forceLink<
+    N extends SimulationNodeDatum,
+    L extends SimulationLinkDatum<N>,
+  >(links?: L[]): ForceLink<N, L>;
 
-  export function forceManyBody<N extends SimulationNodeDatum>(): ForceManyBody<N>;
+  export function forceManyBody<
+    N extends SimulationNodeDatum,
+  >(): ForceManyBody<N>;
 
   export function forceCenter<N extends SimulationNodeDatum>(
     x?: number,

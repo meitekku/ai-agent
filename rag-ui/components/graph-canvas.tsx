@@ -126,7 +126,7 @@ export function GraphCanvas({
     simRef.current = sim;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync init from simulation setup
     setSimNodes([...nodes]);
-     
+
     setSimLinks([...links]);
 
     return () => {
@@ -162,7 +162,12 @@ export function GraphCanvas({
         onSelect={onSelect}
         isDark={isDark}
       />
-      <GraphEdges nodes={simNodes} links={simLinks} hoveredId={hoveredId} isDark={isDark} />
+      <GraphEdges
+        nodes={simNodes}
+        links={simLinks}
+        hoveredId={hoveredId}
+        isDark={isDark}
+      />
       <GraphEffects isDark={isDark} />
       <CameraAnimator targetPosition={cameraTarget} controlsRef={controlsRef} />
 

@@ -50,9 +50,9 @@ export function FullscreenPresenter({
 
   // Request fullscreen on mount
   useEffect(() => {
-    document.documentElement
-      .requestFullscreen?.()
-      .catch(() => { /* not supported */ });
+    document.documentElement.requestFullscreen?.().catch(() => {
+      /* not supported */
+    });
     resetHideTimer(); // eslint-disable-line react-hooks/set-state-in-effect -- mount-time init
     return () => {
       clearTimeout(hideTimer.current);

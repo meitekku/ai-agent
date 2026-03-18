@@ -9,9 +9,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const [searchRes, installed] = await Promise.all([
-      fetch(
-        `https://skills.sh/api/search?q=${encodeURIComponent(q)}&limit=20`,
-      ),
+      fetch(`https://skills.sh/api/search?q=${encodeURIComponent(q)}&limit=20`),
       getInstalledRegistryIds(),
     ]);
 
