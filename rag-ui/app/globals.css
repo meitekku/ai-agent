@@ -259,6 +259,16 @@
   }
 }
 
+/* Trailing fade overlay for streaming messages */
+.streaming-trailing-fade {
+  background: linear-gradient(
+    to bottom,
+    oklch(var(--background) / 0) 0%,
+    oklch(var(--background) / 0.7) 60%,
+    oklch(var(--background) / 1) 100%
+  );
+}
+
 /* View Transition for theme toggle */
 ::view-transition-old(root),
 ::view-transition-new(root) {

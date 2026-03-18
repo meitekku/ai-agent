@@ -676,14 +676,14 @@ export const SkillsPage = memo(function SkillsPage() {
 
 function RegistryEmptyState({ onSearch }: { onSearch: (q: string) => void }) {
   const suggestions = [
-    "react",
-    "nextjs",
-    "typescript",
-    "testing",
-    "security",
-    "accessibility",
-    "performance",
-    "python",
+    "marketing",
+    "copywriting",
+    "seo",
+    "branding",
+    "social media",
+    "analytics",
+    "email marketing",
+    "content strategy",
   ];
 
   return (

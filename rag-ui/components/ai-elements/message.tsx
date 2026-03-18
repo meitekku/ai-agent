@@ -352,7 +352,7 @@ export const MessageResponse = memo(
 
     // Shared animation props for smooth per-word streaming
     const animProps = {
-      animated: { animation: "blurIn" as const, duration: 300, easing: "cubic-bezier(0.4, 0, 0.2, 1)" },
+      animated: { animation: "fadeIn" as const, duration: 350, easing: "ease-out" },
       isAnimating: !!isActiveStreaming,
     };
 

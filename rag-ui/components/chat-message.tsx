@@ -291,6 +291,13 @@ type GroupedSegment =
   | { type: "tool-group"; tools: ToolEntry[] }
   | { type: "part"; part: UIMessage["parts"][number]; index: number };
 
+/** Parts that should not break consecutive tool grouping (step-start, empty text) */
+function isTransparentPart(part: UIMessage["parts"][number]): boolean {
+  if (part.type === "step-start") return true;
+  if (part.type === "text") return stripThinkTags(part.text).trim().length === 0;
+  return false;
+}
+
 function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
   const result: GroupedSegment[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -298,9 +305,19 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
     if (isToolUIPart(part)) {
       const tn = getToolName(part);
       if (tn === "suggestSlides") continue;
-      const last = result[result.length - 1];
-      if (last?.type === "tool-group") {
-        last.tools.push({ part, index: i, toolName: tn });
+      // Find the nearest tool-group, skipping transparent parts in between
+      let targetGroup: (GroupedSegment & { type: "tool-group" }) | null = null;
+      for (let j = result.length - 1; j >= 0; j--) {
+        const seg = result[j];
+        if (seg.type === "tool-group") {
+          targetGroup = seg;
+          break;
+        }
+        if (seg.type === "part" && isTransparentPart(seg.part)) continue;
+        break; // non-transparent part — stop looking
+      }
+      if (targetGroup) {
+        targetGroup.tools.push({ part, index: i, toolName: tn });
       } else {
         result.push({
           type: "tool-group",
@@ -664,93 +681,113 @@ export const ChatMessage = memo(function ChatMessage({
     );
   }
 
+  // Whether to show the trailing fade overlay on assistant streaming messages
+  const showTrailingFade =
+    isActiveStreaming && message.role === "assistant" && getMessageText(message).length > 0;
+
   return (
     <Message from={message.role} className="animate-fade-in-up">
       <MessageContent>
-        {groupParts(message.parts).map((segment) => {
-          if (segment.type === "tool-group") {
-            return (
-              <ToolCallGroup
-                key={`${message.id}-tg-${segment.tools[0].index}`}
-                messageId={message.id}
-                tools={segment.tools}
-                isStreaming={isActiveStreaming}
-              />
-            );
-          }
-          const { part, index: i } = segment;
-          const key = `${message.id}-${i}`;
-          switch (part.type) {
-            case "text":
+        <div className="relative">
+          {groupParts(message.parts).map((segment) => {
+            if (segment.type === "tool-group") {
               return (
-                <MessageResponse
-                  key={key}
-                  isActiveStreaming={
-                    message.role === "assistant" ? isActiveStreaming : false
-                  }
-                >
-                  {message.role === "assistant"
-                    ? stripThinkTags(part.text)
-                    : part.text}
-                </MessageResponse>
+                <ToolCallGroup
+                  key={`${message.id}-tg-${segment.tools[0].index}`}
+                  messageId={message.id}
+                  tools={segment.tools}
+                  isStreaming={isActiveStreaming}
+                />
               );
-            case "file": {
-              const mediaType = part.mediaType ?? "";
-              const filename =
-                ("filename" in part
-                  ? (part as { filename?: string }).filename
-                  : undefined) ?? "file";
-              if (mediaType.startsWith("image/")) {
-                const isGenerated = message.role === "assistant";
+            }
+            const { part, index: i } = segment;
+            const key = `${message.id}-${i}`;
+            switch (part.type) {
+              case "text":
+                return (
+                  <MessageResponse
+                    key={key}
+                    isActiveStreaming={
+                      message.role === "assistant" ? isActiveStreaming : false
+                    }
+                  >
+                    {message.role === "assistant"
+                      ? stripThinkTags(part.text)
+                      : part.text}
+                  </MessageResponse>
+                );
+              case "file": {
+                const mediaType = part.mediaType ?? "";
+                const filename =
+                  ("filename" in part
+                    ? (part as { filename?: string }).filename
+                    : undefined) ?? "file";
+                if (mediaType.startsWith("image/")) {
+                  const isGenerated = message.role === "assistant";
+                  return (
+                    <div
+                      key={key}
+                      className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
+                      onClick={() => setLightboxSrc(part.url)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={part.url}
+                        alt={filename}
+                        className={isGenerated
+                          ? "block max-w-md rounded-xl"
+                          : "block size-14 object-cover"
+                        }
+                      />
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
+                        <Maximize2Icon className="size-4 text-white opacity-0 drop-shadow-md transition-opacity group-hover/img:opacity-90" />
+                      </div>
+                    </div>
+                  );
+                }
+                // PDF / text / other files — square with icon
                 return (
                   <div
                     key={key}
-                    className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
-                    onClick={() => setLightboxSrc(part.url)}
+                    className="inline-flex size-14 items-center justify-center rounded-lg border border-border/60 bg-muted/20 shadow-sm"
+                    title={filename}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={part.url}
-                      alt={filename}
-                      className={isGenerated
-                        ? "block max-w-md rounded-xl"
-                        : "block size-14 object-cover"
-                      }
-                    />
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
-                      <Maximize2Icon className="size-4 text-white opacity-0 drop-shadow-md transition-opacity group-hover/img:opacity-90" />
-                    </div>
+                    {mediaType === "application/pdf" ? (
+                      <FileIcon className="size-6 text-red-400" />
+                    ) : (
+                      <FileTextIcon className="size-6 text-muted-foreground" />
+                    )}
                   </div>
                 );
               }
-              // PDF / text / other files — square with icon
-              return (
-                <div
-                  key={key}
-                  className="inline-flex size-14 items-center justify-center rounded-lg border border-border/60 bg-muted/20 shadow-sm"
-                  title={filename}
-                >
-                  {mediaType === "application/pdf" ? (
-                    <FileIcon className="size-6 text-red-400" />
-                  ) : (
-                    <FileTextIcon className="size-6 text-muted-foreground" />
-                  )}
-                </div>
-              );
+              default:
+                return null;
             }
-            default:
-              return null;
-          }
-        })}
-        {showThinking ? <ThinkingIndicator /> : null}
-        {showGenerating ? <GeneratingIndicator /> : null}
-        {stopped && message.role === "assistant" && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 mt-1">
-            <OctagonIcon className="size-3" />
-            <span>回答が中断されました</span>
-          </div>
-        )}
+          })}
+          {showThinking ? <ThinkingIndicator /> : null}
+          {showGenerating ? <GeneratingIndicator /> : null}
+          {stopped && message.role === "assistant" && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 mt-1">
+              <OctagonIcon className="size-3" />
+              <span>回答が中断されました</span>
+            </div>
+          )}
+          {/* Trailing fade: gradient overlay at the bottom during streaming */}
+          <AnimatePresence>
+            {showTrailingFade && (
+              <motion.div
+                key="trailing-fade"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4, ease: "easeInOut" }}
+                className="pointer-events-none absolute bottom-0 left-0 right-0 h-[2lh] streaming-trailing-fade"
+                aria-hidden
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </MessageContent>
 
       {/* User message actions: edit + timestamp + branch selector — always rendered, visible on hover */}
