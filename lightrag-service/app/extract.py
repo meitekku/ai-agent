@@ -324,15 +324,29 @@ def _extract_xlsx(file_bytes: bytes) -> tuple[str, int]:
     parts: list[str] = []
 
     for sheet in wb.worksheets:
-        parts.append(f"## {sheet.title}")
         rows = []
         for row in sheet.iter_rows(values_only=True):
             cells = [str(c) if c is not None else "" for c in row]
             if any(cells):  # skip completely empty rows
                 rows.append(cells)
-        if rows:
-            parts.append(_md_table(rows))
-        parts.append("")
+        if not rows:
+            continue
+
+        headers = rows[0]
+        data_rows = rows[1:]
+
+        if not data_rows:
+            parts.append(f"## {sheet.title}\n\n{_md_table(rows)}")
+        elif len(data_rows) <= 10 and len(headers) <= 8:
+            # Small simple tables: keep markdown table format
+            parts.append(f"## {sheet.title}\n\n{_md_table(rows)}")
+        else:
+            # Large/wide tables: per-record structured format (same as CSV)
+            group_col = _find_group_column(headers, data_rows)
+            if group_col is not None:
+                parts.append(_grouped_records(headers, data_rows, group_col))
+            else:
+                parts.append(_flat_records(headers, data_rows))
 
     wb.close()
     return "\n\n".join(parts), 1
