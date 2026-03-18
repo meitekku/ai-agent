@@ -25,7 +25,19 @@ import {
 } from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
 import { AnimatePresence } from "motion/react";
-import { BookOpenIcon, AlertCircleIcon, ImageIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  AlertCircleIcon,
+  ImageIcon,
+  FactoryIcon,
+  BriefcaseIcon,
+  ShoppingCartIcon,
+} from "lucide-react";
+import type { SuggestionCardData } from "@/components/ai-elements/suggestion";
+import {
+  SuggestionCard,
+  SuggestionCards,
+} from "@/components/ai-elements/suggestion";
 import { useChatSettingsStore, isImageModel } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
 import { useSlidePanelStore } from "@/lib/slide-panel-store";
@@ -43,6 +55,42 @@ const emptyStateIcon = (
     <BookOpenIcon className="size-6 text-primary" />
   </div>
 );
+
+const DEMO_SUGGESTIONS: SuggestionCardData[] = [
+  {
+    title: "製造業：社内ナレッジAI活用",
+    description:
+      "技術文書・マニュアルが膨大で検索に時間がかかる、ベテラン退職によるノウハウ流出、新人教育の効率化",
+    prompt: `山田製造株式会社（製造業）の商談について分析してください。
+
+課題: 技術文書・マニュアルが膨大で検索に時間がかかる、ベテラン退職によるノウハウ流出、新人教育の効率化
+
+詳細: 従業員500名の中堅製造業。20年分の技術文書・品質マニュアル・設計図面が社内サーバーに散在。ベテラン技術者の退職が相次ぎ、暗黙知の共有が急務。AI RAG Agentによる社内ナレッジ検索システムと、DX開発による業務プロセス改善を検討中。`,
+    icon: <FactoryIcon className="size-4" />,
+  },
+  {
+    title: "人材業：求人マッチング効率化",
+    description:
+      "求職者と求人のマッチング精度が低い、コンサルタントの経験頼みで属人化、対応スピードの改善",
+    prompt: `グローバル人材サービス株式会社（人材業）の商談について分析してください。
+
+課題: 求職者と求人のマッチング精度が低い、コンサルタントの経験頼みで属人化、対応スピードの改善
+
+詳細: 年間取扱求人数5,000件、登録求職者20,000名の中堅人材紹介会社。現在はコンサルタントが手動で求人票と職務経歴書を照合。経験豊富なコンサルタントと新人で成約率に3倍の差。AI活用による自動マッチングと、RAGによる過去成約事例の検索システムを検討中。`,
+    icon: <BriefcaseIcon className="size-4" />,
+  },
+  {
+    title: "小売業：顧客対応AI自動化",
+    description:
+      "問い合わせ対応の人件費増大、営業時間外の機会損失、FAQの更新が追いつかない",
+    prompt: `さくらリテール株式会社（小売業）の商談について分析してください。
+
+課題: 問い合わせ対応の人件費増大、営業時間外の機会損失、FAQの更新が追いつかない
+
+詳細: 全国50店舗を展開するアパレルチェーン。ECサイトと実店舗の問い合わせが月間15,000件、うち70%が在庫確認・サイズ・返品ポリシーなど定型質問。現在コールセンター30名体制だが人手不足で応答率80%。AI RAGチャットボットによる24時間自動対応と、商品ナレッジベースの構築を検討中。`,
+    icon: <ShoppingCartIcon className="size-4" />,
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -685,7 +733,7 @@ export function ChatPage({
       <Conversation className="flex-1 min-w-0">
         <ConversationContent className="min-h-full !gap-0 !p-0">
           {messages.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center bg-radial-glow">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center bg-radial-glow">
               {emptyStateIcon}
               <div className="space-y-1">
                 <h3 className="font-medium text-sm">AI チャットへようこそ</h3>
@@ -693,6 +741,15 @@ export function ChatPage({
                   何でも質問してください。ナレッジベースやウェブ検索を自動的に活用して回答します。
                 </p>
               </div>
+              <SuggestionCards className="mt-2 max-w-3xl">
+                {DEMO_SUGGESTIONS.map((s) => (
+                  <SuggestionCard
+                    key={s.title}
+                    data={s}
+                    onClick={handleSend}
+                  />
+                ))}
+              </SuggestionCards>
             </div>
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 pt-8 pb-8 flex flex-col gap-8">
