@@ -118,7 +118,7 @@ export function GraphEdges({ nodes, links, hoveredId, isDark }: GraphEdgesProps)
 
   useFrame(() => {
     if (lineMat) {
-      lineMat.opacity = hoveredId ? 0.12 : isDark ? 0.35 : 0.5;
+      lineMat.setValues({ opacity: hoveredId ? 0.12 : isDark ? 0.35 : 0.5 });
     }
   });
 

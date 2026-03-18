@@ -727,14 +727,6 @@ const CARD_GRID_EXAMPLE = `
   </div>
 </div>`;
 
-const HINT_MAP: Record<ContentHint, string> = {
-  statistics:
-    "→ CSSテーブル（ヘッダー濃色、交互行色）またはCSSバーチャート（div幅で値を表現）で視覚化。重要数値は36px+で強調。",
-  list: "→ CSS Gridで2×2や3列のカードレイアウト。各カードにSVGアイコン + タイトル + 説明。",
-  comparison: "→ 左右対比の2カラムレイアウト。各列にヘッダー色を変えて対比。",
-  flow: "→ 番号付き丸(border-radius:50%) + SVG矢印コネクタ + ステップ説明の水平フロー。",
-};
-
 const VISUAL_DIRECTIVE_MAP: Record<string, string> = {
   statistics:
     "必ずCSSテーブル（display:grid、ヘッダー濃色背景、交互行色）を使用してデータを視覚化すること。",
@@ -774,10 +766,6 @@ export function buildRenderPrompt(
       .join("\n") || "  （タイトルのみ）";
 
   const contentHints = detectContentHints(slideTitle, effectiveTexts.join(" "));
-  const hintLines = contentHints
-    .filter((h) => h in HINT_MAP)
-    .map((h) => `  ${HINT_MAP[h]}`)
-    .join("\n");
 
   // Select visual directive
   const visualLower = (visual || "").toLowerCase();

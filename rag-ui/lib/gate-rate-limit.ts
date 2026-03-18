@@ -56,7 +56,6 @@ export async function checkGateRateLimit(
 
   if (!data.attempts) return { allowed: true };
 
-  const attempts = parseInt(data.attempts);
   const lockedUntil = parseInt(data.locked_until || "0");
   const now = Date.now();
 

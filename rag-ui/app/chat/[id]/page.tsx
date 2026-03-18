@@ -17,17 +17,18 @@ export default function ChatByIdPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setData(null);
-    setError(null);
+    let cancelled = false;
+    setData(null); // eslint-disable-line react-hooks/set-state-in-effect -- reset on id change
+    setError(null);  
     fetch(`/api/history/chats/${id}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`Not found (${res.status})`);
         return res.json();
       })
-      .then((d) => setData(d))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
 
   if (loading) {

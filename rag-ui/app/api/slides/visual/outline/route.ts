@@ -37,7 +37,7 @@ Rules:
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { question, answer, max_slides = 10, backend } = body;
+    const { question, answer, max_slides = 10 } = body;
 
     if (!question || !answer) {
       return Response.json(

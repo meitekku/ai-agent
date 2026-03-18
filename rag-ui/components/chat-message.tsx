@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useState, useRef, useEffect, lazy, Suspense } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import type { UIMessage } from "ai";
 import { isToolUIPart, getToolName } from "ai";
 import {
@@ -372,6 +372,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
         return () => clearTimeout(timer);
       } else {
         // Was in "only latest" mode — collapse immediately
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- sync collapse on tool completion
         setCollapsed(true);
         prevCompleteRef.current = true;
       }

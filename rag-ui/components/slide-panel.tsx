@@ -445,7 +445,7 @@ export function SlidePanel() {
   // Generation
   const [generatedSlides, setGeneratedSlides] = useState<GeneratedSlide[]>([]);
   const [generatingTotal, setGeneratingTotal] = useState(0);
-  const [generatingCompleted, setGeneratingCompleted] = useState(0);
+  const [, setGeneratingCompleted] = useState(0);
 
   // Viewer
   const [activeIndex, setActiveIndex] = useState(0);

@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       backend?: "ollama" | "gemini" | "mlx";
     };
 
-    const { question, answer, maxSlides = 12, styleOptions, backend } = body;
+    const { question, answer, maxSlides = 12, styleOptions } = body;
 
     if (!question || !answer) {
       return Response.json(

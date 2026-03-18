@@ -29,6 +29,7 @@ declare module "d3-force-3d" {
     nodes(): N[];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars
   export interface Force<N extends SimulationNodeDatum> {}
 
   export interface ForceLink<N extends SimulationNodeDatum, L extends SimulationLinkDatum<N>> extends Force<N> {

@@ -47,7 +47,7 @@ const DeckSchema = z.object({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { deck, instruction, backend } = body;
+    const { deck, instruction } = body;
 
     if (!deck || !instruction) {
       return Response.json(

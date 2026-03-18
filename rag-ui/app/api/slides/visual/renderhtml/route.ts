@@ -15,7 +15,7 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { slide, style_preset = "corporate", deck_title, backend } = body;
+    const { slide, style_preset = "corporate", deck_title } = body;
     const fallbackHtml = generateFallbackHtml(
       slide?.title || "スライド",
       slide?.type || "content",

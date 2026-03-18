@@ -1968,6 +1968,7 @@ ${html}
                                 {tpl.html?.includes(
                                   'data-image-template="true"',
                                 ) && (
+                                  // eslint-disable-next-line jsx-a11y/alt-text -- Lucide icon
                                   <Image className="w-3 h-3 text-violet-500 flex-shrink-0" />
                                 )}
                                 {tpl.name}
@@ -2073,6 +2074,7 @@ ${html}
 
                       {/* Template status */}
                       <div className="flex items-center gap-2 min-w-0">
+                        {/* eslint-disable-next-line jsx-a11y/alt-text -- Lucide icon */}
                         <Image
                           className={cn(
                             "w-3.5 h-3.5 flex-shrink-0",

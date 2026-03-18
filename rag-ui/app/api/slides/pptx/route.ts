@@ -162,10 +162,6 @@ function getIconForTitle(title: string): string {
 // UTILITY FUNCTIONS
 // ============================================================
 
-function isPngDataUrl(value: string) {
-  return typeof value === "string" && value.startsWith("data:image/png");
-}
-
 function sanitizeXmlText(value: string) {
   return value.replace(
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g,
@@ -265,6 +261,7 @@ function hasValidTableData(table?: SlideData["table"]): boolean {
 function detectLayout(
   slideData: SlideData,
   idx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   totalSlides: number,
 ): LayoutType {
   // First slide is always title layout
@@ -898,7 +895,6 @@ function renderChartSlide(
 ) {
   const title = safeText(s.title) || "Chart";
   const bullets = safeStringArray(s.bullets);
-  const icon = getIconForTitle(title);
 
   // Background
   slide.addShape(pptx.ShapeType.rect, {

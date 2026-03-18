@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       slide_type,
       style_options,
       template_html,
-      backend,
     } = body as {
       slide_plan_section: string;
       slide_title: string;

@@ -36,7 +36,6 @@ export async function POST(req: Request) {
       deckTitle,
       slideType,
       styleOptions,
-      backend,
     } = body;
 
     if (!slidePlanSection || slideTitle === undefined) {

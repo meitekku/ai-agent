@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { useSlideStore } from "@/lib/slide-store";
-import { useChatSettingsStore } from "@/lib/store";
 import { calcMaxSlides } from "@/lib/slide-prompts";
 import { getRenderedSlideIssue } from "@/lib/slide-render-sanity";
 

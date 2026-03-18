@@ -7,7 +7,6 @@ import {
   CATEGORIES,
   INDUSTRY_COLOR_MAP,
   inferStyleFromContent,
-  type StyleOptions,
 } from "@/components/style-options-panel";
 import {
   XIcon,
@@ -53,15 +52,6 @@ const STEP_ICONS = [
   MessageSquareIcon,
 ];
 
-const STEP_LABELS = [
-  "テーマ",
-  "産業",
-  "対象者",
-  "配色",
-  "枚数",
-  "追加の要望",
-];
-
 const INDUSTRY_OPTIONS = CATEGORIES.find((c) => c.key === "industry")!.options;
 
 // Merge profession + ageGroup for audience step
@@ -104,37 +94,26 @@ export function SlideSetupWizard({
 
   // Step states
   const [topicText, setTopicText] = useState(initialTopic);
-  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
-  const [selectedAudience, setSelectedAudience] = useState<string[]>([]);
-  const [selectedColor, setSelectedColor] = useState("");
-  const [selectedCount, setSelectedCount] = useState(8);
-  const [additionalNotes, setAdditionalNotes] = useState(instructions ?? "");
-
-  const topicInputRef = useRef<HTMLInputElement>(null);
-  const notesInputRef = useRef<HTMLInputElement>(null);
-
-  // Infer defaults from content
+  // Infer defaults from content (computed once from initial props)
   const inferred = useMemo(
     () => inferStyleFromContent(initialTopic, content),
     [initialTopic, content],
   );
 
-  // Apply inferred defaults on mount
-  useEffect(() => {
-    if (inferred.industry) {
-      setSelectedIndustries([inferred.industry]);
-    }
-    if (inferred.colorStyle) {
-      setSelectedColor(inferred.colorStyle);
-    }
-    if (inferred.profession) {
-      setSelectedAudience((prev) =>
-        prev.includes(inferred.profession!)
-          ? prev
-          : [...prev, inferred.profession!],
-      );
-    }
-  }, [inferred]);
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>(() =>
+    inferred.industry ? [inferred.industry] : [],
+  );
+  const [selectedAudience, setSelectedAudience] = useState<string[]>(() =>
+    inferred.profession ? [inferred.profession] : [],
+  );
+  const [selectedColor, setSelectedColor] = useState(() =>
+    inferred.colorStyle ?? "",
+  );
+  const [selectedCount, setSelectedCount] = useState(8);
+  const [additionalNotes, setAdditionalNotes] = useState(instructions ?? "");
+
+  const topicInputRef = useRef<HTMLInputElement>(null);
+  const notesInputRef = useRef<HTMLInputElement>(null);
 
   // Focus input on relevant steps
   useEffect(() => {
@@ -213,12 +192,6 @@ export function SlideSetupWizard({
   }, [goNext, onCancel]);
 
   // Toggle helpers
-  const toggleIndustry = (val: string) => {
-    setSelectedIndustries((prev) =>
-      prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val],
-    );
-  };
-
   const toggleAudience = (val: string) => {
     setSelectedAudience((prev) =>
       prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val],
@@ -226,12 +199,19 @@ export function SlideSetupWizard({
   };
 
   // Auto-suggest color when industry changes
-  useEffect(() => {
-    if (selectedIndustries.length > 0 && !selectedColor) {
-      const suggested = INDUSTRY_COLOR_MAP[selectedIndustries[0]];
-      if (suggested) setSelectedColor(suggested);
-    }
-  }, [selectedIndustries, selectedColor]);
+  const toggleIndustryWithColor = (val: string) => {
+    setSelectedIndustries((prev) => {
+      const next = prev.includes(val)
+        ? prev.filter((v) => v !== val)
+        : [...prev, val];
+      // Auto-suggest color for first selected industry
+      if (next.length > 0 && !selectedColor) {
+        const suggested = INDUSTRY_COLOR_MAP[next[0]];
+        if (suggested) setSelectedColor(suggested);
+      }
+      return next;
+    });
+  };
 
   const StepIcon = STEP_ICONS[currentStep];
 
@@ -262,7 +242,7 @@ export function SlideSetupWizard({
             {INDUSTRY_OPTIONS.map((opt) => (
               <button
                 key={opt}
-                onClick={() => toggleIndustry(opt)}
+                onClick={() => toggleIndustryWithColor(opt)}
                 className={cn(
                   "px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap",
                   selectedIndustries.includes(opt)

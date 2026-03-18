@@ -532,8 +532,8 @@ export function ChatPage({
 
   // --- HtmlSlideViewer state ---
   const [htmlSlideOpen, setHtmlSlideOpen] = useState(false);
-  const [htmlSlideQuestion, setHtmlSlideQuestion] = useState("");
-  const [htmlSlideAnswer, setHtmlSlideAnswer] = useState("");
+  const [htmlSlideQuestion] = useState("");
+  const [htmlSlideAnswer] = useState("");
 
   // --- SlideStudio state ---
   const [studioOpen, setStudioOpen] = useState(false);

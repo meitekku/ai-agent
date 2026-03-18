@@ -312,11 +312,9 @@ export async function POST(req: Request) {
     // Single-KB mode: search only the selected KB
     let kbDescription =
       "内部ナレッジベースから関連情報を検索します。ユーザーの質問がナレッジベースに関連する可能性がある場合に使用してください。";
-    let kbTitle = kb;
     let kbName = kb;
     try {
       const kbInfo = await getKB(kb);
-      kbTitle = kbInfo?.title || kbInfo?.name || kb;
       kbName = kbInfo?.name || kb;
       if (kbInfo?.title && kbInfo?.description) {
         kbDescription = `ナレッジベース「${kbInfo.title}」を検索: ${kbInfo.description}。ユーザーの質問がこのトピックに関連する可能性がある場合に使用。`;

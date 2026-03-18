@@ -20,7 +20,6 @@ export async function POST(req: Request) {
       max_slides = 12,
       style_options,
       instructions,
-      backend,
     } = body as {
       question: string;
       answer: string;

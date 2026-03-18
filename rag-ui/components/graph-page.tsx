@@ -17,7 +17,7 @@ import {
   LinkIcon,
   LayersIcon,
 } from "lucide-react";
-import type { GraphData, GraphNode } from "@/lib/rag-client";
+import type { GraphData } from "@/lib/rag-client";
 
 // Dynamic import to avoid SSR for R3F
 const GraphCanvas = dynamic(

@@ -210,6 +210,7 @@ export function TemplateManager({ open, onClose }: TemplateManagerProps) {
                     {tpl ? (
                       <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
                         {tpl.html?.includes('data-image-template="true"') ? (
+                          // eslint-disable-next-line jsx-a11y/alt-text -- Lucide icon
                           <Image className="w-3 h-3 text-violet-500 flex-shrink-0" />
                         ) : null}
                         <span className="truncate">{tpl.name}</span>

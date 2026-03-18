@@ -7,7 +7,6 @@ import {
   InstancedMesh,
   Color,
   Object3D,
-  ShaderMaterial,
   Group,
   Vector3,
 } from "three";

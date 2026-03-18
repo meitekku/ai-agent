@@ -197,7 +197,8 @@ export function WidgetRenderer({
 
   const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
-  const restored = isRestoredRef.current;
+  // eslint-disable-next-line react-hooks/refs -- read once at mount for initial animation
+  const [restored] = useState(() => isRestoredRef.current);
 
   return (
     <motion.div

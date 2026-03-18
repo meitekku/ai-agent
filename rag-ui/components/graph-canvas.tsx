@@ -124,8 +124,10 @@ export function GraphCanvas({
     });
 
     simRef.current = sim;
-    setSimNodes(nodes);
-    setSimLinks(links);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync init from simulation setup
+    setSimNodes([...nodes]);
+     
+    setSimLinks([...links]);
 
     return () => {
       sim.stop();
@@ -136,6 +138,7 @@ export function GraphCanvas({
     if (!selectedId) return;
     const node = simNodes.find((n) => n.id === selectedId);
     if (node) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- camera follow selection
       setCameraTarget(new Vector3(node.x || 0, node.y || 0, node.z || 0));
     }
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
