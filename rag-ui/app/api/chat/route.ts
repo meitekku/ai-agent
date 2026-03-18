@@ -1026,7 +1026,12 @@ export async function POST(req: Request) {
       ...(thinking && useGemini
         ? {
             providerOptions: {
-              google: { thinkingConfig: { thinkingBudget: 8192 } },
+              google: {
+                thinkingConfig: {
+                  thinkingBudget: 8192,
+                  includeThoughts: true,
+                },
+              },
             },
           }
         : {}),

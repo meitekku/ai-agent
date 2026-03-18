@@ -1,4 +1,4 @@
 .next
 node_modules
-.agents/skills
-.claude/skills
+.agents
+.claude

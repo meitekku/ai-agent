@@ -124,12 +124,13 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
   const isComplete = state === "output-available";
 
   if (toolName === "searchKnowledgeBase") {
-    const query = typeof args?.query === "string" ? args.query : "";
+    const kbSlug = typeof args?.kb === "string" ? args.kb : "";
+    const label = kbSlug ? `ナレッジベース-${kbSlug}` : "ナレッジベース";
     return (
       <StepIndicator
         icon={SearchIcon}
-        activeLabel={query ? `ナレッジベースを検索中 — 「${query}」` : "ナレッジベースを検索中..."}
-        completedLabel={query ? `ナレッジベースを検索しました — 「${query}」` : "ナレッジベースを検索しました"}
+        activeLabel={`${label} を検索中...`}
+        completedLabel={`${label} を検索しました`}
         active={!isComplete}
       />
     );
