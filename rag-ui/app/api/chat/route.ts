@@ -197,8 +197,7 @@ function buildSystemPrompt(
 
 ### ツール一覧
 - **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得
-- **fetchAndAnalyze**: 商談データ取得 + KB全検索 + Web検索 + AI分析を一括実行。CRM指定時は dealId、手動入力時は manualInput を渡す
-- **generateProposal**: 提案書パネルを開く。fetchAndAnalyze で返された sessionKey を渡す
+- **fetchAndAnalyze**: 商談データ取得 + KB全検索 + Web検索 + AI分析を一括実行。CRM指定時は dealId、手動入力時は manualInput を渡す。完了すると提案書パネルが自動的に開く
 - **reviseRationale**: ユーザーのフィードバックで分析根拠を修正。sessionKey + feedback を渡す
 
 ### ワークフロー（必須遵守）
@@ -207,17 +206,14 @@ function buildSystemPrompt(
 **パターン A: CRM データ源あり**
 1. listDeals で商談一覧を取得・表形式で表示。「どの商談を分析しますか？」と聞く
 2. ユーザーが選択したら fetchAndAnalyze(source, dealId) を呼ぶ（KB/Web検索・分析は自動実行）
-3. 分析結果の要点を簡潔に提示
-4. generateProposal(sessionKey) で提案書パネルを開く
+3. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
 
 **パターン B: 手動入力**
 ユーザーが「山田製造の商談を分析して」等と直接説明した場合：
 1. fetchAndAnalyze(source:"manual", manualInput:{ companyName, industry, dealName, challenges, ... }) を呼ぶ
-2. 分析結果の要点を簡潔に提示
-3. generateProposal(sessionKey) で提案書パネルを開く
+2. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
 
 **重要ルール**:
-- fetchAndAnalyze → generateProposal は **1 回の応答ターンで実行する**。途中で聞かない
 - fetchAndAnalyze が内部で KB/Web 検索を自動実行するため、別途 searchKnowledgeBase や webSearch を呼ぶ必要はない
 - ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する`;
   }
@@ -980,18 +976,6 @@ export async function POST(req: Request) {
           console.error(`[chat] ❌ fetchAndAnalyze failed:`, err);
           return { error: err instanceof Error ? err.message : String(err) };
         }
-      },
-    });
-
-    tools.generateProposal = tool({
-      description:
-        "提案書パネルを開きます。fetchAndAnalyze の結果で返された sessionKey を渡してください。",
-      inputSchema: z.object({
-        sessionKey: z.string().describe("fetchAndAnalyze で返された sessionKey"),
-      }),
-      execute: async ({ sessionKey }) => {
-        console.log(`[chat] 📊 generateProposal: sessionKey=${sessionKey}`);
-        return { triggered: true, sessionKey };
       },
     });
 

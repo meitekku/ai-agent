@@ -44,7 +44,7 @@ export interface PresentationPlan {
   slides: SlideDefinition[];
 }
 
-type Phase = "analysis" | "generating" | "preview";
+type Phase = "analysis" | "templateCheck" | "generating" | "preview";
 
 interface ProposalPanelState {
   isOpen: boolean;
