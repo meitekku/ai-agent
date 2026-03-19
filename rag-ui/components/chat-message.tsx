@@ -48,6 +48,7 @@ import {
   Maximize2Icon,
   OctagonIcon,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,9 +132,24 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 }) {
   const isComplete = state === "output-available";
 
+  const { data: kbs = [] } = useQuery<{ slug: string; name: string }[]>({
+    queryKey: ["kbs"],
+    queryFn: async () => {
+      const res = await fetch("/api/kbs");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
   if (toolName === "searchKnowledgeBase") {
     const kbSlug = typeof args?.kb === "string" ? args.kb : "";
-    const label = kbSlug ? `ナレッジベース-${kbSlug}` : "ナレッジベース";
+    const kbMatch = kbs.find((k) => k.slug === kbSlug);
+    const label = kbMatch?.name
+      ? `「${kbMatch.name}」`
+      : kbSlug
+        ? `ナレッジベース-${kbSlug}`
+        : "ナレッジベース";
     return (
       <StepIndicator
         icon={SearchIcon}

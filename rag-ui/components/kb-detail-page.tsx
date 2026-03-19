@@ -180,9 +180,11 @@ export const KBDetailPage = memo(function KBDetailPage({
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // KB header name editing
+  // KB header name/description editing
   const [editingHeaderName, setEditingHeaderName] = useState(false);
   const [kbName, setKbName] = useState("");
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [kbDescription, setKbDescription] = useState("");
   const syncedRef = useRef(false);
 
   // Fetch KB info
@@ -191,10 +193,11 @@ export const KBDetailPage = memo(function KBDetailPage({
     queryFn: () => fetchKB(slug),
   });
 
-  // Sync KB name into editing state
+  // Sync KB name/description into editing state
   if (kb && !syncedRef.current) {
     syncedRef.current = true;
     setKbName(kb.name);
+    setKbDescription(kb.description ?? "");
   }
 
   // Fetch documents
@@ -225,13 +228,13 @@ export const KBDetailPage = memo(function KBDetailPage({
     ...documents,
   ];
 
-  // Save KB name
+  // Save KB fields
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (fields: { name?: string; description?: string }) => {
       const res = await fetch(`/api/kbs/${slug}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: kbName }),
+        body: JSON.stringify(fields),
       });
       if (!res.ok) throw new Error("保存に失敗しました");
     },
@@ -439,67 +442,121 @@ export const KBDetailPage = memo(function KBDetailPage({
             <button
               type="button"
               onClick={() => router.push("/documents")}
-              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground self-start mt-0.5"
               aria-label="一覧に戻る"
             >
               <ArrowLeftIcon className="size-4" />
             </button>
-            <div className="flex-1 min-w-0 flex items-center gap-2">
-              {editingHeaderName ? (
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                {editingHeaderName ? (
+                  <form
+                    className="flex items-center gap-1.5 flex-1 min-w-0"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setEditingHeaderName(false);
+                      saveMutation.mutate({ name: kbName });
+                    }}
+                  >
+                    <Input
+                      autoFocus
+                      value={kbName}
+                      onChange={(e) => setKbName(e.target.value)}
+                      className="h-8 text-base font-semibold flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setKbName(kb?.name ?? "");
+                          setEditingHeaderName(false);
+                        }
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <CheckIcon className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                      onClick={() => {
+                        setKbName(kb?.name ?? "");
+                        setEditingHeaderName(false);
+                      }}
+                    >
+                      <XIcon className="size-3.5" />
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-semibold tracking-tight truncate">
+                      {kb?.name ?? slug}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setEditingHeaderName(true)}
+                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                      aria-label="名前を編集"
+                    >
+                      <PencilIcon className="size-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+              {/* Description */}
+              {editingDescription ? (
                 <form
-                  className="flex items-center gap-1.5 flex-1 min-w-0"
+                  className="flex items-center gap-1.5 mt-1"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    setEditingHeaderName(false);
-                    saveMutation.mutate();
+                    setEditingDescription(false);
+                    saveMutation.mutate({ description: kbDescription });
                   }}
                 >
                   <Input
                     autoFocus
-                    value={kbName}
-                    onChange={(e) => setKbName(e.target.value)}
-                    className="h-8 text-base font-semibold flex-1"
+                    value={kbDescription}
+                    onChange={(e) => setKbDescription(e.target.value)}
+                    placeholder="ナレッジベースの説明を入力..."
+                    className="h-7 text-xs flex-1"
                     onKeyDown={(e) => {
                       if (e.key === "Escape") {
-                        setKbName(kb?.name ?? "");
-                        setEditingHeaderName(false);
+                        setKbDescription(kb?.description ?? "");
+                        setEditingDescription(false);
                       }
                     }}
                   />
                   <button
                     type="submit"
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                   >
-                    <CheckIcon className="size-3.5" />
+                    <CheckIcon className="size-3" />
                   </button>
                   <button
                     type="button"
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                     onClick={() => {
-                      setKbName(kb?.name ?? "");
-                      setEditingHeaderName(false);
+                      setKbDescription(kb?.description ?? "");
+                      setEditingDescription(false);
                     }}
                   >
-                    <XIcon className="size-3.5" />
+                    <XIcon className="size-3" />
                   </button>
                 </form>
               ) : (
-                <>
-                  <h2 className="text-lg font-semibold tracking-tight truncate">
-                    {kb?.name ?? slug}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setEditingHeaderName(true)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                    aria-label="名前を編集"
-                  >
-                    <PencilIcon className="size-3.5" />
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setEditingDescription(true)}
+                  className="group/desc flex items-center gap-1.5 mt-1 text-left"
+                >
+                  <p className="text-xs text-muted-foreground truncate max-w-md">
+                    {kb?.description || "説明を追加..."}
+                  </p>
+                  <PencilIcon className="size-3 shrink-0 text-muted-foreground/50 opacity-0 group-hover/desc:opacity-100 transition-opacity" />
+                </button>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-start">
               <input
                 ref={fileInputRef}
                 type="file"

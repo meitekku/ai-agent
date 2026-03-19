@@ -177,9 +177,9 @@ export const DocumentsPage = memo(function DocumentsPage() {
                     <p className="text-sm font-semibold group-hover:text-primary transition-colors">
                       {kb.name}
                     </p>
-                    {kb.title && (
-                      <p className="text-sm text-muted-foreground mt-0.5 truncate">
-                        {kb.title}
+                    {(kb.title || kb.description) && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {kb.description || kb.title}
                       </p>
                     )}
                     <div className="flex items-center gap-3 mt-2">
