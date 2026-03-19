@@ -522,7 +522,7 @@ export const SkillsPage = memo(function SkillsPage() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="mx-auto max-w-3xl px-6 py-2">
             {!registryQuery ? (
               <RegistryEmptyState
@@ -572,6 +572,20 @@ export const SkillsPage = memo(function SkillsPage() {
                             {rs.source}
                           </p>
                         </div>
+                        <a
+                          href={`https://github.com/${rs.source}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0"
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="size-7 text-muted-foreground hover:text-foreground"
+                          >
+                            <ExternalLinkIcon className="size-3.5" />
+                          </Button>
+                        </a>
                         {installed ? (
                           <Badge
                             variant="outline"
