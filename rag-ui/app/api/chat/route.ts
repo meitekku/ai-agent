@@ -214,8 +214,15 @@ function buildSystemPrompt(
 2. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
 
 **重要ルール**:
-- fetchAndAnalyze が内部で KB/Web 検索を自動実行するため、別途 searchKnowledgeBase や webSearch を呼ぶ必要はない
-- ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する`;
+- fetchAndAnalyze 完了後も、追加で searchKnowledgeBase / webSearch を呼んで情報を補強してよい。多くの情報源を活用するほど分析の質が上がる
+- fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は呼ばない**こと（ProposalPanel と機能が重複するため）。ただしユーザーが明示的に「スライドを作って」と依頼した場合は generateSlides を使ってよい
+- ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する
+
+### 分析結果の提示方法
+fetchAndAnalyze 完了後、分析結果をユーザーに提示する際は以下を心がける：
+- **KPI（受注確率・健全度・推薦サービス比較など）は show-widget を使って視覚的に表示**する。例: ゲージチャート、レーダーチャート、比較カード
+- テキストによる要点解説（課題分析・推奨アクション・ROI 試算）は通常の Markdown で記述
+- 「提案書パネルが右側に開いています」と案内し、スライド生成を促す`;
   }
 
   // 情報の信頼度ヒエラルキー
