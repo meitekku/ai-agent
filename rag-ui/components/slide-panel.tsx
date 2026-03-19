@@ -502,7 +502,7 @@ export function SlidePanel() {
   // Track previous question/answer to detect re-open vs new generation
   const prevDataRef = useRef({ question: "", answer: "" });
 
-  const failedCount = generatedSlides.filter((s) => s.failed).length;
+  const failedCount = generatedSlides.filter((s) => s?.failed).length;
 
   // ============================================================
   // Scale calculation
@@ -707,103 +707,95 @@ export function SlidePanel() {
       setPhase("generating");
       setError(null);
 
-      // If retrying failed slides, keep existing successful ones
-      const slides: GeneratedSlide[] = existingSlides
-        ? [...existingSlides]
-        : [];
-      const startCount = slides.filter((s) => !s.failed).length;
+      // Initialize slides array: reuse existing successful slides, fill rest with placeholders
+      const slides: GeneratedSlide[] = sections.map((section, i) => {
+        if (existingSlides?.[i] && !existingSlides[i].failed) {
+          return existingSlides[i];
+        }
+        return { index: i, title: section.title, html: "", type: section.type };
+      });
       setGeneratedSlides([...slides]);
-      setGeneratingCompleted(startCount);
       setGeneratingTotal(sections.length);
 
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Indices that need (re-)generation
+      const pending = sections
+        .map((_, i) => i)
+        .filter((i) => !existingSlides?.[i] || existingSlides[i].failed);
+      let doneCount = sections.length - pending.length;
       let newFailCount = 0;
+      setGeneratingCompleted(doneCount);
 
       try {
-        // Build list of slides that need generating
-        const toGenerate = sections
-          .map((section, i) => ({ section, i }))
-          .filter(({ i }) => !slides[i] || slides[i].failed);
-
-        // Concurrent generation with concurrency limit
+        // Worker pool: N workers share a cursor into the pending list
         const CONCURRENCY = 3;
-        let completed = startCount;
+        let cursor = 0;
 
-        const generateOne = async ({ section, i }: { section: SlideSection; i: number }) => {
-          if (controller.signal.aborted) return;
-          try {
-            const res = await fetchWithRetry(
-              "/api/slides/htmlslide/render",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  slide_plan_section: section.plan_text,
-                  slide_title: section.title,
-                  slide_index: i,
-                  total_slides: sections.length,
-                  deck_title: title,
-                  slide_type: section.type,
-                }),
-                signal: controller.signal,
-              },
-              RENDER_TIMEOUT_MS,
-            );
+        async function worker() {
+          while (cursor < pending.length) {
+            if (controller.signal.aborted) return;
+            const idx = pending[cursor++]; // grab next index atomically (single-threaded JS)
+            const section = sections[idx];
 
-            if (!res.ok) {
-              const text = await res.text();
-              let detail = `HTTP ${res.status}`;
-              try {
-                detail = JSON.parse(text).detail || detail;
-              } catch {
-                /* ignore */
+            try {
+              const res = await fetchWithRetry(
+                "/api/slides/htmlslide/render",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    slide_plan_section: section.plan_text,
+                    slide_title: section.title,
+                    slide_index: idx,
+                    total_slides: sections.length,
+                    deck_title: title,
+                    slide_type: section.type,
+                  }),
+                  signal: controller.signal,
+                },
+                RENDER_TIMEOUT_MS,
+              );
+
+              if (!res.ok) {
+                const text = await res.text();
+                let detail = `HTTP ${res.status}`;
+                try { detail = JSON.parse(text).detail || detail; } catch { /* */ }
+                throw new Error(detail);
               }
-              throw new Error(detail);
+
+              const data = await res.json();
+              slides[idx] = {
+                index: idx,
+                title: section.title,
+                html: data.html || "",
+                type: section.type,
+              };
+            } catch (e) {
+              if (e instanceof DOMException && e.name === "AbortError") return;
+              const errMsg = e instanceof Error ? e.message : "Generation failed";
+              console.error(`[slide-panel] Slide ${idx + 1} failed:`, errMsg);
+              slides[idx] = {
+                index: idx,
+                title: section.title,
+                html: failedSlideHtml(section.title, errMsg),
+                type: section.type,
+                failed: true,
+              };
+              newFailCount++;
             }
 
-            const data = await res.json();
-            slides[i] = {
-              index: i,
-              title: section.title,
-              html: data.html || "",
-              type: section.type,
-            };
-          } catch (e) {
-            if (e instanceof DOMException && e.name === "AbortError") return;
-            const errMsg = e instanceof Error ? e.message : "Generation failed";
-            console.error(`[slide-panel] Slide ${i + 1} failed:`, errMsg);
-            slides[i] = {
-              index: i,
-              title: section.title,
-              html: failedSlideHtml(section.title, errMsg),
-              type: section.type,
-              failed: true,
-            };
-            newFailCount++;
-          }
-          completed++;
-          setGeneratedSlides([...slides]);
-          setGeneratingCompleted(completed);
-        };
-
-        // Run with concurrency limit
-        const running: Promise<void>[] = [];
-        for (const item of toGenerate) {
-          if (controller.signal.aborted) break;
-          const p = generateOne(item);
-          running.push(p);
-          if (running.length >= CONCURRENCY) {
-            await Promise.race(running);
-            // Remove settled promises
-            for (let j = running.length - 1; j >= 0; j--) {
-              const status = await Promise.race([running[j].then(() => "done"), Promise.resolve("pending")]);
-              if (status === "done") running.splice(j, 1);
-            }
+            doneCount++;
+            setGeneratedSlides([...slides]);
+            setGeneratingCompleted(doneCount);
           }
         }
-        await Promise.all(running);
+
+        // Spawn workers and wait for all to finish
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker()),
+        );
 
         setPhase("done");
         setActiveIndex(0);
