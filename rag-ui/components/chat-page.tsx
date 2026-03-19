@@ -229,10 +229,28 @@ export function ChatPage({
       if (initialData.conversation.kb_slug) {
         setActiveKb(initialData.conversation.kb_slug);
       }
+      // Restore model / thinking from conversation
+      if (initialData.conversation.chat_model) {
+        useChatSettingsStore.getState().setChatModel(initialData.conversation.chat_model);
+      }
+      useChatSettingsStore.getState().setThinking(initialData.conversation.thinking ?? false);
     } else {
       treeStore.clear();
+      useChatSettingsStore.getState().setChatModel("gemini-3-flash-preview");
+      useChatSettingsStore.getState().setThinking(false);
     }
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
+
+  // Persist model / thinking changes to DB
+  useEffect(() => {
+    const convId = convIdRef.current;
+    if (!convId || !initializedRef.current) return;
+    fetch(`/api/history/chats/${convId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_model: chatModel, thinking }),
+    }).catch(() => {});
+  }, [chatModel, thinking]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const setImageGenerating = useChatSettingsStore((s) => s.setImageGenerating);
@@ -418,7 +436,7 @@ export function ChatPage({
         await fetch("/api/history/chats", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, title, kb_slug: activeKb }),
+          body: JSON.stringify({ id, title, kb_slug: activeKb, chat_model: chatModel, thinking }),
         });
       } catch (e) {
         console.error("[chat-page] create conversation failed:", e);
@@ -430,7 +448,7 @@ export function ChatPage({
 
       return id;
     },
-    [queryClient, activeKb],
+    [queryClient, activeKb, chatModel, thinking],
   );
 
   const handleSend = useCallback(

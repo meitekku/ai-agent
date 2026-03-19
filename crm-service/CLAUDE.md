@@ -13,24 +13,23 @@ AIAgent-performance の提案書機能（Salesforce/Kintone 連携、商機分�
 rag-ui (chat tool calling)
   │
   ├── listDeals ────────────▶ POST /sf/list or /kintone/list
-  ├── fetchAndAnalyze ──────▶ CRM fetch + KB全検索 + Web検索 + POST /deals/analyze → session 保存
-  ├── generateProposal ─────▶ signal tool(sessionKey) → ProposalPanel
-  └── reviseRationale ──────▶ session から分析取得 → POST /deals/revise-rationale
+  ├── fetchAndAnalyze ──────▶ CRM fetch + KB全検索 + Web検索 + POST /deals/analyze → session 保存 → sessionKey 返却で ProposalPanel 自動開放
+  └── reviseRationale ──────▶ session から分析取得 → POST /deals/revise-rationale → マージ更新
 
 ProposalPanel (フロントエンド)
   │
   ├── GET /api/crm/proposal-session/{key} → session データ取得
-  ├── POST /api/crm/proposal-plan ────────▶ POST /proposal/generate-plan → PresentationPlan JSON
-  ├── POST /api/crm/proposal-revise-slide ▶ POST /proposal/revise-slide → 1 スライド修正
-  └── POST /api/crm/proposal-render ──────▶ POST /proposal/render-pptx → PPTX バイナリ
+  ├── GET /api/crm/templates ────────────▶ GET /templates → テンプレート一覧
+  └── 分析表示 → テンプレート確認 → スタイル設定 → SlidePanel（既存 HTML スライド機能）へ遷移
 ```
 
-rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義。`fetchAndAnalyze` が CRM データ取得 + KB 全検索 + Web 検索 + 分析を一括実行し、結果をインメモリセッション（TTL 1h）に保存。`generateProposal` は sessionKey のみ受取り、ProposalPanel を開く。
+rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義。`fetchAndAnalyze` が CRM データ取得 + KB 全検索 + Web 検索 + 分析を一括実行し、結果をインメモリセッション（TTL 1h）に保存。sessionKey を返却すると ProposalPanel が自動的に開く（`generateProposal` は廃止）。
 
-### Tool 統合（v2）
+### Tool 統合（v2→v3）
 
-旧: `fetchDealData` → `searchKnowledgeBase` × N → `webSearch` → `analyzeDeal` → `generateProposal`（7 tool 呼出、~20K tokens）
-新: `fetchAndAnalyze`（内部で CRM + KB + Web + analyze を一括実行）→ `generateProposal`（2-3 tool 呼出、~6K tokens）
+旧 v1: `fetchDealData` → `searchKnowledgeBase` × N → `webSearch` → `analyzeDeal` → `generateProposal`（7 tool 呼出、~20K tokens）
+v2: `fetchAndAnalyze`（内部で CRM + KB + Web + analyze を一括実行）→ `generateProposal`（2-3 tool 呼出、~6K tokens）
+v3（現行）: `fetchAndAnalyze` のみ（sessionKey 返却で ProposalPanel 自動開放）。`generateProposal` は廃止。2 tool（listDeals → fetchAndAnalyze）、~6K tokens
 
 ### 手動入力対応
 
@@ -114,21 +113,24 @@ crm-service/
 
 ### レガシーエンドポイント（`/proposal/generate-pptx`）
 1. DB から提案テンプレート取得 → content_text をプロンプトに注入
-2. Gemini が JSON でスライド計画生成（theme + slides[]）
+2. Gemini が JSON でスライド計画生成（theme + slides[]）— maxTokens 16000
 3. pptxgenjs で 5 レイアウト（title/content/two-column/cards/closing）をレンダリング
 4. バイナリ PPTX をレスポンス
 
 ### 分割エンドポイント（v2、ProposalPanel 用）
-- **`/proposal/generate-plan`**: ステップ 1-2 のみ実行 → PresentationPlan JSON を返却
+- **`/proposal/generate-plan`**: ステップ 1-2 のみ実行 → PresentationPlan JSON を返却（maxTokens 16000）
 - **`/proposal/render-pptx`**: ステップ 3-4 のみ実行 → plan JSON から PPTX バイナリ生成（AI 不要）
 - **`/proposal/revise-slide`**: plan + slideIndex + instruction → `buildSlideRevisionPrompt()` で Gemini に 1 スライドだけ修正させ、修正後の SlideDefinition を返却
+
+### JSON 切断対策
+Gemini の出力が長い場合、JSON が途中で切れることがある。`generate-plan` と `generate-pptx` で切断 JSON 自動修復を実装：未閉じの `[` `{` を検出し、対応する閉じ括弧を自動追加してパース。
 
 ## 環境変数
 
 | 変数 | 必須 | 説明 |
 |------|------|------|
 | `GEMINI_API_KEY` | Yes | Gemini API Key |
-| `GEMINI_MODEL` | No | デフォルト `gemini-2.5-flash` |
+| `GEMINI_MODEL` | No | デフォルト `gemini-3-flash-preview`（リクエスト body の `model` フィールドで上書き可） |
 | `DATABASE_URL` | Yes | PostgreSQL 接続 URL |
 | `SALESFORCE_INSTANCE_URL` | No | SF OAuth2 インスタンス URL |
 | `SALESFORCE_CLIENT_ID` | No | SF OAuth2 クライアント ID |

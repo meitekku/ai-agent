@@ -33,7 +33,7 @@ bun dev          # 開発サーバー起動（GEMINI_API_KEY 未設定時は MLX
 | 変数             | デフォルト                           | 説明                                      |
 | ---------------- | ------------------------------------ | ----------------------------------------- |
 | `GEMINI_API_KEY` | —                                    | Gemini API Key（設定→Gemini、未設定→MLX） |
-| `GEMINI_MODEL`   | `gemini-2.5-flash`                   | Gemini モデル                             |
+| `GEMINI_MODEL`   | `gemini-3-flash-preview`             | Gemini モデル（デフォルト）               |
 | `LIGHTRAG_URL`   | `http://localhost:8007`              | LightRAG サービス                         |
 | `MLX_URL`        | `http://localhost:8008`              | MLX LM Server（フォールバック用）         |
 | `MLX_MODEL`      | `mlx-community/Qwen3.5-35B-A3B-4bit` | MLX モデル                                |

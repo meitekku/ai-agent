@@ -36,7 +36,7 @@ function buildContextPrompt(sfData: R | null, dealInput: R | null): string {
 
 app.post("/deals/solution-qa", async (c) => {
   try {
-    const { messages, sfData, dealInput } = await c.req.json();
+    const { messages, sfData, dealInput, model } = await c.req.json();
     if (!messages || messages.length === 0) {
       return c.json({ error: "メッセージが必要です" }, 400);
     }
@@ -46,7 +46,7 @@ app.post("/deals/solution-qa", async (c) => {
 
     const contextPrompt = buildContextPrompt(sfData || null, dealInput || null);
     const systemMsg = SOLUTION_QA_SYSTEM_PROMPT + (contextPrompt ? `\n\n${contextPrompt}` : "");
-    const reply = await generateChat(systemMsg, messages);
+    const reply = await generateChat(systemMsg, messages, 4000, model);
     return c.json({ reply });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "不明なエラー";

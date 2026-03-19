@@ -64,6 +64,13 @@ export async function ensureChatTables(): Promise<void> {
     await client.query(`
       ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS stopped BOOLEAN DEFAULT FALSE
     `);
+    // Add chat_model / thinking columns if missing (existing deployments)
+    await client.query(`
+      ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS chat_model VARCHAR(100)
+    `);
+    await client.query(`
+      ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS thinking BOOLEAN DEFAULT FALSE
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -79,6 +86,8 @@ export interface ConversationRow {
   title: string;
   active_leaf_id: string | null;
   kb_slug: string | null;
+  chat_model: string | null;
+  thinking: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -108,11 +117,13 @@ export async function createConversation(
   id: string,
   title: string,
   kbSlug?: string | null,
+  chatModel?: string | null,
+  thinking?: boolean,
 ): Promise<void> {
   await ensureChatTables();
   await getPool().query(
-    `INSERT INTO chat_conversations (id, title, kb_slug) VALUES ($1, $2, $3)`,
-    [id, title, kbSlug ?? null],
+    `INSERT INTO chat_conversations (id, title, kb_slug, chat_model, thinking) VALUES ($1, $2, $3, $4, $5)`,
+    [id, title, kbSlug ?? null, chatModel ?? null, thinking ?? false],
   );
 }
 
@@ -213,7 +224,12 @@ export async function saveMessages(
 
 export async function updateConversation(
   id: string,
-  data: { title?: string; active_leaf_id?: string | null },
+  data: {
+    title?: string;
+    active_leaf_id?: string | null;
+    chat_model?: string | null;
+    thinking?: boolean;
+  },
 ): Promise<void> {
   await ensureChatTables();
   const fields: string[] = [];
@@ -227,6 +243,14 @@ export async function updateConversation(
   if (data.active_leaf_id !== undefined) {
     fields.push(`active_leaf_id = $${idx++}`);
     values.push(data.active_leaf_id);
+  }
+  if (data.chat_model !== undefined) {
+    fields.push(`chat_model = $${idx++}`);
+    values.push(data.chat_model);
+  }
+  if (data.thinking !== undefined) {
+    fields.push(`thinking = $${idx++}`);
+    values.push(data.thinking);
   }
 
   if (fields.length === 0) return;

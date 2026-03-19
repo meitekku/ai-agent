@@ -101,7 +101,7 @@ app.patch("/templates", async (c) => {
 
 app.post("/templates/detect", async (c) => {
   try {
-    const { fileNames } = await c.req.json();
+    const { fileNames, model } = await c.req.json();
     if (!process.env.GEMINI_API_KEY) {
       return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
     }
@@ -123,7 +123,7 @@ app.post("/templates/detect", async (c) => {
       const prompt = buildDetectPrompt(fileName, content, existingTemplates.filter((t) => t.name !== fileName));
 
       try {
-        const text = await generateText(prompt, 500);
+        const text = await generateText(prompt, 500, model);
         const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
         results.push({
           fileName, serviceName: parsed.serviceName || "", confidence: parsed.confidence || "low",

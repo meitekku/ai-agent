@@ -94,7 +94,7 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   setService: (service) => set({ service }),
 
   // Model selection
-  chatModel: null,
+  chatModel: "gemini-3-flash-preview",
   setChatModel: (model) => set({ chatModel: model }),
 
   // Active KB

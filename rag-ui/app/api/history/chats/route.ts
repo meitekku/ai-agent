@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { id, title, kb_slug } = await req.json();
+    const { id, title, kb_slug, chat_model, thinking } = await req.json();
     if (!id || !title) {
       return NextResponse.json(
         { error: "id and title are required" },
         { status: 400 },
       );
     }
-    await createConversation(id, title, kb_slug ?? null);
+    await createConversation(id, title, kb_slug ?? null, chat_model ?? null, thinking ?? false);
     return NextResponse.json({ id });
   } catch (e) {
     console.error("POST /api/history/chats error:", e);

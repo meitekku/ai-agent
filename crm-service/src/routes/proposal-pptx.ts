@@ -147,13 +147,13 @@ async function renderPPTX(plan: PresentationPlan, title: string): Promise<Buffer
 
 app.post("/proposal/generate-pptx", async (c) => {
   try {
-    const { data, analysis, additionalContext } = await c.req.json();
+    const { data, analysis, additionalContext, model } = await c.req.json();
     if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const templateContent = await fetchTemplateContent();
     const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
-    const text = await generateText(prompt, 16000);
+    const text = await generateText(prompt, 16000, model);
     let cleaned = text.replace(/```json|```/g, "").trim();
     let plan: PresentationPlan;
     try {
@@ -194,13 +194,13 @@ app.post("/proposal/generate-pptx", async (c) => {
 /** Generate plan JSON only (no PPTX rendering) */
 app.post("/proposal/generate-plan", async (c) => {
   try {
-    const { data, analysis, additionalContext } = await c.req.json();
+    const { data, analysis, additionalContext, model } = await c.req.json();
     if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const templateContent = await fetchTemplateContent();
     const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
-    const text = await generateText(prompt, 16000);
+    const text = await generateText(prompt, 16000, model);
     let cleaned = text.replace(/```json|```/g, "").trim();
     // Attempt to repair truncated JSON: close unclosed brackets
     let plan: PresentationPlan;
@@ -257,7 +257,7 @@ app.post("/proposal/render-pptx", async (c) => {
 /** Revise a single slide within a plan */
 app.post("/proposal/revise-slide", async (c) => {
   try {
-    const { plan, slideIndex, instruction } = await c.req.json();
+    const { plan, slideIndex, instruction, model } = await c.req.json();
     if (!plan?.slides?.length) return c.json({ error: "plan が不足しています" }, 400);
     if (typeof slideIndex !== "number" || slideIndex < 0 || slideIndex >= plan.slides.length) {
       return c.json({ error: `slideIndex が範囲外です (0-${plan.slides.length - 1})` }, 400);
@@ -266,7 +266,7 @@ app.post("/proposal/revise-slide", async (c) => {
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const prompt = buildSlideRevisionPrompt(plan as PresentationPlan, slideIndex, instruction);
-    const text = await generateText(prompt, 3000);
+    const text = await generateText(prompt, 3000, model);
     const revisedSlide = JSON.parse(text.replace(/```json|```/g, "").trim()) as SlideDefinition;
 
     return c.json({ slide: revisedSlide, slideIndex });

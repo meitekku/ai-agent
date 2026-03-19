@@ -957,6 +957,7 @@ export async function POST(req: Request) {
             body: JSON.stringify({
               data: sfData,
               additionalContext: additionalContext || undefined,
+              model: modelOverride || undefined,
             }),
           });
           const analyzeRaw = await analyzeRes.json();
@@ -1012,6 +1013,7 @@ export async function POST(req: Request) {
               currentAnalysis: session.analysis,
               feedback,
               additionalContext: session.additionalContext || undefined,
+              model: modelOverride || undefined,
             }),
           });
           const result = await res.json();

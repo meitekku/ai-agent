@@ -6,9 +6,9 @@ import type { AnalysisRationale, R, ProposalJudgment } from "../lib/types";
 
 const app = new Hono();
 
-async function generateRationale(data: R, availableTemplateServices: string[], additionalContext?: string): Promise<AnalysisRationale> {
+async function generateRationale(data: R, availableTemplateServices: string[], additionalContext?: string, model?: string): Promise<AnalysisRationale> {
   const prompt = buildRationalePrompt(data, availableTemplateServices, additionalContext);
-  const text = await generateText(prompt);
+  const text = await generateText(prompt, 4000, model);
 
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
@@ -43,7 +43,7 @@ async function generateRationale(data: R, availableTemplateServices: string[], a
 
 app.post("/deals/analyze", async (c) => {
   try {
-    const { data, availableTemplateServices, additionalContext } = await c.req.json();
+    const { data, availableTemplateServices, additionalContext, model } = await c.req.json();
     if (!data?.opportunity) {
       return c.json({ error: "商談データが不足しています" }, 400);
     }
@@ -53,7 +53,7 @@ app.post("/deals/analyze", async (c) => {
 
     let rationale: AnalysisRationale;
     if (process.env.GEMINI_API_KEY) {
-      rationale = await generateRationale(data, templateServices, additionalContext);
+      rationale = await generateRationale(data, templateServices, additionalContext, model);
     } else {
       rationale = {
         customerChallenges: ["AI分析にはGemini APIキーが必要です"],

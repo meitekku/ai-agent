@@ -59,7 +59,7 @@ Browser useChat → /api/chat Route Handler → isImageModel?
 
 | 条件                        | バックエンド | 説明                                       |
 | --------------------------- | ------------ | ------------------------------------------ |
-| `GEMINI_API_KEY` が設定済み | **Gemini**   | gemini-2.5-flash（クラウド）               |
+| `GEMINI_API_KEY` が設定済み | **Gemini**   | gemini-3-flash-preview（クラウド、デフォルト） |
 | `GEMINI_API_KEY` が未設定   | **MLX**      | Qwen3.5-35B-A3B-4bit（ローカル port 8008） |
 
 - 判定ロジック: `lib/ollama-provider.ts` の `getChatModel()` / `useGemini`
@@ -114,7 +114,7 @@ pm2 delete lightrag-service && pm2 start ~/Desktop/ai/ecosystem.config.js --only
 | `OLLAMA_URL`             | http://localhost:11434               | Ollama 地址（Embedding 専用）                               |
 | `REDIS_URL`              | redis://localhost:6379               | Valkey 缓存地址                                             |
 | `GEMINI_API_KEY`         | (空)                                 | Gemini API Key（設定時→Gemini、未設定→MLX フォールバック）  |
-| `GEMINI_MODEL`           | gemini-2.5-flash                     | Gemini LLM 模型                                             |
+| `GEMINI_MODEL`           | gemini-3-flash-preview               | Gemini LLM 模型（デフォルト、チャット別にユーザーが変更可） |
 | `GEMINI_EMBEDDING_MODEL` | text-embedding-004                   | Gemini Embedding 模型                                       |
 | `EMBEDDING_PROVIDER`     | local                                | Embedding 提供者（`local` / `gemini`）                      |
 | `SLIDE_LLM_BASE_URL`     | (空)                                 | スライド専用 LLM ベース URL（設定時は専用プロバイダー使用） |
@@ -136,7 +136,7 @@ rag-ui/
 │   │   └── [slug]/page.tsx            # ナレッジベース詳細（ドキュメント管理）
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # ToolLoopAgent + tool calling + CRM tools（fetchAndAnalyze 統合）+ 画像
+│       ├── chat/route.ts              # ToolLoopAgent + tool calling + CRM tools（fetchAndAnalyze 統合、generateProposal 廃止）+ 画像
 │       ├── kbs/
 │       │   ├── route.ts               # GET/POST ナレッジベース一覧/作成
 │       │   └── [slug]/
@@ -175,7 +175,8 @@ rag-ui/
 │       │   ├── proposal-plan/route.ts       # POST crm-service plan JSON 生成プロキシ
 │       │   ├── proposal-render/route.ts     # POST crm-service PPTX レンダリングプロキシ
 │       │   ├── proposal-revise-slide/route.ts # POST crm-service 1 スライド修正プロキシ
-│       │   └── proposal-session/[key]/route.ts # GET 提案セッションデータ取得
+│       │   ├── proposal-session/[key]/route.ts # GET 提案セッションデータ取得
+│       │   └── templates/route.ts           # GET/POST crm-service テンプレート一覧・アップロードプロキシ
 │       ├── history/
 │       │   └── slides/
 │       │       ├── route.ts           # GET/POST スライド履歴
@@ -188,7 +189,7 @@ rag-ui/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
 │   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D、リトライ対応）
-│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル表示、AI 生成画像大表示、ライトボックス、4モードドロップダウン）
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル、画像大表示、fetchAndAnalyze インラインボタン、reasoning インライン、4モードDD）
 │   ├── widget-renderer.tsx    # Generative UI: sandbox iframe + postMessage（CodePilot 方式）
 │   ├── widget-shimmer.tsx     # Widget ローディングシマーオーバーレイ
 │   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示 + ダウンロードボタン
@@ -200,8 +201,8 @@ rag-ui/
 │   ├── template-manager.tsx   # テンプレート管理モーダル
 │   ├── app-shell.tsx           # AppShell（sidebar + header ラッパー、layout から使用）
 │   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、チャット履歴）
-│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ+ProposalPanel 連携）
-│   ├── proposal-panel.tsx     # 提案書パネル（分析 → スライド生成 → プレビュー/修正 → PPTX DL）
+│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ+ProposalPanel→SlidePanel 遷移）
+│   ├── proposal-panel.tsx     # 提案書パネル（分析表示 → テンプレート確認 → スタイル設定 → SlidePanel 遷移）PanelShell リサイズ対応
 │   ├── slide-preview.tsx      # PresentationPlan → HTML プレビュー（16:9、inch→%変換）
 │   ├── documents-page.tsx     # ナレッジベース一覧ページ
 │   ├── kb-detail-page.tsx     # ナレッジベース詳細（ドキュメント管理+設定編集）
@@ -232,7 +233,7 @@ rag-ui/
 │   ├── widget-sanitizer.ts # Widget HTML 消毒 + iframe srcdoc ビルダー（CSP + postMessage）
 │   ├── widget-css-bridge.ts # CSS 変数ブリッジ（rag-ui oklch → widget 標準変数名）
 │   ├── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
-│   ├── proposal-panel-store.ts # Zustand store（sessionKey + phase + plan 管理）
+│   ├── proposal-panel-store.ts # Zustand store（sessionKey + phase + styleOptions 管理）
 │   └── proposal-session.ts  # インメモリ提案セッション（Map + TTL 1h）
 ├── hooks/
 │   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
@@ -299,6 +300,7 @@ rag-ui/
 | POST                 | /api/crm/proposal-render         | crm-service PPTX レンダリングプロキシ                                           |
 | POST                 | /api/crm/proposal-revise-slide   | crm-service 1 スライド修正プロキシ                                              |
 | GET                  | /api/crm/proposal-session/[key]  | 提案セッションデータ取得                                                        |
+| GET/POST             | /api/crm/templates               | crm-service テンプレート一覧 / アップロードプロキシ                             |
 
 ## 开发命令
 
@@ -421,7 +423,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 
 | テーブル             | 用途                                                                                                       |
 | -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `chat_conversations` | チャット会話（id, title, active_leaf_id, timestamps）                                                      |
+| `chat_conversations` | チャット会話（id, title, active_leaf_id, kb_slug, chat_model, thinking, timestamps）                       |
 | `chat_messages`      | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
 | `chat_files`         | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
 | `slide_decks`        | デッキメタデータ（title, question, answer, plan_md, style_options JSONB）                                  |
@@ -452,16 +454,21 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 
 ## CRM 提案書フロー
 
-### Tool 構成（v2 統合版）
+### Tool 構成（v3 現行版）
 
 ```
-Before (7 tool calls, ~20K tokens):
+v1 (7 tool calls, ~20K tokens):
   listDeals → fetchDealData → searchKB → webSearch → analyzeDeal → generateProposal → [PPTX 一発生成]
 
-After (2-3 tool calls, ~6K tokens):
+v2 (2-3 tool calls, ~6K tokens):
   listDeals → fetchAndAnalyze(auto KB+Web) → generateProposal(sessionKey)
-  手動入力: fetchAndAnalyze(source:"manual", manualInput) → generateProposal(sessionKey)
+
+v3 (2 tool calls, ~6K tokens):
+  listDeals → fetchAndAnalyze(auto KB+Web) → sessionKey 返却で ProposalPanel 自動開放
+  手動入力: fetchAndAnalyze(source:"manual", manualInput) → ProposalPanel 自動開放
 ```
+
+`generateProposal` は廃止。`fetchAndAnalyze` が sessionKey を返却すると、chat-page.tsx が全 assistant メッセージをスキャンして自動的に ProposalPanel を開く。
 
 ### fetchAndAnalyze 内部フロー
 
@@ -469,30 +476,49 @@ After (2-3 tool calls, ~6K tokens):
 2. KB 全検索（`listKBs()` → 各 KB に `searchOnly()` 並列実行）
 3. Web 検索（Tavily あれば会社名+業界で検索）
 4. `additionalContext` = KB 結果 + Web 結果をテキスト結合
-5. `POST crm-service/deals/analyze` で分析実行
+5. `POST crm-service/deals/analyze` で分析実行（`analyzeResult.analysis ?? analyzeResult` でアンラップ）
 6. `storeSession(data, analysis, additionalContext)` → sessionKey
-7. `{ sessionKey, data, analysis }` を LLM に返却
+7. `{ sessionKey, data, analysis }` を LLM に返却 → ProposalPanel 自動開放
 
 ### ProposalPanel フロー
 
 ```
-Phase 1: analysis（分析結果表示 + [スライド生成] ボタン）
-  ↓ ボタンクリック
-Phase 2: generating（ローディング）
-  ↓ POST /api/crm/proposal-plan → PresentationPlan JSON
-Phase 3: preview
-  ├─ スライドナビゲーション [< 1/8 >]
-  ├─ スライド HTML プレビュー（SlidePreview コンポーネント、16:9）
-  ├─ 修正指示入力 → POST /api/crm/proposal-revise-slide → 1 スライドだけ修正
-  └─ [PPTX ダウンロード] → POST /api/crm/proposal-render
+Phase 1: analysis（分析スコア + 成功要因 + リスク + 推薦サービス表示）
+  ↓ [次へ] ボタン
+Phase 2: templateCheck（GET /api/crm/templates → テンプレートカバレッジ表示）
+  ↓ [次へ] ボタン
+Phase 3: styleSetup（StyleOptionsPanel でスタイル設定、CRM データから業種自動推定）
+  ↓ [スライド生成] ボタン
+ProposalPanel を閉じ → onOpenSlidePanel(question, answer, instructions, styleOptions) で SlidePanel を開く
 ```
+
+ProposalPanel は `PanelShell` を使用（デスクトップ: flex sibling でリサイズ可能 360-700px、モバイル: フルスクリーンオーバーレイ）。`buildProposalContent()` で CRM データを構造化テキストに変換し、`buildTemplateInstructions()` でマッチしたテンプレート指示を生成して SlidePanel に渡す。
+
+### chat-page.tsx の検出ロジック
+
+- 全 assistant メッセージをスキャン（ToolLoopAgent が複数 assistant メッセージを生成するため）
+- `fetchAndAnalyze` の成功結果（`sessionKey` あり + `error` なし）を検出
+- 相互排他: ProposalPanel 開放時に SlidePanel を閉じる（逆も同様）
+- `{proposalOpen && !slidePanelOpen && <ProposalPanel />}` でレンダリング
+- `onOpenProposal` を ChatMessage に渡してインラインボタンからも開放可能
+
+### chat-message.tsx の対応
+
+- `kbs.find()` クラッシュ修正: API レスポンスの `data.knowledge_bases` をアンラップ
+- fetchAndAnalyze 完了後にインライン「提案書パネルを開く」ボタンを表示
+- reasoning parts はインラインで表示（groupParts で連結、step-start はスキップ）
 
 ### セッション管理
 
 - `lib/proposal-session.ts`: インメモリ Map + TTL 1h
 - `storeSession()` → nanoid(12) のキーを返却
 - `getSession()` / `updateSessionAnalysis()` で取得・更新
-- `reviseRationale` tool 呼出時にセッションの analysis を自動更新
+- `reviseRationale` tool 呼出時にセッションの analysis をマージ更新（rationale + analysisUpdates を個別マージ、全体置換ではない）
+
+### スライド生成
+
+- SlidePanel で HTML スライドを並列生成（CONCURRENCY=3、Promise.race プール）
+- ProposalPanel から遷移時は `buildProposalContent()` の構造化テキストが SlidePanel の answer として渡される
 
 ## TODO
 

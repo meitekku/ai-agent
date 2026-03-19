@@ -121,13 +121,14 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/app-sidebar.tsx` | 同上 | **rag-deploy のみ** | ナビゲーションサイドバー + チャット履歴 + 画像生成中ナビガード |
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
-| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | generateProposal 検出 + ProposalPanel + 画像スケルトン + beforeunload ガード |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理）+ 画像モデルパス + generateImage ツール |
+| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | fetchAndAnalyze 検出で ProposalPanel 自動開放 + ProposalPanel→SlidePanel 遷移 + 画像スケルトン + beforeunload ガード |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理、generateProposal 廃止）+ 画像モデルパス + generateImage ツール |
 | `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
-| `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + plan + preview 状態管理） |
+| `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + styleOptions 状態管理） |
 | `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | インメモリ提案セッション store（Map + TTL 1h） |
-| `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書パネル（分析表示 → スライド生成 → プレビュー/修正 → PPTX DL） |
+| `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書パネル（分析表示 → テンプレート確認 → スタイル設定 → SlidePanel へ遷移）PanelShell でリサイズ/モバイル対応 |
 | `rag-ui/components/slide-preview.tsx` | **rag-deploy のみ** | — | PresentationPlan → HTML プレビュー（16:9、inch→%変換） |
+| `rag-ui/app/api/crm/templates/route.ts` | **rag-deploy のみ** | — | GET/POST crm-service テンプレート一覧・アップロードプロキシ |
 | `rag-ui/app/api/crm/generate-pptx/route.ts` | **rag-deploy のみ** | — | crm-service PPTX 生成プロキシ（sessionKey 対応） |
 | `rag-ui/app/api/crm/proposal-plan/route.ts` | **rag-deploy のみ** | — | crm-service /proposal/generate-plan プロキシ |
 | `rag-ui/app/api/crm/proposal-render/route.ts` | **rag-deploy のみ** | — | crm-service /proposal/render-pptx プロキシ |
@@ -136,7 +137,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
-| `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator |
+| `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator + fetchAndAnalyze インラインボタン + reasoning インライン表示 |
 | `rag-ui/lib/store.ts` | 同上 | **rag-deploy のみ** | sidebar state + `isImageModel()` + `imageGenerating` 状態（Zustand） |
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
@@ -156,7 +157,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/lib/widget-css-bridge.ts` | **rag-deploy のみ** | — | CSS 変数ブリッジ（oklch → widget 変数） |
 | `rag-ui/lib/widget-guidelines.ts` | **rag-deploy のみ** | — | Widget 生成システムプロンプト |
 | `rag-ui/components/ai-elements/message.tsx` | 同上 | **rag-deploy のみ** | MessageResponse に widget セグメント分割ロジック追加 |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合）+ 画像モデルパス + generateImage + WIDGET_SYSTEM_PROMPT |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合、generateProposal 廃止）+ 画像モデルパス + generateImage + WIDGET_SYSTEM_PROMPT |
 | `rag-ui/components/image-lightbox.tsx` | 同上 | **rag-deploy のみ** | shadcn Dialog ベース画像拡大表示 + ダウンロードボタン |
 | `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
@@ -235,7 +236,8 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | rag-ui | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | スライド履歴+スキル用 |
 | rag-ui | `CRM_SERVICE_URL` | http://crm-service:8009 | CRM サービス URL（設定時→CRM ツール有効） |
 | crm-service | `GEMINI_API_KEY` | ${GEMINI_API_KEY} | Gemini API（.env から共有） |
-| crm-service | `GEMINI_MODEL` | gemini-2.5-flash | Gemini モデル |
+| rag-ui | `GEMINI_MODEL` | gemini-3-flash-preview | デフォルト LLM モデル（チャット別にユーザーが変更可） |
+| crm-service | `GEMINI_MODEL` | gemini-3-flash-preview | Gemini モデル（チャットからリクエスト経由で上書き可） |
 | crm-service | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | DB 接続 |
 | crm-service | `SALESFORCE_*` | ${SALESFORCE_*:-} | Salesforce 認証（オプション） |
 | crm-service | `KINTONE_*` | ${KINTONE_*:-} | Kintone 認証（オプション） |
@@ -324,8 +326,11 @@ docker compose --profile prod build --no-cache
 | Widget: CDN script の `onload` attribute が動的 script で発火しない場合がある | `setAttribute('onload', ...)` は動的生成 script 要素で不安定 | `addEventListener('load', ...)` + 動的 inline script 生成で対処 |
 | CSV アップロードで知識グラフの関係が破壊される | `extract.py` が CSV を 1 枚の巨大 Markdown 表格に変換 → chunk 切割で列ヘッダーと行データが分離 | CSV 構造化抽出に改修: エンコード自動検出(UTF-8/cp932) + グループ列検出 + レコード単位の自然言語ドキュメントに変換。小表格(≤10行×8列)は従来の Markdown 表格を維持 |
 | CRM 分析・提案書が KB/Web 情報を参照できない | `analyzeDeal`/`generateProposal` が CRM データのみで分析、KB/Web 検索結果が断絶 | 3 ツール（analyze/revise/pptx）に `additionalContext` パラメータ追加。LLM が事前に KB/Web 検索した情報を渡し、crm-service の Gemini プロンプトに注入 |
-| CRM Tool chain が不安定（7 ステップ、~20K tokens） | LLM が 7 tool を順次呼出、KB/Web 検索を飛ばすことがある。データ重複 3 回でトークン浪費 | `fetchAndAnalyze` に統合（CRM fetch + KB 全検索 + Web 検索 + analyze を 1 tool 内で実行）。セッション保存で `generateProposal` は sessionKey のみ。2-3 tool、~6K tokens に削減 |
-| PPTX 一発生成でプレビュー/修正不可 | `/proposal/generate-pptx` が plan 生成 + PPTX レンダリングを一括実行 | 3 エンドポイントに分割: `/generate-plan`（JSON のみ）+ `/revise-slide`（1 スライド修正）+ `/render-pptx`（PPTX レンダリング）。ProposalPanel でプレビュー → 部分修正 → DL のフロー |
+| CRM Tool chain が不安定（7 ステップ、~20K tokens） | LLM が 7 tool を順次呼出、KB/Web 検索を飛ばすことがある。データ重複 3 回でトークン浪費 | `fetchAndAnalyze` に統合（CRM fetch + KB 全検索 + Web 検索 + analyze を 1 tool 内で実行）。`generateProposal` は廃止し、`fetchAndAnalyze` の sessionKey 返却で ProposalPanel が自動開放。2 tool、~6K tokens に削減 |
+| PPTX 一発生成でプレビュー/修正不可 | `/proposal/generate-pptx` が plan 生成 + PPTX レンダリングを一括実行 | 3 エンドポイントに分割: `/generate-plan`（JSON のみ）+ `/revise-slide`（1 スライド修正）+ `/render-pptx`（PPTX レンダリング）。ProposalPanel で分析表示 → テンプレート確認 → スタイル設定 → SlidePanel へ遷移 |
+| crm-service PPTX 計画 JSON が切れる | Gemini の maxOutputTokens 不足 + 長い JSON が途中で途切れる | maxTokens 8000→16000 に増量 + 切断 JSON 自動修復（未閉じ括弧を自動補完） |
+| `reviseRationale` がセッション分析を上書き | セッションの analysis 全体を revise 結果で置換、元のスコアが消える | マージ方式に変更: `result.rationale` + `result.analysisUpdates` を既存 analysis にマージ |
+| `kbs.find()` でクラッシュ | API レスポンスが `{ knowledge_bases: [...] }` なのに配列として参照 | `data.knowledge_bases ?? data ?? []` でアンラップ |
 
 ## トラブルシューティング
 

@@ -15,7 +15,7 @@ export const EMBEDDING_MODEL =
 
 // Gemini (if API key set → Gemini, otherwise → MLX fallback)
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
 export const GEMINI_EMBEDDING_MODEL =
   process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004";
 export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || "local";

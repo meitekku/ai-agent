@@ -11,8 +11,8 @@ function getGenAI(): GoogleGenerativeAI {
   return genAI;
 }
 
-export async function generateText(prompt: string, maxTokens = 4000): Promise<string> {
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+export async function generateText(prompt: string, maxTokens = 4000, modelOverride?: string): Promise<string> {
+  const modelName = modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
   const model = getGenAI().getGenerativeModel({ model: modelName });
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -25,8 +25,9 @@ export async function generateChat(
   systemPrompt: string,
   messages: { role: "user" | "assistant"; content: string }[],
   maxTokens = 4000,
+  modelOverride?: string,
 ): Promise<string> {
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const modelName = modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
   const model = getGenAI().getGenerativeModel({
     model: modelName,
     systemInstruction: systemPrompt,

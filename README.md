@@ -7,8 +7,10 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 - **ナレッジベースチャット** — PDF アップロード → 知識グラフ自動構築 → AI 回答生成
 - **ドキュメント管理** — アップロード / 一覧 / 削除（OCR 対応）
 - **スライド生成** — チャット回答から 4 種類のスライドを自動生成（HTML / Visual / Studio / Simple）
-- **CRM 連携 + 提案書** — Salesforce / Kintone 商談データ取得、AI 商機分析、PPTX 提案書生成（チャット Tool Calling 経由）
+- **CRM 連携 + 提案書** — Salesforce / Kintone / 手動入力から商談データ取得 → KB 全検索 + Web 検索 → AI 商機分析 → テンプレート確認 → スタイル設定 → スライド提案書生成（チャット Tool Calling + ProposalPanel）
+- **Generative UI（Widget）** — AI がインタラクティブな HTML ウィジェット（チャート、計算機、フォーム等）を生成してチャット内で表示
 - **ウェブ検索** — Tavily 連携でリアルタイムウェブ検索（Tool Calling、オプション）
+- **画像生成** — Gemini ネイティブ画像生成 + テキストモデルからの generateImage ツール
 - **語義キャッシュ** — 同一クエリは Valkey キャッシュから ~14ms で応答
 - **チャット履歴・ブランチ** — 会話の永続化、メッセージ編集、ブランチ分岐・切替
 - **スキルシステム** — ドメイン知識をシステムプロンプトに注入（CRUD + ZIP アップロード）
@@ -100,7 +102,7 @@ docker compose --profile prod up -d
 | `KINTONE_API_TOKEN` | Kintone API トークン |
 | `KINTONE_APP_ID` | Kintone アプリ ID |
 
-> **CRM 連携について**: Salesforce / Kintone の環境変数は全てオプションです。未設定でも Kintone モックデータで動作確認が可能です。チャットで「商談一覧を見せて」と入力すると CRM ツールが呼び出されます。
+> **CRM 連携について**: Salesforce / Kintone の環境変数は全てオプションです。未設定でも Kintone モックデータで動作確認が可能です。チャットで「Kintoneの商談一覧を見せて」と入力するか、手動で会社情報を入力して商談分析・提案書生成ができます。
 
 その他の設定（DB 認証情報、モデル名、サービス URL 等）は `docker-compose.yml` で設定済みです。
 
@@ -108,13 +110,15 @@ docker compose --profile prod up -d
 
 | 機能 | モデル | タイミング |
 |------|--------|----------|
-| チャット回答 | gemini-2.5-flash | クエリごと（キャッシュミス時） |
+| チャット回答 | gemini-3-flash-preview（ユーザー選択可） | クエリごと（キャッシュミス時） |
 | PDF OCR | gemini-2.5-flash (Vision) | アップロード時（ページ数分） |
 | 実体抽出 | gemini-2.5-flash | アップロード時（チャンク数分） |
 | Embedding | gemini-embedding-001 | アップロード時 + クエリ時 |
-| スライド生成 | gemini-2.5-flash | スライド作成時 |
-| 商機分析根拠 | gemini-2.5-flash | 商談分析時 |
-| 提案書 PPTX | gemini-2.5-flash | 提案書生成時 |
+| スライド生成 | gemini-3-flash-preview（チャットモデルに連動） | スライド作成時 |
+| 商機分析根拠 | gemini-3-flash-preview（チャットモデルに連動） | 商談分析時 |
+| 提案書スライド | gemini-3-flash-preview（チャットモデルに連動） | 提案書生成時（plan 生成 + 各ページ並行レンダリング） |
+| Widget 生成 | gemini-3-flash-preview（チャットモデルに連動） | show-widget コードフェンス出力時 |
+| 画像生成 | gemini-2.0-flash-exp | ユーザー依頼時 |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
 
@@ -173,7 +177,7 @@ docker compose --profile prod up -d
 - Bun + Hono
 - jsforce（Salesforce 連携）、xlsx（Excel パース）
 - pptxgenjs（PPTX 提案書生成）
-- Gemini API（商機分析根拠 + スライド計画）
+- Gemini API（商機分析根拠 + スライド計画 + スライド修正、maxTokens 16000 + 切断 JSON 自動修復）
 
 **インフラ**
 - PostgreSQL 17 + pgvector
