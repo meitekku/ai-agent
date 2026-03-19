@@ -137,7 +137,8 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     queryFn: async () => {
       const res = await fetch("/api/kbs");
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return data.knowledge_bases ?? data ?? [];
     },
     staleTime: 60_000,
   });

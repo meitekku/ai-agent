@@ -722,14 +722,17 @@ export function SlidePanel() {
       let newFailCount = 0;
 
       try {
-        for (let i = 0; i < sections.length; i++) {
+        // Build list of slides that need generating
+        const toGenerate = sections
+          .map((section, i) => ({ section, i }))
+          .filter(({ i }) => !slides[i] || slides[i].failed);
+
+        // Concurrent generation with concurrency limit
+        const CONCURRENCY = 3;
+        let completed = startCount;
+
+        const generateOne = async ({ section, i }: { section: SlideSection; i: number }) => {
           if (controller.signal.aborted) return;
-
-          // Skip already-successful slides (for retry mode)
-          if (slides[i] && !slides[i].failed) continue;
-
-          const section = sections[i];
-
           try {
             const res = await fetchWithRetry(
               "/api/slides/htmlslide/render",
@@ -768,10 +771,7 @@ export function SlidePanel() {
               type: section.type,
             };
           } catch (e) {
-            // User abort — stop immediately
             if (e instanceof DOMException && e.name === "AbortError") return;
-
-            // Per-slide failure — use fallback, continue
             const errMsg = e instanceof Error ? e.message : "Generation failed";
             console.error(`[slide-panel] Slide ${i + 1} failed:`, errMsg);
             slides[i] = {
@@ -783,12 +783,27 @@ export function SlidePanel() {
             };
             newFailCount++;
           }
-
+          completed++;
           setGeneratedSlides([...slides]);
-          setGeneratingCompleted(
-            slides.filter((s) => s && !s.failed).length + newFailCount,
-          );
+          setGeneratingCompleted(completed);
+        };
+
+        // Run with concurrency limit
+        const running: Promise<void>[] = [];
+        for (const item of toGenerate) {
+          if (controller.signal.aborted) break;
+          const p = generateOne(item);
+          running.push(p);
+          if (running.length >= CONCURRENCY) {
+            await Promise.race(running);
+            // Remove settled promises
+            for (let j = running.length - 1; j >= 0; j--) {
+              const status = await Promise.race([running[j].then(() => "done"), Promise.resolve("pending")]);
+              if (status === "done") running.splice(j, 1);
+            }
+          }
         }
+        await Promise.all(running);
 
         setPhase("done");
         setActiveIndex(0);
