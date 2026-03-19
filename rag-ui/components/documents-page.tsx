@@ -97,8 +97,8 @@ export const DocumentsPage = memo(function DocumentsPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-6 py-5">
-        <div className="mx-auto max-w-3xl">
+      <div className="shrink-0 border-b border-border">
+        <div className="mx-auto max-w-3xl px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
@@ -178,7 +178,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
                       {kb.name}
                     </p>
                     {(kb.title || kb.description) && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {kb.description || kb.title}
                       </p>
                     )}
