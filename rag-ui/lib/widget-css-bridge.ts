@@ -2,8 +2,9 @@
  * CSS variable bridge — maps widget variable names to rag-ui's OKLCH
  * design tokens so model-generated widgets inherit the current theme.
  *
- * Also provides scoped Tailwind-like utility classes inside `.widget-root`
- * to prevent style leakage, without loading the Tailwind CDN.
+ * Tailwind CSS v3 (Play CDN) is loaded in the iframe srcdoc.
+ * This file provides: CSS variable bridge, form element base styles,
+ * and fallback utility classes (for when Tailwind CDN hasn't loaded yet).
  */
 
 // ── CSS variable mapping (widget names → rag-ui token names) ─────────────
@@ -232,6 +233,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--color-border-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-border-primary) 30%, transparent);
 }
 button {
   background: transparent;
@@ -320,7 +322,7 @@ body {
   box-sizing: border-box;
 }
 a {
-  color: var(--color-text-primary);
+  color: var(--primary);
   text-decoration: none;
   cursor: pointer;
 }

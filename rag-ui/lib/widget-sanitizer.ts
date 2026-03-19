@@ -4,7 +4,7 @@
  * Security model:
  *
  * 1. **Streaming updates** (pushed to iframe via postMessage):
- *    - Dangerous embedding tags stripped (iframe, object, embed, form, etc.)
+ *    - Dangerous embedding tags stripped (iframe, object, embed, etc.)
  *    - ALL on* handlers stripped (preview is purely visual)
  *    - ALL script tags stripped
  *    - javascript:/data: URLs in href/src/action stripped
@@ -28,12 +28,13 @@ export const CDN_WHITELIST = [
   "cdn.jsdelivr.net",
   "unpkg.com",
   "esm.sh",
+  "cdn.tailwindcss.com",
 ];
 
 // ── HTML sanitization ────────────────────────────────────────────────────
 
 const DANGEROUS_TAGS =
-  /<(iframe|object|embed|meta|link|base|form)[\s>][\s\S]*?<\/\1>/gi;
+  /<(iframe|object|embed|meta|link|base)[\s>][\s\S]*?<\/\1>/gi;
 const DANGEROUS_VOID = /<(iframe|object|embed|meta|link|base)\b[^>]*\/?>/gi;
 
 /**
@@ -149,6 +150,9 @@ case 'widget:finalize':
 finalizeHtml(e.data.html);
 setTimeout(_h,150);
 break;
+case 'widget:measure':
+_h();
+break;
 case 'widget:theme':
 var r=document.documentElement,v=e.data.vars;
 if(v)for(var k in v)r.style.setProperty(k,v[k]);
@@ -178,6 +182,8 @@ parent.postMessage({type:'widget:ready'},'*');
 <style>
 ${styleBlock}
 </style>
+<script>tailwind.config={darkMode:'class',corePlugins:{preflight:false}}</script>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body style="margin:0;padding:0;">
 <div id="__root"></div>

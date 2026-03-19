@@ -26,14 +26,13 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 9. Chart.js: canvas は hex カラー使用（CSS 変数不可）。responsive:true, maintainAspectRatio:false
 10. SVG: \`<svg width="100%" viewBox="0 0 680 H">\` 形式
 
-### ダークモード対応（重要）
-ホストがダークモードとライトモードを切り替えます。以下の CSS 変数を使うと自動追従します:
-- テキスト: \`var(--color-text-primary)\`, \`var(--color-text-secondary)\`
-- 背景: 透明のまま。コンテナに背景色を付ける場合は \`var(--color-background-secondary)\`
-- ボーダー: \`var(--color-border-tertiary)\`
-- **HTML/CSS**: 文字色・背景色・ボーダーに上記 CSS 変数を使う。\`#334155\` のような固定色は避ける
-- **Chart.js**: データ色は hex で OK。ただし軸ラベル・グリッド線は半透明を使う: \`color:'rgba(150,150,150,0.7)'\`, \`grid:{color:'rgba(150,150,150,0.15)'}\`
-- **SVG**: テキスト fill に \`var(--color-text-primary)\` を使用。線は \`rgba(150,150,150,0.3)\`
+### スタイリング（Tailwind CSS 優先）
+iframe には **Tailwind CSS v3**（Play CDN）がプリロード済み。\`darkMode:'class'\` 設定済み。
+- **レイアウト・装飾は Tailwind クラスを使う**。\`<style>\` ブロックや inline style は原則不要
+- ダークモード: \`dark:\` バリアントで対応（例: \`class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"\`）
+- セマンティック CSS 変数も使用可: \`var(--color-text-primary)\`, \`var(--color-background-secondary)\`, \`var(--color-border-tertiary)\`
+- Chart.js: データ色は hex。軸ラベル・グリッド線は半透明: \`color:'rgba(150,150,150,0.7)'\`, \`grid:{color:'rgba(150,150,150,0.15)'}\`
+- SVG: テキスト fill に \`var(--color-text-primary)\`。線は \`rgba(150,150,150,0.3)\`
 
 ### 使用場面（積極的に使うこと）
 ユーザーが以下に該当するものを求めた場合、**コードブロックではなく show-widget で直接表示**すること:

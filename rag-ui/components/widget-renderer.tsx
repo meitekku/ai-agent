@@ -12,6 +12,7 @@ import {
   buildReceiverSrcdoc,
 } from "@/lib/widget-sanitizer";
 import { WidgetShimmer } from "./widget-shimmer";
+import { WidgetErrorBoundary } from "./widget-error-boundary";
 
 interface WidgetRendererProps {
   /** Raw HTML to render inside the widget iframe. */
@@ -35,7 +36,15 @@ function cacheKey(code: string): string {
   return code.slice(0, 200);
 }
 
-export function WidgetRenderer({
+export function WidgetRenderer(props: WidgetRendererProps) {
+  return (
+    <WidgetErrorBoundary>
+      <WidgetRendererInner {...props} />
+    </WidgetErrorBoundary>
+  );
+}
+
+function WidgetRendererInner({
   widgetCode,
   isStreaming,
   title,
@@ -188,6 +197,8 @@ export function WidgetRenderer({
     setTimeout(() => {
       heightLockedRef.current = false;
       setFinalized(true);
+      // Re-measure after lock releases in case content shrank during finalize
+      iframe.contentWindow?.postMessage({ type: "widget:measure" }, "*");
     }, 400);
   }, [isStreaming, iframeReady, widgetCode]);
 
@@ -230,7 +241,7 @@ export function WidgetRenderer({
 
       <motion.div
         className="overflow-hidden"
-        animate={{ height: iframeHeight || "auto" }}
+        animate={{ height: showCode ? 0 : (iframeHeight || "auto") }}
         transition={
           restored ? { duration: 0 } : { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
         }
