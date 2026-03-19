@@ -29,7 +29,6 @@ import {
   BookOpenIcon,
   AlertCircleIcon,
   ImageIcon,
-  FileText,
   FactoryIcon,
   BriefcaseIcon,
   ShoppingCartIcon,
@@ -360,7 +359,8 @@ export function ChatPage({
   // Detect generateSlides / fetchAndAnalyze tool result
   const openProposal = useProposalPanelStore((s) => s.open);
   const proposalOpen = useProposalPanelStore((s) => s.isOpen);
-  const [lastSessionKey, setLastSessionKey] = useState<string | null>(null);
+  const slidePanelOpen = useSlidePanelStore((s) => s.open);
+  const closeSlidePanelFn = useSlidePanelStore((s) => s.closePanel);
   useEffect(() => {
     if (!sessionActiveRef.current) return;
     if (!justFinishedRef.current) return;
@@ -396,12 +396,13 @@ export function ChatPage({
         ) {
           foundProposal = true;
           const sk = result.sessionKey as string;
-          setLastSessionKey(sk);
+          // Mutual exclusion: close SlidePanel when opening ProposalPanel
+          if (slidePanelOpen) closeSlidePanelFn();
           openProposal(sk);
         }
       }
     }
-  }, [status, messages, openProposal]);
+  }, [status, messages, openProposal, slidePanelOpen, closeSlidePanelFn]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -646,7 +647,6 @@ export function ChatPage({
   }, []);
 
   // --- SlidePanel (right panel for HTML slides) ---
-  const slidePanelOpen = useSlidePanelStore((s) => s.open);
   const slidePanelSourceId = useSlidePanelStore((s) => s.sourceMessageId);
   const reopenSlidePanel = useSlidePanelStore((s) => s.reopenPanel);
 
@@ -755,6 +755,29 @@ export function ChatPage({
     [studioDeck],
   );
 
+  // Inline proposal button handler (from ChatMessage)
+  const handleOpenProposal = useCallback(
+    (sk: string) => {
+      // Mutual exclusion: close SlidePanel when opening ProposalPanel
+      if (slidePanelOpen) closeSlidePanelFn();
+      openProposal(sk);
+    },
+    [openProposal, slidePanelOpen, closeSlidePanelFn],
+  );
+
+  // ProposalPanel → SlidePanel transition
+  const handleProposalOpenSlidePanel = useCallback(
+    (
+      question: string,
+      answer: string,
+      instructions: string | null,
+      styleOpts: import("@/components/style-options-panel").StyleOptions | null,
+    ) => {
+      openSlidePanel(question, answer, instructions, styleOpts);
+    },
+    [openSlidePanel],
+  );
+
   // Branch helpers for ChatMessage
   const getBranchInfo = useCallback(
     (messageId: string) => {
@@ -816,6 +839,7 @@ export function ChatPage({
                     onSwitchBranch={handleSwitchBranch}
                     slidePanelSourceId={slidePanelSourceId}
                     onReopenSlides={reopenSlidePanel}
+                    onOpenProposal={handleOpenProposal}
                   />
                 );
               })}
@@ -901,17 +925,9 @@ export function ChatPage({
         onDeckChange={setStudioDeck}
         onRequestRefine={handleStudioRefine}
       />
-      <ProposalPanel />
-
-      {/* Reopen proposal panel button */}
-      {!proposalOpen && lastSessionKey && (
-        <button
-          className="fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
-          onClick={() => openProposal(lastSessionKey)}
-        >
-          <FileText className="h-4 w-4" />
-          提案書パネルを開く
-        </button>
+      {/* Proposal Panel (right side, mutually exclusive with SlidePanel) */}
+      {proposalOpen && !slidePanelOpen && (
+        <ProposalPanel onOpenSlidePanel={handleProposalOpenSlidePanel} />
       )}
     </div>
   );

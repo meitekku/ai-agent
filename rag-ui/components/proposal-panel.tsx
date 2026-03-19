@@ -3,24 +3,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
-  Download,
   FileText,
   TrendingUp,
   AlertTriangle,
   Target,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
-  Wand2,
   Presentation,
   CheckCircle2,
   CircleAlert,
   ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useProposalPanelStore } from "@/lib/proposal-panel-store";
-import { SlidePreview } from "@/components/slide-preview";
+import {
+  StyleOptionsPanel,
+  type StyleOptions,
+  INDUSTRY_COLOR_MAP,
+} from "@/components/style-options-panel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,36 +43,173 @@ interface ServiceCoverage {
 }
 
 // ---------------------------------------------------------------------------
+// buildProposalContent — convert CRM analysis to structured text for SlidePanel
+// ---------------------------------------------------------------------------
+
+function buildProposalContent(
+  data: Record<string, unknown>,
+  analysis: Record<string, unknown>,
+): string {
+  const account = (data.account ?? {}) as Record<string, unknown>;
+  const opportunity = (data.opportunity ?? {}) as Record<string, unknown>;
+  const rationale = (analysis.rationale ?? {}) as Record<string, unknown>;
+  const recs = (rationale.serviceRecommendations ?? []) as Array<{
+    service: string;
+    relevance: string;
+    reason: string;
+    features: string[];
+  }>;
+  const keyDrivers = (analysis.keyDrivers ?? []) as string[];
+  const riskFactors = (analysis.riskFactors ?? []) as string[];
+  const winProb = analysis.winProbability ?? 0;
+  const healthScore = analysis.dealHealthScore ?? 0;
+
+  const lines: string[] = [];
+
+  // Customer overview
+  lines.push(`# ${account.Name || "顧客"} 向け提案書`);
+  lines.push("");
+  lines.push("## 顧客概要");
+  if (account.Name) lines.push(`- 会社名: ${account.Name}`);
+  if (account.Industry) lines.push(`- 業種: ${account.Industry}`);
+  if (account.NumberOfEmployees)
+    lines.push(`- 従業員数: ${account.NumberOfEmployees}名`);
+  if (opportunity.Name) lines.push(`- 案件名: ${opportunity.Name}`);
+  if (opportunity.Amount)
+    lines.push(
+      `- 予算: ${Number(opportunity.Amount).toLocaleString()}円`,
+    );
+  if (opportunity.StageName)
+    lines.push(`- ステージ: ${opportunity.StageName}`);
+  lines.push("");
+
+  // Scores
+  lines.push("## 商談スコア");
+  lines.push(`- 受注確率: ${winProb}%`);
+  lines.push(`- 健全度: ${healthScore}`);
+  lines.push("");
+
+  // Key drivers
+  if (keyDrivers.length > 0) {
+    lines.push("## 成功要因");
+    for (const d of keyDrivers) lines.push(`- ${d}`);
+    lines.push("");
+  }
+
+  // Risk factors
+  if (riskFactors.length > 0) {
+    lines.push("## リスク要因");
+    for (const r of riskFactors) lines.push(`- ${r}`);
+    lines.push("");
+  }
+
+  // Recommendations
+  if (recs.length > 0) {
+    lines.push("## 推薦ソリューション");
+    for (const rec of recs) {
+      lines.push(`### ${rec.service}（${rec.relevance}）`);
+      lines.push(rec.reason);
+      if (rec.features?.length > 0) {
+        for (const f of rec.features) lines.push(`- ${f}`);
+      }
+      lines.push("");
+    }
+  }
+
+  // Combined solution
+  if (typeof rationale.combinedSolution === "string" && rationale.combinedSolution) {
+    lines.push("## 総合ソリューション");
+    lines.push(rationale.combinedSolution);
+    lines.push("");
+  }
+
+  // KPIs
+  const kpis = (rationale.expectedKPIs ?? []) as string[];
+  if (kpis.length > 0) {
+    lines.push("## 期待される KPI");
+    for (const k of kpis) lines.push(`- ${k}`);
+    lines.push("");
+  }
+
+  // Action items
+  const actions = (rationale.nextActions ?? rationale.actionItems ?? []) as string[];
+  if (actions.length > 0) {
+    lines.push("## アクションプラン");
+    for (const a of actions) lines.push(`- ${a}`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Build template instructions from matched templates
+// ---------------------------------------------------------------------------
+
+function buildTemplateInstructions(
+  coverages: ServiceCoverage[],
+  templates: TemplateInfo[],
+): string | null {
+  const matched = coverages.filter((c) => c.hasTemplate);
+  if (matched.length === 0) return null;
+  const lines = ["以下のサービステンプレートを参考にしてください："];
+  for (const c of matched) {
+    const tpl = templates.find((t) => t.name === c.templateName);
+    if (tpl) {
+      lines.push(`- ${c.service}: テンプレート「${tpl.name}」`);
+    }
+  }
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function ProposalPanel() {
+interface ProposalPanelProps {
+  onOpenSlidePanel: (
+    question: string,
+    answer: string,
+    instructions: string | null,
+    styleOptions: StyleOptions | null,
+  ) => void;
+}
+
+export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
   const {
     isOpen,
     sessionKey,
     phase,
     data,
     analysis,
-    plan,
-    activeSlideIndex,
+    styleOptions,
     close,
     setSessionData,
     setPhase,
-    setPlan,
-    setActiveSlideIndex,
-    updateSlide,
+    setStyleOptions,
   } = useProposalPanelStore();
 
-  const [generating, setGenerating] = useState(false);
-  const [revising, setRevising] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [reviseInput, setReviseInput] = useState("");
   const fetchedRef = useRef<string | null>(null);
 
   // Template check state
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [coverages, setCoverages] = useState<ServiceCoverage[]>([]);
+
+  // Panel resize state
+  const [panelWidth, setPanelWidth] = useState(480);
+  const panelResizingRef = useRef(false);
+  const panelResizeStartXRef = useRef(0);
+  const panelResizeStartWRef = useRef(480);
+
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Fetch session data when sessionKey changes
   useEffect(() => {
@@ -96,7 +234,6 @@ export function ProposalPanel() {
       fetchedRef.current = null;
       setTemplates([]);
       setCoverages([]);
-      setReviseInput("");
     }
   }, [isOpen]);
 
@@ -122,7 +259,6 @@ export function ProposalPanel() {
       }>;
 
       const coverageList: ServiceCoverage[] = recs.map((rec) => {
-        // Fuzzy match: template serviceName contains service name or vice versa
         const match = tpls.find(
           (t) =>
             t.serviceName &&
@@ -139,109 +275,87 @@ export function ProposalPanel() {
       setCoverages(coverageList);
     } catch (err) {
       console.error("[ProposalPanel] template fetch failed:", err);
-      // Graceful degradation: proceed with empty templates
       setCoverages([]);
     } finally {
       setTemplateLoading(false);
     }
   }, [analysis, setPhase]);
 
-  const handleGeneratePlan = useCallback(async () => {
-    if (!sessionKey) return;
-    setGenerating(true);
-    setPhase("generating");
-    try {
-      const res = await fetch("/api/crm/proposal-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionKey }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        alert(err.error || "Plan生成に失敗しました");
-        setPhase("templateCheck");
-        return;
-      }
-      const result = await res.json();
-      setPlan(result.plan);
-    } catch (err) {
-      alert(`エラー: ${err instanceof Error ? err.message : "不明なエラー"}`);
-      setPhase("templateCheck");
-    } finally {
-      setGenerating(false);
+  // Enter style setup phase: auto-infer style from CRM data
+  const handleStartStyleSetup = useCallback(() => {
+    setPhase("styleSetup");
+    // Auto-infer industry from account data
+    const account = (data?.account ?? {}) as Record<string, unknown>;
+    const industry = typeof account.Industry === "string" ? account.Industry : "";
+    if (industry && !styleOptions.industry) {
+      const inferredOpts: StyleOptions = { ...styleOptions };
+      inferredOpts.industry = industry;
+      const color = INDUSTRY_COLOR_MAP[industry];
+      if (color) inferredOpts.colorStyle = color;
+      setStyleOptions(inferredOpts);
     }
-  }, [sessionKey, setPhase, setPlan]);
+  }, [data, styleOptions, setPhase, setStyleOptions]);
 
-  const handleReviseSlide = useCallback(async () => {
-    if (!plan || !reviseInput.trim()) return;
-    setRevising(true);
-    try {
-      const res = await fetch("/api/crm/proposal-revise-slide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan,
-          slideIndex: activeSlideIndex,
-          instruction: reviseInput.trim(),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        alert(`修正エラー: ${err.error || "不明なエラー"}`);
-        return;
-      }
-      const result = await res.json();
-      updateSlide(activeSlideIndex, result.slide);
-      setReviseInput("");
-    } catch (err) {
-      alert(`エラー: ${err instanceof Error ? err.message : "不明なエラー"}`);
-    } finally {
-      setRevising(false);
-    }
-  }, [plan, reviseInput, activeSlideIndex, updateSlide]);
+  // Generate slides: build content and open SlidePanel
+  const handleGenerateSlides = useCallback(() => {
+    if (!data || !analysis) return;
 
-  const handleDownloadPptx = useCallback(async () => {
-    if (!plan || !data) return;
-    setDownloading(true);
-    try {
-      const opp = data.opportunity as Record<string, unknown> | undefined;
-      const acc = data.account as Record<string, unknown> | undefined;
-      const pptxTitle = `提案書 - ${opp?.Name || "商談"}`;
-      const res = await fetch("/api/crm/proposal-render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, title: pptxTitle }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        alert(`ダウンロードエラー: ${err.error || "不明なエラー"}`);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `提案書_${acc?.Name || ""}_${opp?.Name || ""}.pptx`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(`エラー: ${err instanceof Error ? err.message : "不明なエラー"}`);
-    } finally {
-      setDownloading(false);
-    }
-  }, [plan, data]);
+    const account = (data.account ?? {}) as Record<string, unknown>;
+    const opportunity = (data.opportunity ?? {}) as Record<string, unknown>;
+    const question = `${account.Name || "顧客"} - ${opportunity.Name || "案件"} 提案書`;
+    const answer = buildProposalContent(data, analysis);
+    const instructions = buildTemplateInstructions(coverages, templates);
+
+    const opts = Object.keys(styleOptions).length > 0 ? styleOptions : null;
+
+    close(); // close ProposalPanel
+    onOpenSlidePanel(question, answer, instructions, opts);
+  }, [data, analysis, coverages, templates, styleOptions, close, onOpenSlidePanel]);
+
+  // Panel resize handlers
+  const handlePanelResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      panelResizingRef.current = true;
+      panelResizeStartXRef.current = e.clientX;
+      panelResizeStartWRef.current = panelWidth;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      const onMove = (ev: MouseEvent) => {
+        if (!panelResizingRef.current) return;
+        const delta = panelResizeStartXRef.current - ev.clientX;
+        const newW = Math.max(360, Math.min(700, panelResizeStartWRef.current + delta));
+        setPanelWidth(newW);
+      };
+      const onUp = () => {
+        panelResizingRef.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [panelWidth],
+  );
 
   if (!isOpen) return null;
 
   // Loading session
   if (!data || !analysis) {
     return (
-      <div className="fixed inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-background shadow-xl">
+      <PanelShell
+        isMobile={isMobile}
+        panelWidth={panelWidth}
+        onResizeStart={handlePanelResizeStart}
+      >
         <PanelHeader onClose={handleClose} />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      </div>
+      </PanelShell>
     );
   }
 
@@ -260,7 +374,11 @@ export function ProposalPanel() {
   }>;
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-background shadow-xl">
+    <PanelShell
+      isMobile={isMobile}
+      panelWidth={panelWidth}
+      onResizeStart={handlePanelResizeStart}
+    >
       {/* Header */}
       <PanelHeader
         phase={phase}
@@ -268,7 +386,7 @@ export function ProposalPanel() {
         onBack={
           phase === "templateCheck"
             ? () => setPhase("analysis")
-            : phase === "preview"
+            : phase === "styleSetup"
               ? () => setPhase("templateCheck")
               : undefined
         }
@@ -415,116 +533,21 @@ export function ProposalPanel() {
           </>
         )}
 
-        {/* Phase: Generating */}
-        {phase === "generating" && (
-          <div className="flex flex-col items-center justify-center gap-3 py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              スライド構成を生成中...
-            </p>
+        {/* Phase: Style Setup */}
+        {phase === "styleSetup" && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="mb-2 font-medium text-sm">スライドスタイル設定</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                提案書のスタイルを選択してください。CRM データから自動推定されています。
+              </p>
+            </div>
+            <StyleOptionsPanel
+              value={styleOptions}
+              onChange={setStyleOptions}
+              defaultExpanded
+            />
           </div>
-        )}
-
-        {/* Phase: Preview */}
-        {phase === "preview" && plan && (
-          <>
-            {/* Slide navigation */}
-            <div className="flex items-center justify-between">
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={activeSlideIndex === 0}
-                onClick={() => setActiveSlideIndex(activeSlideIndex - 1)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium">
-                {activeSlideIndex + 1} / {plan.slides.length}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={activeSlideIndex === plan.slides.length - 1}
-                onClick={() => setActiveSlideIndex(activeSlideIndex + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Slide title */}
-            <div className="text-center">
-              <span className="text-xs text-muted-foreground">
-                {plan.slides[activeSlideIndex]?.layout}
-              </span>
-              <h3 className="text-sm font-medium truncate">
-                {plan.slides[activeSlideIndex]?.title}
-              </h3>
-            </div>
-
-            {/* Slide preview */}
-            <SlidePreview plan={plan} slideIndex={activeSlideIndex} />
-
-            {/* Slide thumbnails */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {plan.slides.map((slide, i) => (
-                <button
-                  key={i}
-                  className={`shrink-0 rounded border p-0.5 transition-colors ${
-                    i === activeSlideIndex
-                      ? "border-primary ring-1 ring-primary"
-                      : "border-border hover:border-foreground/30"
-                  }`}
-                  onClick={() => setActiveSlideIndex(i)}
-                >
-                  <div
-                    className="w-16 text-[4px] leading-tight truncate px-1 py-0.5 rounded-sm"
-                    style={{
-                      aspectRatio: "16/9",
-                      backgroundColor: `#${slide.bgColor || plan.theme.background}`,
-                      color: `#${plan.theme.text}`,
-                    }}
-                  >
-                    {slide.title}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Revise input */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">
-                このスライドの修正指示
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  placeholder="例: KPI カードを追加して..."
-                  value={reviseInput}
-                  onChange={(e) => setReviseInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleReviseSlide();
-                    }
-                  }}
-                  disabled={revising}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleReviseSlide}
-                  disabled={revising || !reviseInput.trim()}
-                >
-                  {revising ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Wand2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </>
         )}
       </div>
 
@@ -535,31 +558,67 @@ export function ProposalPanel() {
             className="w-full"
             onClick={handleStartTemplateCheck}
           >
-            <Presentation className="mr-2 h-4 w-4" />
-            スライド構成を生成
+            <ArrowRight className="mr-2 h-4 w-4" />
+            次へ（テンプレート確認）
           </Button>
         )}
         {phase === "templateCheck" && !templateLoading && (
           <Button
             className="w-full"
-            onClick={handleGeneratePlan}
-            disabled={generating}
+            onClick={handleStartStyleSetup}
           >
-            <Presentation className="mr-2 h-4 w-4" />
-            {generating ? "生成中..." : "確認して生成する"}
+            <ArrowRight className="mr-2 h-4 w-4" />
+            次へ（スタイル設定）
           </Button>
         )}
-        {phase === "preview" && plan && (
+        {phase === "styleSetup" && (
           <Button
             className="w-full"
-            onClick={handleDownloadPptx}
-            disabled={downloading}
+            onClick={handleGenerateSlides}
           >
-            <Download className="mr-2 h-4 w-4" />
-            {downloading ? "ダウンロード中..." : "PPTX ダウンロード"}
+            <Presentation className="mr-2 h-4 w-4" />
+            スライド生成
           </Button>
         )}
       </div>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PanelShell — flex sibling or mobile full-screen overlay
+// ---------------------------------------------------------------------------
+
+function PanelShell({
+  isMobile,
+  panelWidth,
+  onResizeStart,
+  children,
+}: {
+  isMobile: boolean;
+  panelWidth: number;
+  onResizeStart: (e: React.MouseEvent) => void;
+  children: React.ReactNode;
+}) {
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative flex h-full shrink-0 flex-col border-l border-border bg-background"
+      style={{ width: panelWidth }}
+    >
+      {/* Resize handle (left edge) */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 active:bg-primary/30 transition-colors"
+        onMouseDown={onResizeStart}
+      />
+      {children}
     </div>
   );
 }
@@ -590,8 +649,8 @@ function PanelHeader({
         {phase === "templateCheck" && (
           <Badge variant="outline" className="text-xs">テンプレート確認</Badge>
         )}
-        {phase === "preview" && (
-          <Badge variant="secondary" className="text-xs">プレビュー</Badge>
+        {phase === "styleSetup" && (
+          <Badge variant="secondary" className="text-xs">スタイル設定</Badge>
         )}
       </div>
       <Button variant="ghost" size="icon" onClick={onClose}>

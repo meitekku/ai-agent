@@ -247,6 +247,17 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "fetchAndAnalyze") {
+    return (
+      <StepIndicator
+        icon={BrainIcon}
+        activeLabel="商談データを取得・分析中..."
+        completedLabel="商談分析完了"
+        active={!isComplete}
+      />
+    );
+  }
+
   if (toolName === "generateProposal") {
     return (
       <StepIndicator
@@ -324,6 +335,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   listDeals: "商談一覧",
   fetchDealData: "商談データ取得",
   analyzeDeal: "商談分析",
+  fetchAndAnalyze: "商談分析",
   generateProposal: "提案書生成",
   generateImage: "画像生成",
 };
@@ -607,6 +619,7 @@ export const ChatMessage = memo(function ChatMessage({
   onSwitchBranch,
   slidePanelSourceId,
   onReopenSlides,
+  onOpenProposal,
 }: {
   message: UIMessage;
   isLoading: boolean;
@@ -628,6 +641,7 @@ export const ChatMessage = memo(function ChatMessage({
   onSwitchBranch?: (nodeId: string) => void;
   slidePanelSourceId?: string | null;
   onReopenSlides?: () => void;
+  onOpenProposal?: (sessionKey: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -867,6 +881,29 @@ export const ChatMessage = memo(function ChatMessage({
               return null;
           }
         })}
+        {/* Inline proposal button after fetchAndAnalyze result */}
+        {message.role === "assistant" && !isActiveStreaming && onOpenProposal && (() => {
+          for (const part of message.parts) {
+            if (!isToolUIPart(part) || part.state !== "output-available") continue;
+            const tn = getToolName(part);
+            if (tn !== "fetchAndAnalyze") continue;
+            const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
+            if (typeof result?.sessionKey === "string" && !result?.error) {
+              const sk = result.sessionKey as string;
+              return (
+                <button
+                  key="proposal-btn"
+                  onClick={() => onOpenProposal(sk)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 mt-1"
+                >
+                  <FileTextIcon className="size-3.5" />
+                  提案書パネルを開く
+                </button>
+              );
+            }
+          }
+          return null;
+        })()}
         {showThinking ? <ThinkingIndicator /> : null}
         {showGenerating ? <GeneratingIndicator /> : null}
         {stopped && message.role === "assistant" && (
