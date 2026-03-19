@@ -29,6 +29,7 @@ import {
   BookOpenIcon,
   AlertCircleIcon,
   ImageIcon,
+  FileText,
   FactoryIcon,
   BriefcaseIcon,
   ShoppingCartIcon,
@@ -356,8 +357,10 @@ export function ChatPage({
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
-  // Detect generateSlides / generateProposal tool result
+  // Detect generateSlides / fetchAndAnalyze tool result
   const openProposal = useProposalPanelStore((s) => s.open);
+  const proposalOpen = useProposalPanelStore((s) => s.isOpen);
+  const [lastSessionKey, setLastSessionKey] = useState<string | null>(null);
   useEffect(() => {
     if (!sessionActiveRef.current) return;
     if (!justFinishedRef.current) return;
@@ -386,7 +389,9 @@ export function ChatPage({
         typeof result?.sessionKey === "string" &&
         !result?.error
       ) {
-        openProposal(result.sessionKey as string);
+        const sk = result.sessionKey as string;
+        setLastSessionKey(sk);
+        openProposal(sk);
         break;
       }
     }
@@ -891,6 +896,17 @@ export function ChatPage({
         onRequestRefine={handleStudioRefine}
       />
       <ProposalPanel />
+
+      {/* Reopen proposal panel button */}
+      {!proposalOpen && lastSessionKey && (
+        <button
+          className="fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
+          onClick={() => openProposal(lastSessionKey)}
+        >
+          <FileText className="h-4 w-4" />
+          提案書パネルを開く
+        </button>
+      )}
     </div>
   );
 }

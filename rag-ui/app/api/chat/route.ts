@@ -952,9 +952,11 @@ export async function POST(req: Request) {
               additionalContext: additionalContext || undefined,
             }),
           });
-          const analyzeResult = await analyzeRes.json();
-          if (analyzeResult.error)
-            return { error: `分析失敗: ${analyzeResult.error}` };
+          const analyzeRaw = await analyzeRes.json();
+          if (analyzeRaw.error)
+            return { error: `分析失敗: ${analyzeRaw.error}` };
+          // crm-service returns { analysis: { ...scores, rationale } } — unwrap
+          const analysisData = (analyzeRaw.analysis ?? analyzeRaw) as Record<string, unknown>;
           console.log(
             `[chat] 📊 fetchAndAnalyze: analysis done (total ${Date.now() - t0}ms)`,
           );
@@ -962,7 +964,7 @@ export async function POST(req: Request) {
           // 6. セッション保存
           const sessionKey = storeSession(
             sfData,
-            analyzeResult as Record<string, unknown>,
+            analysisData,
             additionalContext,
           );
 
@@ -970,7 +972,7 @@ export async function POST(req: Request) {
           return {
             sessionKey,
             data: sfData,
-            analysis: analyzeResult,
+            analysis: analysisData,
           };
         } catch (err) {
           console.error(`[chat] ❌ fetchAndAnalyze failed:`, err);
@@ -1007,9 +1009,14 @@ export async function POST(req: Request) {
           });
           const result = await res.json();
           console.log(`[chat] 📊 reviseRationale done: ${Date.now() - t0}ms`);
-          // Update session with revised analysis
-          if (!result.error) {
-            updateSessionAnalysis(sessionKey, result);
+          // Merge revised rationale + analysis updates into session
+          if (!result.error && session) {
+            const merged = { ...session.analysis };
+            if (result.rationale) merged.rationale = result.rationale;
+            if (result.analysisUpdates) {
+              Object.assign(merged, result.analysisUpdates);
+            }
+            updateSessionAnalysis(sessionKey, merged);
           }
           return result;
         } catch (err) {

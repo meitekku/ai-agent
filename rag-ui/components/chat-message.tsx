@@ -325,12 +325,11 @@ function getGroupSummary(tools: ToolEntry[]): string {
 
 type GroupedSegment =
   | { type: "tool-group"; tools: ToolEntry[] }
+  | { type: "reasoning"; text: string; index: number }
   | { type: "part"; part: UIMessage["parts"][number]; index: number };
 
-/** Parts that should not break consecutive tool grouping (step-start, empty text, reasoning) */
+/** Parts that should not break consecutive tool grouping (empty text) */
 function isTransparentPart(part: UIMessage["parts"][number]): boolean {
-  if (part.type === "step-start") return true;
-  if (part.type === "reasoning") return true;
   if (part.type === "text")
     return stripThinkTags(part.text).trim().length === 0;
   return false;
@@ -340,8 +339,20 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
   const result: GroupedSegment[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    // Reasoning parts are rendered separately as a consolidated block
-    if (part.type === "reasoning") continue;
+    // Reasoning parts: merge consecutive ones, emit as inline reasoning segment
+    if (part.type === "reasoning") {
+      const text = (part as { text: string }).text || "";
+      if (!text.trim()) continue;
+      // Merge with previous reasoning segment if adjacent (skip step-start between them)
+      const prev = result.at(-1);
+      if (prev?.type === "reasoning") {
+        prev.text += "\n\n" + text;
+      } else {
+        result.push({ type: "reasoning", text, index: i });
+      }
+      continue;
+    }
+    if (part.type === "step-start") continue;
     if (isToolUIPart(part)) {
       const tn = getToolName(part);
       if (tn === "suggestSlides") continue;
@@ -655,12 +666,7 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [handleSubmitEdit, handleCancelEdit],
   );
-  // Consolidated reasoning parts
-  const reasoningParts = message.parts.filter((p) => p.type === "reasoning");
-  const reasoningText = reasoningParts
-    .map((p) => (p as { text: string }).text)
-    .join("\n\n");
-  const hasReasoning = reasoningParts.length > 0;
+  const hasReasoning = message.parts.some((p) => p.type === "reasoning");
   const lastPart = message.parts.at(-1);
   const isReasoningStreaming =
     isActiveStreaming && lastPart?.type === "reasoning";
@@ -737,23 +743,37 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <Message from={message.role} className="animate-fade-in-up">
       <MessageContent>
-        {hasReasoning && message.role === "assistant" && (
-          <Reasoning isStreaming={!!isReasoningStreaming}>
-            <ReasoningTrigger
-              getThinkingMessage={(streaming, dur) =>
-                streaming || dur === 0 ? (
-                  <span className="animate-pulse">思考中...</span>
-                ) : dur === undefined ? (
-                  <span>数秒間思考しました</span>
-                ) : (
-                  <span>{dur}秒間思考しました</span>
-                )
-              }
-            />
-            <ReasoningContent>{reasoningText}</ReasoningContent>
-          </Reasoning>
-        )}
         {groupParts(message.parts).map((segment) => {
+          if (segment.type === "reasoning" && message.role === "assistant") {
+            // Check if this is the last reasoning segment and currently streaming
+            const isLast =
+              isReasoningStreaming &&
+              segment.index ===
+                message.parts.reduce(
+                  (last, p, idx) =>
+                    p.type === "reasoning" ? idx : last,
+                  -1,
+                );
+            return (
+              <Reasoning
+                key={`${message.id}-r-${segment.index}`}
+                isStreaming={!!isLast}
+              >
+                <ReasoningTrigger
+                  getThinkingMessage={(streaming, dur) =>
+                    streaming || dur === 0 ? (
+                      <span className="animate-pulse">思考中...</span>
+                    ) : dur === undefined ? (
+                      <span>数秒間思考しました</span>
+                    ) : (
+                      <span>{dur}秒間思考しました</span>
+                    )
+                  }
+                />
+                <ReasoningContent>{segment.text}</ReasoningContent>
+              </Reasoning>
+            );
+          }
           if (segment.type === "tool-group") {
             return (
               <ToolCallGroup
