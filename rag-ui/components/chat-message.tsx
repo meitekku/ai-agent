@@ -784,6 +784,7 @@ export const ChatMessage = memo(function ChatMessage({
               />
             );
           }
+          if (segment.type !== "part") return null;
           const { part, index: i } = segment;
           const key = `${message.id}-${i}`;
           switch (part.type) {
