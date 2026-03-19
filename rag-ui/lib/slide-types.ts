@@ -114,6 +114,8 @@ export type SlideDeckDetail = {
   answer?: string;
   plan_md?: string;
   style_options?: Record<string, string>;
+  current_version?: number;
+  conversation_id?: string | null;
   slides: {
     slide_index: number;
     title: string;
@@ -123,6 +125,14 @@ export type SlideDeckDetail = {
   }[];
   created_at: string;
   updated_at: string;
+};
+
+export type SlideVersion = {
+  version: number;
+  operation: string;
+  operation_detail: Record<string, unknown>;
+  slide_count: number;
+  created_at: string;
 };
 
 export type SlideTemplate = {

@@ -121,11 +121,16 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/app-sidebar.tsx` | 同上 | **rag-deploy のみ** | ナビゲーションサイドバー + チャット履歴 + 画像生成中ナビガード |
 | `rag-ui/components/chat-header.tsx` | 同上 | 一致 | usePathname でタイトル切替（/chat 対応） |
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
-| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | fetchAndAnalyze 検出で ProposalPanel 自動開放 + ProposalPanel→SlidePanel 遷移 + 画像スケルトン + beforeunload ガード |
-| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理、generateProposal 廃止）+ 画像モデルパス + generateImage ツール |
+| `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | fetchAndAnalyze 検出で ProposalPanel 自動開放 + ProposalPanel→SlidePanel 遷移 + 画像スケルトン + beforeunload ガード + reviseSlides 検出 + deckId/slidesSummary 送信 |
+| `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理、generateProposal 廃止）+ 画像モデルパス + generateImage ツール + reviseSlides ツール（スライド精准編集）+ slide context injection |
 | `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
 | `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + styleOptions 状態管理） |
 | `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | インメモリ提案セッション store（Map + TTL 1h） |
+| `rag-ui/lib/slide-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（cachedSlides + conversationDeckId + refreshToken でスライド持久化・リフレッシュ管理） |
+| `rag-ui/lib/slide-db.ts` | **rag-deploy のみ** | — | slide_decks に conversation_id/current_version 追加 + slide_page_versions テーブル + バージョン管理関数 |
+| `rag-ui/lib/slide-types.ts` | **rag-deploy のみ** | — | SlideVersion 型追加、SlideDeckDetail に current_version/conversation_id 追加 |
+| `rag-ui/lib/slide-api.ts` | **rag-deploy のみ** | — | バージョン API client（fetchSlideVersions, fetchSlidesAtVersion, restoreSlideVersion） |
+| `rag-ui/app/api/history/slides/[id]/versions/route.ts` | **rag-deploy のみ** | — | GET バージョン一覧/特定バージョン取得 + POST バージョン復元 |
 | `rag-ui/components/proposal-panel.tsx` | **rag-deploy のみ** | — | 提案書パネル（分析表示 → テンプレート確認 → スタイル設定 → SlidePanel へ遷移）PanelShell でリサイズ/モバイル対応 |
 | `rag-ui/components/slide-preview.tsx` | **rag-deploy のみ** | — | PresentationPlan → HTML プレビュー（16:9、inch→%変換） |
 | `rag-ui/app/api/crm/templates/route.ts` | **rag-deploy のみ** | — | GET/POST crm-service テンプレート一覧・アップロードプロキシ |
@@ -137,7 +142,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
 | `rag-ui/components/skills-page.tsx` | 同上 | **rag-deploy のみ** | スキル CRUD + skills.sh レジストリ検索/インストール/自動更新 + sonner toast |
-| `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator + fetchAndAnalyze インラインボタン + reasoning インライン表示 |
+| `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator + fetchAndAnalyze インラインボタン + reasoning インライン表示 + reviseSlides indicator + スライド表示ボタン |
 | `rag-ui/lib/store.ts` | 同上 | **rag-deploy のみ** | sidebar state + `isImageModel()` + `imageGenerating` 状態（Zustand） |
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
@@ -313,7 +318,7 @@ docker compose --profile prod build --no-cache
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_*, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## 踩坑記録

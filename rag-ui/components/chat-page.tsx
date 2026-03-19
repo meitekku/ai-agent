@@ -279,6 +279,8 @@ export function ChatPage({
 
   // Slide panel (declared early so effects can reference it)
   const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
+  const openDeck = useSlidePanelStore((s) => s.openDeck);
+  const conversationDeckId = useSlidePanelStore((s) => s.conversationDeckId);
 
   // Refs for slide tool detection (must be before both effects that use them)
   const sessionActiveRef = useRef(false);
@@ -374,11 +376,12 @@ export function ChatPage({
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
-  // Detect generateSlides / fetchAndAnalyze tool result
+  // Detect generateSlides / fetchAndAnalyze / reviseSlides tool results
   const openProposal = useProposalPanelStore((s) => s.open);
   const proposalOpen = useProposalPanelStore((s) => s.isOpen);
   const slidePanelOpen = useSlidePanelStore((s) => s.open);
   const closeSlidePanelFn = useSlidePanelStore((s) => s.closePanel);
+  const triggerRefresh = useSlidePanelStore((s) => s.triggerRefresh);
   useEffect(() => {
     if (!sessionActiveRef.current) return;
     if (!justFinishedRef.current) return;
@@ -389,8 +392,9 @@ export function ChatPage({
     const assistants = messages.filter((m) => m.role === "assistant");
     let foundProposal = false;
     let foundSlides = false;
+    let foundRevise = false;
 
-    for (let ai = assistants.length - 1; ai >= 0 && !foundProposal && !foundSlides; ai--) {
+    for (let ai = assistants.length - 1; ai >= 0 && !foundProposal && !foundSlides && !foundRevise; ai--) {
       for (const part of assistants[ai].parts) {
         if (!isToolUIPart(part) || part.state !== "output-available") continue;
         const toolName = getToolName(part);
@@ -419,9 +423,20 @@ export function ChatPage({
           });
           break;
         }
+
+        // reviseSlides: trigger panel refresh
+        if (toolName === "reviseSlides" && result?.success) {
+          foundRevise = true;
+          triggerRefresh();
+          // Open slide panel if it's not already open
+          if (!slidePanelOpen && typeof result.deckId === "number") {
+            openDeck(result.deckId as number);
+          }
+          break;
+        }
       }
     }
-  }, [status, messages, openProposal, slidePanelOpen, closeSlidePanelFn]);
+  }, [status, messages, openProposal, slidePanelOpen, closeSlidePanelFn, triggerRefresh, openDeck]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -452,6 +467,10 @@ export function ChatPage({
     [queryClient, activeKb, chatModel, thinking],
   );
 
+  // Build slides summary for context injection
+  const cachedSlides = useSlidePanelStore((s) => s.cachedSlides);
+  const cachedDeckTitle = useSlidePanelStore((s) => s.cachedDeckTitle);
+
   const handleSend = useCallback(
     async (text: string, files?: FileUIPart[]) => {
       sessionActiveRef.current = true;
@@ -463,6 +482,19 @@ export function ChatPage({
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
 
+      // Build slide context if deck is active
+      let deckId: number | undefined;
+      let slidesSummary: string | undefined;
+      if (conversationDeckId && cachedSlides && cachedSlides.length > 0) {
+        deckId = conversationDeckId;
+        slidesSummary = cachedSlides
+          .map((s, i) => `- [${i}] ${s.title || `スライド${i + 1}`}`)
+          .join("\n");
+        if (cachedDeckTitle) {
+          slidesSummary = `デッキ: 「${cachedDeckTitle}」\n${slidesSummary}`;
+        }
+      }
+
       const body = {
         service,
         kb: activeKb,
@@ -471,6 +503,7 @@ export function ChatPage({
         chatId: convIdRef.current,
         parentId: currentLeaf,
         thinking,
+        ...(deckId ? { deckId, slidesSummary } : {}),
       };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
@@ -499,6 +532,20 @@ export function ChatPage({
     // Remove the last assistant message from known count since it will be replaced
     knownCountRef.current = messages.length - 1;
     const regenParentId = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
+
+    // Build slide context if deck is active
+    let deckIdBody: number | undefined;
+    let slidesSummaryBody: string | undefined;
+    if (conversationDeckId && cachedSlides && cachedSlides.length > 0) {
+      deckIdBody = conversationDeckId;
+      slidesSummaryBody = cachedSlides
+        .map((s, i) => `- [${i}] ${s.title || `スライド${i + 1}`}`)
+        .join("\n");
+      if (cachedDeckTitle) {
+        slidesSummaryBody = `デッキ: 「${cachedDeckTitle}」\n${slidesSummaryBody}`;
+      }
+    }
+
     regenerate({
       body: {
         service,
@@ -508,9 +555,10 @@ export function ChatPage({
         chatId: convIdRef.current,
         parentId: regenParentId,
         thinking,
+        ...(deckIdBody ? { deckId: deckIdBody, slidesSummary: slidesSummaryBody } : {}),
       },
     });
-  }, [regenerate, service, activeKb, chatModel, thinking, messages]);
+  }, [regenerate, service, activeKb, chatModel, thinking, messages, conversationDeckId, cachedSlides, cachedDeckTitle]);
 
   // Edit message: create new branch
   const handleEdit = useCallback(
@@ -777,11 +825,16 @@ export function ChatPage({
   // Inline proposal button handler (from ChatMessage)
   const handleOpenProposal = useCallback(
     (sk: string) => {
+      // If we already have a generated deck for this conversation, open it directly
+      if (conversationDeckId) {
+        openDeck(conversationDeckId);
+        return;
+      }
       // Mutual exclusion: close SlidePanel when opening ProposalPanel
       if (slidePanelOpen) closeSlidePanelFn();
       openProposal(sk);
     },
-    [openProposal, slidePanelOpen, closeSlidePanelFn],
+    [openProposal, slidePanelOpen, closeSlidePanelFn, conversationDeckId, openDeck],
   );
 
   // ProposalPanel → SlidePanel transition
@@ -859,6 +912,7 @@ export function ChatPage({
                     slidePanelSourceId={slidePanelSourceId}
                     onReopenSlides={reopenSlidePanel}
                     onOpenProposal={handleOpenProposal}
+                    hasConversationDeck={!!conversationDeckId}
                   />
                 );
               })}

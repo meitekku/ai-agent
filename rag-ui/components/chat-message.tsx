@@ -288,6 +288,17 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
+  if (toolName === "reviseSlides") {
+    return (
+      <StepIndicator
+        icon={PresentationIcon}
+        activeLabel="スライドを編集中..."
+        completedLabel="スライドを編集しました"
+        active={!isComplete}
+      />
+    );
+  }
+
   if (toolName === "generateImage") {
     const prompt = typeof args?.prompt === "string" ? args.prompt : "";
     return (
@@ -339,6 +350,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   fetchAndAnalyze: "商談分析",
   generateProposal: "提案書生成",
   generateImage: "画像生成",
+  reviseSlides: "スライド編集",
 };
 
 function getGroupSummary(tools: ToolEntry[]): string {
@@ -621,6 +633,7 @@ export const ChatMessage = memo(function ChatMessage({
   slidePanelSourceId,
   onReopenSlides,
   onOpenProposal,
+  hasConversationDeck,
 }: {
   message: UIMessage;
   isLoading: boolean;
@@ -643,6 +656,7 @@ export const ChatMessage = memo(function ChatMessage({
   slidePanelSourceId?: string | null;
   onReopenSlides?: () => void;
   onOpenProposal?: (sessionKey: string) => void;
+  hasConversationDeck?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -897,8 +911,39 @@ export const ChatMessage = memo(function ChatMessage({
                   onClick={() => onOpenProposal(sk)}
                   className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 mt-1"
                 >
-                  <FileTextIcon className="size-3.5" />
-                  提案書パネルを開く
+                  {hasConversationDeck ? (
+                    <>
+                      <PresentationIcon className="size-3.5" />
+                      スライドを表示
+                    </>
+                  ) : (
+                    <>
+                      <FileTextIcon className="size-3.5" />
+                      提案書パネルを開く
+                    </>
+                  )}
+                </button>
+              );
+            }
+          }
+          return null;
+        })()}
+        {/* Inline slide button after reviseSlides result */}
+        {message.role === "assistant" && !isActiveStreaming && onReopenSlides && (() => {
+          for (const part of message.parts) {
+            if (!isToolUIPart(part) || part.state !== "output-available") continue;
+            const tn = getToolName(part);
+            if (tn !== "reviseSlides") continue;
+            const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
+            if (result?.success) {
+              return (
+                <button
+                  key="revise-slide-btn"
+                  onClick={onReopenSlides}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 mt-1"
+                >
+                  <PresentationIcon className="size-3.5" />
+                  スライドを表示
                 </button>
               );
             }

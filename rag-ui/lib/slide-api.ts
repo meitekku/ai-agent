@@ -2,6 +2,7 @@ import type {
   SlideHistoryItem,
   SlideDeckDetail,
   SlideTemplate,
+  SlideVersion,
 } from "./slide-types";
 
 // ============================================================
@@ -34,6 +35,7 @@ export async function saveSlideDeck(data: {
   answer?: string;
   plan_md?: string;
   style_options?: Record<string, string | undefined>;
+  conversation_id?: string;
   slides: {
     slide_index: number;
     title?: string;
@@ -96,6 +98,40 @@ export async function duplicateSlideDeck(id: number): Promise<{ id: number }> {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to duplicate slide deck");
+  return res.json();
+}
+
+// ============================================================
+// Slide Version API
+// ============================================================
+
+export async function fetchSlideVersions(id: number): Promise<SlideVersion[]> {
+  const res = await fetch(`/api/history/slides/${id}/versions`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.versions || [];
+}
+
+export async function fetchSlidesAtVersion(
+  id: number,
+  version: number,
+): Promise<SlideDeckDetail["slides"]> {
+  const res = await fetch(`/api/history/slides/${id}/versions?version=${version}`);
+  if (!res.ok) throw new Error("Failed to fetch version");
+  const data = await res.json();
+  return data.slides || [];
+}
+
+export async function restoreSlideVersion(
+  id: number,
+  version: number,
+): Promise<{ version: number }> {
+  const res = await fetch(`/api/history/slides/${id}/versions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  if (!res.ok) throw new Error("Failed to restore version");
   return res.json();
 }
 

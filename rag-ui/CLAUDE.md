@@ -228,9 +228,10 @@ rag-ui/
 │   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg、source_type 列対応）
 │   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
 │   ├── skill-registry.ts  # skills.sh レジストリ共有ヘルパー（GitHub SKILL.md 取得 + frontmatter 解析）
-│   ├── slide-db.ts        # PostgreSQL スライドCRUD（pg）
-│   ├── slide-types.ts     # スライド共有型定義
-│   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
+│   ├── slide-db.ts        # PostgreSQL スライドCRUD + バージョン管理（pg）
+│   ├── slide-types.ts     # スライド共有型定義（SlideVersion 含む）
+│   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート/バージョン）
+│   ├── slide-panel-store.ts # Zustand store（cachedSlides + conversationDeckId + refreshToken）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
 │   ├── chat-files-db.ts   # chat_files テーブル CRUD
 │   ├── file-cleanup.ts    # 孤立ファイル自動削除
@@ -301,6 +302,7 @@ rag-ui/
 | POST                 | /api/slides/htmlslide/render     | HTML スライド生成（テンプレート参考対応）                                       |
 | GET/POST             | /api/history/slides              | スライド履歴一覧 / 新規保存                                                     |
 | GET/PUT/PATCH/DELETE | /api/history/slides/[id]         | スライドデッキ詳細/更新/リネーム/削除                                           |
+| GET/POST             | /api/history/slides/[id]/versions | GET バージョン一覧(?version=N で特定版スライド取得) / POST バージョン復元       |
 | GET/POST             | /api/templates/slides            | テンプレート一覧 / 保存                                                         |
 | DELETE               | /api/templates/slides/[id]       | テンプレート削除                                                                |
 | POST                 | /api/crm/generate-pptx           | crm-service PPTX 一括生成プロキシ（sessionKey 対応）                            |
@@ -427,18 +429,19 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL テーブル（9表）
+### PostgreSQL テーブル（10表）
 
-| テーブル             | 用途                                                                                                       |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `chat_conversations` | チャット会話（id, title, active_leaf_id, kb_slug, chat_model, thinking, timestamps）                       |
-| `chat_messages`      | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
-| `chat_files`         | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
-| `slide_decks`        | デッキメタデータ（title, question, answer, plan_md, style_options JSONB）                                  |
-| `slide_pages`        | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）                                    |
-| `slide_templates`    | テンプレート（name, position, html, UNIQUE(name, position)）                                               |
-| `skills`             | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
-| `ui_config`          | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
+| テーブル               | 用途                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `chat_conversations`   | チャット会話（id, title, active_leaf_id, kb_slug, chat_model, thinking, timestamps）                       |
+| `chat_messages`        | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
+| `chat_files`           | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
+| `slide_decks`          | デッキメタデータ（title, question, answer, plan_md, style_options, current_version, conversation_id）      |
+| `slide_pages`          | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）— 常に最新版                       |
+| `slide_page_versions`  | スライドバージョン履歴（deck_id, slide_index, version UNIQUE、operation、operation_detail JSONB）          |
+| `slide_templates`      | テンプレート（name, position, html, UNIQUE(name, position)）                                               |
+| `skills`               | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
+| `ui_config`            | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
 - テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()`）
@@ -462,21 +465,42 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 
 ## CRM 提案書フロー
 
-### Tool 構成（v3 現行版）
+### Tool 構成（v4 現行版）
 
 ```
-v1 (7 tool calls, ~20K tokens):
-  listDeals → fetchDealData → searchKB → webSearch → analyzeDeal → generateProposal → [PPTX 一発生成]
-
-v2 (2-3 tool calls, ~6K tokens):
-  listDeals → fetchAndAnalyze(auto KB+Web) → generateProposal(sessionKey)
-
 v3 (2 tool calls, ~6K tokens):
   listDeals → fetchAndAnalyze(auto KB+Web) → sessionKey 返却で ProposalPanel 自動開放
   手動入力: fetchAndAnalyze(source:"manual", manualInput) → ProposalPanel 自動開放
+
+v4 (v3 + スライド編集):
+  上記フロー → SlidePanel 生成 → ユーザーが対話でスライド修正依頼
+  → reviseSlides(operations: [{ type:"update", slideIndex, oldStr, newStr }])
+  → SlidePanel 自動リフレッシュ（refreshToken 機構）
 ```
 
 `generateProposal` は廃止。`fetchAndAnalyze` が sessionKey を返却すると、chat-page.tsx が全 assistant メッセージをスキャンして自動的に ProposalPanel を開く。
+
+### reviseSlides ツール（v4 新規）
+
+チャットからスライドを精准編集。`activeDeckId` がリクエスト body にある場合のみ有効化。
+
+| 操作 | 実装 | LLM 呼出 |
+|------|------|---------|
+| `update` | `html.replace(oldStr, newStr)` + fallback: strip tags 後マッチ | 無 |
+| `rewrite` | 現 HTML + instruction → `generateText()` → 新 HTML | 有 |
+| `delete` | slide HTML を空に | 無 |
+| `insert` | instruction → `generateText()` → 新 HTML | 有 |
+| `reorder` | インデックス交換（簡易版） | 無 |
+
+各操作後: `deck.current_version++` → `slide_pages` 更新 → `slide_page_versions` 追記。
+chat-page.tsx が結果を検出 → `store.triggerRefresh()` → SlidePanel が DB から再読み込み。
+
+### スライド持久化 + バージョン管理（v4 新規）
+
+- `slide_decks.conversation_id` で対話とデッキを関連付け
+- auto-save 時に Zustand store にキャッシュ → 再開時は DB fetch 不要で即時復帰
+- "提案書パネルを開く" ボタン: デッキ存在時 → `openDeck(deckId)` で即表示、文字も "スライドを表示" に変化
+- バージョン履歴: SlidePanel ヘッダに `< v2/v5 >` ナビゲーション、旧バージョンは読み取り専用表示、"回復" で復元（新バージョンとして作成）
 
 ### fetchAndAnalyze 内部フロー
 

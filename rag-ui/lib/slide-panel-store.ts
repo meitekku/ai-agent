@@ -9,6 +9,12 @@ interface SlidePanelState {
   styleOptions: StyleOptions | null;
   deckId: number | null;
   sourceMessageId: string | null;
+  // v2: cache + version tracking
+  cachedSlides: { index: number; title: string; html: string; type: string }[] | null;
+  cachedDeckTitle: string | null;
+  conversationDeckId: number | null;
+  refreshToken: number;
+
   openPanel: (
     question: string,
     answer: string,
@@ -20,6 +26,14 @@ interface SlidePanelState {
   closePanel: () => void;
   reopenPanel: () => void;
   resetPanel: () => void;
+  // v2 actions
+  setCachedSlides: (
+    slides: { index: number; title: string; html: string; type: string }[],
+    title: string,
+  ) => void;
+  clearCache: () => void;
+  triggerRefresh: () => void;
+  setConversationDeckId: (deckId: number | null) => void;
 }
 
 export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
@@ -30,6 +44,10 @@ export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
   styleOptions: null,
   deckId: null,
   sourceMessageId: null,
+  cachedSlides: null,
+  cachedDeckTitle: null,
+  conversationDeckId: null,
+  refreshToken: 0,
 
   openPanel: (
     question,
@@ -84,5 +102,16 @@ export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
       styleOptions: null,
       deckId: null,
       sourceMessageId: null,
+      cachedSlides: null,
+      cachedDeckTitle: null,
     }),
+
+  setCachedSlides: (slides, title) =>
+    set({ cachedSlides: slides, cachedDeckTitle: title }),
+
+  clearCache: () => set({ cachedSlides: null, cachedDeckTitle: null }),
+
+  triggerRefresh: () => set((s) => ({ refreshToken: s.refreshToken + 1 })),
+
+  setConversationDeckId: (deckId) => set({ conversationDeckId: deckId }),
 }));

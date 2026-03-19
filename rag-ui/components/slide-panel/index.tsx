@@ -7,6 +7,8 @@ import {
   saveSlideDeck,
   updateSlideDeck,
   fetchSlideDeckDetail,
+  fetchSlidesAtVersion,
+  restoreSlideVersion,
 } from "@/lib/slide-api";
 import { FullscreenPresenter } from "@/components/fullscreen-presenter";
 import {
@@ -25,6 +27,8 @@ import {
   Minimize2Icon,
   MinusIcon,
   PlusIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "lucide-react";
 
 import { SLIDE_W, SLIDE_H, PLAN_TIMEOUT_MS, RENDER_TIMEOUT_MS, FONT_PRESETS } from "./constants";
@@ -52,6 +56,12 @@ export function SlidePanel() {
     styleOptions,
     deckId,
     closePanel,
+    cachedSlides: storeCachedSlides,
+    cachedDeckTitle: storeCachedTitle,
+    conversationDeckId,
+    refreshToken,
+    setCachedSlides: storeSetCachedSlides,
+    setConversationDeckId,
   } = useSlidePanelStore();
 
   // Phase state
@@ -94,6 +104,13 @@ export function SlidePanel() {
 
   // Redraw
   const [redrawing, setRedrawing] = useState(false);
+
+  // Version history
+  const [currentVersion, setCurrentVersion] = useState(1);
+  const [maxVersion, setMaxVersion] = useState(1);
+  const [browsingVersion, setBrowsingVersion] = useState<number | null>(null);
+  const [versionSlides, setVersionSlides] = useState<GeneratedSlide[] | null>(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
 
   // Refs
   const abortRef = useRef<AbortController | null>(null);
@@ -181,37 +198,61 @@ export function SlidePanel() {
 
     initiatedRef.current = true;
 
+    // Priority 1: explicit deckId
     if (deckId) {
-      setPhase("loading");
-      fetchSlideDeckDetail(deckId)
-        .then((detail) => {
-          setDeckTitle(detail.title);
-          setCurrentDeckId(detail.id);
-          if (detail.plan_md) {
-            setPlanMd(detail.plan_md);
-            const parsed = parsePlanMd(detail.plan_md);
-            setSlideSections(parsed.slides);
-          }
-          setGeneratedSlides(
-            detail.slides.map((s) => ({
-              index: s.slide_index,
-              title: s.title,
-              html: s.html,
-              type: s.slide_type,
-            })),
-          );
-          setPhase("done");
-          setActiveIndex(0);
-        })
-        .catch((e) => {
-          setError(e instanceof Error ? e.message : "Failed to load deck");
-          setPhase("error");
-        });
-    } else if (question && answer) {
+      loadDeckFromDb(deckId);
+    }
+    // Priority 2: cached slides in store (instant reopen)
+    else if (storeCachedSlides && storeCachedSlides.length > 0 && conversationDeckId) {
+      setDeckTitle(storeCachedTitle || "");
+      setCurrentDeckId(conversationDeckId);
+      setGeneratedSlides(storeCachedSlides.map((s) => ({ ...s, failed: false })));
+      setPhase("done");
+      setActiveIndex(0);
+      setSaved(true);
+    }
+    // Priority 3: new generation from question/answer
+    else if (question && answer) {
       prevDataRef.current = { question, answer };
       fetchPlanFromApi();
     }
   }, [open, deckId, question, answer]);
+
+  const loadDeckFromDb = (id: number) => {
+    setPhase("loading");
+    fetchSlideDeckDetail(id)
+      .then((detail) => {
+        setDeckTitle(detail.title);
+        setCurrentDeckId(detail.id);
+        if (detail.plan_md) {
+          setPlanMd(detail.plan_md);
+          const parsed = parsePlanMd(detail.plan_md);
+          setSlideSections(parsed.slides);
+        }
+        const slides = detail.slides.map((s) => ({
+          index: s.slide_index,
+          title: s.title,
+          html: s.html,
+          type: s.slide_type,
+        }));
+        setGeneratedSlides(slides);
+        setPhase("done");
+        setActiveIndex(0);
+        // Set version info
+        const ver = detail.current_version ?? 1;
+        setCurrentVersion(ver);
+        setMaxVersion(ver);
+        setBrowsingVersion(null);
+        setVersionSlides(null);
+        // Cache in store for instant reopen
+        storeSetCachedSlides(slides, detail.title);
+        setConversationDeckId(detail.id);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to load deck");
+        setPhase("error");
+      });
+  };
 
   // Handle open/close transitions — support re-open with cached data
   useEffect(() => {
@@ -465,20 +506,34 @@ export function SlidePanel() {
 
         if (slidesData.length === 0) return;
 
+        // Get conversation ID from URL
+        const pathMatch = window.location.pathname.match(/\/chat\/(.+)/);
+        const conversationId = pathMatch?.[1] || undefined;
+
         const result = await saveSlideDeck({
           title: deckTitle || question,
           question,
           answer,
           plan_md: planMd || undefined,
+          conversation_id: conversationId,
           slides: slidesData,
         });
         setCurrentDeckId(result.id);
         setSaved(true);
+        setCurrentVersion(1);
+        setMaxVersion(1);
+
+        // Cache in store for instant reopen
+        const cached = slides
+          .filter((s) => !s.failed)
+          .map((s) => ({ index: s.index, title: s.title, html: s.html, type: s.type }));
+        storeSetCachedSlides(cached, deckTitle || question);
+        setConversationDeckId(result.id);
       } catch {
         // Auto-save failure is non-critical
       }
     },
-    [deckTitle, question, answer, planMd, slideSections],
+    [deckTitle, question, answer, planMd, slideSections, storeSetCachedSlides, setConversationDeckId],
   );
 
   // ============================================================
@@ -1297,11 +1352,106 @@ export function SlidePanel() {
     handleToggleEditing,
   ]);
 
+  // Reload slides when reviseSlides tool triggers a refresh
+  useEffect(() => {
+    if (refreshToken === 0 || !currentDeckId) return;
+    fetchSlideDeckDetail(currentDeckId)
+      .then((detail) => {
+        const slides = detail.slides.map((s) => ({
+          index: s.slide_index,
+          title: s.title,
+          html: s.html,
+          type: s.slide_type,
+        }));
+        setGeneratedSlides(slides);
+        setDeckTitle(detail.title);
+        storeSetCachedSlides(slides, detail.title);
+        setSaved(true);
+        // Update version
+        const ver = detail.current_version ?? 1;
+        setCurrentVersion(ver);
+        setMaxVersion(ver);
+        setBrowsingVersion(null);
+        setVersionSlides(null);
+      })
+      .catch((e) => {
+        console.error("[slide-panel] refresh failed:", e);
+      });
+  }, [refreshToken, currentDeckId]);
+
   if (!open) return null;
 
   // ============================================================
   // Panel resize handlers
   // ============================================================
+
+  // ============================================================
+  // Version browsing
+  // ============================================================
+
+  const handleBrowseVersion = useCallback(
+    async (direction: "prev" | "next") => {
+      if (!currentDeckId) return;
+      const target = browsingVersion ?? currentVersion;
+      const newTarget = direction === "prev" ? target - 1 : target + 1;
+      if (newTarget < 1 || newTarget > maxVersion) return;
+
+      if (newTarget === currentVersion) {
+        // Return to current version
+        setBrowsingVersion(null);
+        setVersionSlides(null);
+        return;
+      }
+
+      try {
+        const slides = await fetchSlidesAtVersion(currentDeckId, newTarget);
+        setBrowsingVersion(newTarget);
+        setVersionSlides(
+          slides.map((s) => ({
+            index: s.slide_index,
+            title: s.title,
+            html: s.html,
+            type: s.slide_type,
+          })),
+        );
+        setActiveIndex(0);
+      } catch (e) {
+        console.error("[slide-panel] browse version failed:", e);
+      }
+    },
+    [currentDeckId, browsingVersion, currentVersion, maxVersion],
+  );
+
+  const handleRestoreVersion = useCallback(async () => {
+    if (!currentDeckId || !browsingVersion) return;
+    setRestoringVersion(true);
+    try {
+      const { version: newVer } = await restoreSlideVersion(
+        currentDeckId,
+        browsingVersion,
+      );
+      // Reload slides from DB
+      const detail = await fetchSlideDeckDetail(currentDeckId);
+      const slides = detail.slides.map((s) => ({
+        index: s.slide_index,
+        title: s.title,
+        html: s.html,
+        type: s.slide_type,
+      }));
+      setGeneratedSlides(slides);
+      setDeckTitle(detail.title);
+      setCurrentVersion(newVer);
+      setMaxVersion(newVer);
+      setBrowsingVersion(null);
+      setVersionSlides(null);
+      storeSetCachedSlides(slides, detail.title);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setRestoringVersion(false);
+    }
+  }, [currentDeckId, browsingVersion, storeSetCachedSlides]);
 
   const handlePanelResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1338,8 +1488,10 @@ export function SlidePanel() {
   // Render
   // ============================================================
 
-  const activeSlide = generatedSlides[activeIndex];
+  const displaySlides = browsingVersion ? (versionSlides ?? generatedSlides) : generatedSlides;
+  const activeSlide = displaySlides[activeIndex];
   const isWorking = phase === "planning" || phase === "generating";
+  const isBrowsingHistory = browsingVersion !== null;
 
   // Shared header content (used in both panel and expanded modes)
   const headerContent = (
@@ -1355,6 +1507,45 @@ export function SlidePanel() {
       <h2 className="flex-1 truncate text-sm font-medium">
         {deckTitle || "スライド"}
       </h2>
+
+      {/* Version navigation */}
+      {phase === "done" && maxVersion > 1 && (
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <button
+            onClick={() => handleBrowseVersion("prev")}
+            disabled={(browsingVersion ?? currentVersion) <= 1}
+            className="p-0.5 rounded hover:bg-muted/50 disabled:opacity-30 transition-colors"
+            aria-label="前のバージョン"
+          >
+            <ChevronLeftIcon className="size-3" />
+          </button>
+          <span className={cn("tabular-nums min-w-[4ch] text-center", isBrowsingHistory && "text-amber-500 font-medium")}>
+            v{browsingVersion ?? currentVersion}/{maxVersion}
+          </span>
+          <button
+            onClick={() => handleBrowseVersion("next")}
+            disabled={(browsingVersion ?? currentVersion) >= maxVersion}
+            className="p-0.5 rounded hover:bg-muted/50 disabled:opacity-30 transition-colors"
+            aria-label="次のバージョン"
+          >
+            <ChevronRightIcon className="size-3" />
+          </button>
+          {isBrowsingHistory && (
+            <button
+              onClick={handleRestoreVersion}
+              disabled={restoringVersion}
+              className="ml-1 inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400 disabled:opacity-50"
+            >
+              {restoringVersion ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
+                <RotateCcwIcon className="size-3" />
+              )}
+              回復
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Editing toolbar */}
       {phase === "done" && editing && (
@@ -1428,7 +1619,7 @@ export function SlidePanel() {
         </button>
       )}
 
-      {phase === "done" && !editing && (
+      {phase === "done" && !editing && !isBrowsingHistory && (
         <div className="flex items-center gap-1">
           {failedCount > 0 && (
             <button
@@ -1535,9 +1726,9 @@ export function SlidePanel() {
         <PhaseViewer
           activeSlide={activeSlide}
           activeIndex={activeIndex}
-          generatedSlides={generatedSlides}
+          generatedSlides={displaySlides}
           scale={scale}
-          editing={editing}
+          editing={editing && !isBrowsingHistory}
           error={error}
           iframeRef={iframeRef}
           mainAreaRef={mainAreaRef}
