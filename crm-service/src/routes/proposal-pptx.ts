@@ -153,8 +153,23 @@ app.post("/proposal/generate-pptx", async (c) => {
 
     const templateContent = await fetchTemplateContent();
     const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
-    const text = await generateText(prompt, 8000);
-    const plan = JSON.parse(text.replace(/```json|```/g, "").trim()) as PresentationPlan;
+    const text = await generateText(prompt, 16000);
+    let cleaned = text.replace(/```json|```/g, "").trim();
+    let plan: PresentationPlan;
+    try {
+      plan = JSON.parse(cleaned);
+    } catch {
+      let openBrackets = 0, openBraces = 0;
+      for (const ch of cleaned) {
+        if (ch === "[") openBrackets++;
+        else if (ch === "]") openBrackets--;
+        else if (ch === "{") openBraces++;
+        else if (ch === "}") openBraces--;
+      }
+      cleaned = cleaned.replace(/,\s*$/, "");
+      cleaned += "]".repeat(Math.max(0, openBrackets)) + "}".repeat(Math.max(0, openBraces));
+      plan = JSON.parse(cleaned);
+    }
 
     const pptxTitle = `提案書 - ${data.opportunity?.Name || "商談"}`;
     const pptxBuffer = await renderPPTX(plan, pptxTitle);
@@ -185,14 +200,33 @@ app.post("/proposal/generate-plan", async (c) => {
 
     const templateContent = await fetchTemplateContent();
     const prompt = buildPptxPrompt(data, analysis, templateContent, additionalContext);
-    const text = await generateText(prompt, 8000);
-    const plan = JSON.parse(text.replace(/```json|```/g, "").trim()) as PresentationPlan;
+    const text = await generateText(prompt, 16000);
+    let cleaned = text.replace(/```json|```/g, "").trim();
+    // Attempt to repair truncated JSON: close unclosed brackets
+    let plan: PresentationPlan;
+    try {
+      plan = JSON.parse(cleaned);
+    } catch {
+      // Try to salvage truncated JSON by closing open arrays/objects
+      let openBrackets = 0;
+      let openBraces = 0;
+      for (const ch of cleaned) {
+        if (ch === "[") openBrackets++;
+        else if (ch === "]") openBrackets--;
+        else if (ch === "{") openBraces++;
+        else if (ch === "}") openBraces--;
+      }
+      // Remove trailing comma if present
+      cleaned = cleaned.replace(/,\s*$/, "");
+      cleaned += "]".repeat(Math.max(0, openBrackets)) + "}".repeat(Math.max(0, openBraces));
+      plan = JSON.parse(cleaned);
+    }
 
     return c.json({ plan });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Generate Plan Error:", err);
-    return c.json({ error: `Plan生成エラー: ${message}` }, 500);
+    return c.json({ error: message }, 500);
   }
 });
 

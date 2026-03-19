@@ -158,7 +158,7 @@ export function ProposalPanel() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        alert(`Plan生成エラー: ${err.error || "不明なエラー"}`);
+        alert(err.error || "Plan生成に失敗しました");
         setPhase("templateCheck");
         return;
       }

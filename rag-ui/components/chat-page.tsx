@@ -366,33 +366,39 @@ export function ChatPage({
     if (!justFinishedRef.current) return;
     justFinishedRef.current = false;
 
-    const lastAssistant = messages.filter((m) => m.role === "assistant").pop();
-    if (!lastAssistant) return;
+    // Scan all assistant messages (not just last) — ToolLoopAgent may produce
+    // multiple assistant messages, and fetchAndAnalyze may be in an earlier one
+    const assistants = messages.filter((m) => m.role === "assistant");
+    let foundSlides = false;
+    let foundProposal = false;
 
-    for (const part of lastAssistant.parts) {
-      if (!isToolUIPart(part) || part.state !== "output-available") continue;
-      const toolName = getToolName(part);
-      const result = (("result" in part ? part.result : part.output) ??
-        {}) as Record<string, unknown>;
+    for (let ai = assistants.length - 1; ai >= 0 && !foundSlides && !foundProposal; ai--) {
+      for (const part of assistants[ai].parts) {
+        if (!isToolUIPart(part) || part.state !== "output-available") continue;
+        const toolName = getToolName(part);
+        const result = (("result" in part ? part.result : part.output) ??
+          {}) as Record<string, unknown>;
 
-      if (toolName === "generateSlides" && result?.triggered) {
-        setWizardData({
-          topic: (result.topic as string) ?? "",
-          content: (result.content as string) ?? "",
-          instructions: (result.instructions as string | null) ?? null,
-        });
-        break;
-      }
+        if (toolName === "generateSlides" && result?.triggered && !foundSlides) {
+          foundSlides = true;
+          setWizardData({
+            topic: (result.topic as string) ?? "",
+            content: (result.content as string) ?? "",
+            instructions: (result.instructions as string | null) ?? null,
+          });
+        }
 
-      if (
-        toolName === "fetchAndAnalyze" &&
-        typeof result?.sessionKey === "string" &&
-        !result?.error
-      ) {
-        const sk = result.sessionKey as string;
-        setLastSessionKey(sk);
-        openProposal(sk);
-        break;
+        if (
+          toolName === "fetchAndAnalyze" &&
+          typeof result?.sessionKey === "string" &&
+          !result?.error &&
+          !foundProposal
+        ) {
+          foundProposal = true;
+          const sk = result.sessionKey as string;
+          setLastSessionKey(sk);
+          openProposal(sk);
+        }
       }
     }
   }, [status, messages, openProposal]);
