@@ -6,6 +6,7 @@ import {
   parsePlanMarkdown,
   generateFallbackPlan,
 } from "@/lib/slide-prompts";
+import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import type { StyleOptions } from "@/lib/slide-types";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +38,40 @@ export async function POST(req: Request) {
     }
 
     const model = getSlideModel();
-    const prompt = buildPlanPrompt(
+
+    // Load relevant skills for slide generation
+    let skillContext = "";
+    try {
+      const skills = await getEnabledSkillSummaries();
+      const slideSkills = skills.filter(
+        (s) =>
+          /スライド|提案|プレゼン|slide|proposal|present/i.test(s.name) ||
+          /スライド|提案|プレゼン|slide|proposal|present/i.test(s.description),
+      );
+      if (slideSkills.length > 0) {
+        const loaded = await Promise.all(
+          slideSkills.slice(0, 3).map((s) => getSkillByName(s.name)),
+        );
+        const contents = loaded
+          .filter(Boolean)
+          .map((s) => `### ${s!.name}\n${s!.content}`)
+          .join("\n\n");
+        if (contents) {
+          skillContext = `\n\n## 参考スキル（スライド作成ガイドライン）\n${contents}`;
+        }
+      }
+    } catch {
+      // Skills not available — continue without them
+    }
+
+    let prompt = buildPlanPrompt(
       question,
       answer,
       max_slides,
       style_options,
       instructions,
     );
+    if (skillContext) prompt += skillContext;
     const startTime = Date.now();
 
     let planMd: string;

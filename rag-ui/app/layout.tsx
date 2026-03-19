@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/app-shell";
+import { Toaster } from "@/components/ui/sonner";
 import "streamdown/styles.css";
 import "./globals.css";
 
@@ -74,6 +75,7 @@ export default async function RootLayout({
               <AppShell initialSidebarOpen={initialSidebarOpen}>
                 {children}
               </AppShell>
+              <Toaster richColors position="bottom-right" />
             </TooltipProvider>
           </QueryProvider>
         </ThemeProvider>

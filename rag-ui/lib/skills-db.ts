@@ -192,6 +192,19 @@ export async function updateSkill(
   );
 }
 
+export async function updateSkillByRegistryId(
+  registryId: string,
+  data: { name: string; description: string; content: string },
+): Promise<number | null> {
+  await ensureSkillsTables();
+  const res = await getPool().query(
+    `UPDATE skills SET name = $1, description = $2, content = $3, updated_at = CURRENT_TIMESTAMP
+     WHERE registry_id = $4 RETURNING id`,
+    [data.name, data.description, data.content, registryId],
+  );
+  return res.rows.length > 0 ? (res.rows[0].id as number) : null;
+}
+
 export async function deleteSkill(id: number): Promise<void> {
   await ensureSkillsTables();
   await getPool().query(`DELETE FROM skills WHERE id = $1`, [id]);

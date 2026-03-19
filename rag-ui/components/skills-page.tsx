@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -40,6 +40,7 @@ import {
   GlobeIcon,
   ExternalLinkIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -207,11 +208,34 @@ export const SkillsPage = memo(function SkillsPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["skills"] });
       queryClient.invalidateQueries({ queryKey: ["skills-registry"] });
+      toast.success(`「${data.name}」をインストールしました`);
+    },
+    onError: (err: Error) => {
+      toast.error("スキルのインストールに失敗しました", {
+        description: err.message,
+      });
     },
   });
+
+  // Auto-update registry skills on page open (fire-and-forget)
+  const didAutoUpdate = useRef(false);
+  useEffect(() => {
+    if (didAutoUpdate.current) return;
+    const hasRegistry = skills?.some((s) => s.source_type === "registry");
+    if (!hasRegistry) return;
+    didAutoUpdate.current = true;
+    fetch("/api/skills/registry/update", { method: "POST" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.updated > 0) {
+          queryClient.invalidateQueries({ queryKey: ["skills"] });
+        }
+      })
+      .catch(() => {});
+  }, [skills, queryClient]);
 
   const handleZipUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,11 +608,6 @@ export const SkillsPage = memo(function SkillsPage() {
               </div>
             )}
 
-            {installMutation.isError && (
-              <p className="mt-3 text-sm text-destructive text-center">
-                {installMutation.error.message}
-              </p>
-            )}
           </div>
         </ScrollArea>
       </TabsContent>

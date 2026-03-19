@@ -10,10 +10,49 @@ import {
   generateFallbackHtml,
   shouldRetryInvalidSlideHtml,
 } from "@/lib/slide-prompts";
+import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import type { StyleOptions } from "@/lib/slide-types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+// Cache skill content for the lifetime of the server (avoid DB hit per slide)
+let _cachedSkillContext: string | null = null;
+let _cachedSkillTime = 0;
+const SKILL_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+async function getSkillContext(): Promise<string> {
+  if (_cachedSkillContext !== null && Date.now() - _cachedSkillTime < SKILL_CACHE_TTL) {
+    return _cachedSkillContext;
+  }
+  try {
+    const skills = await getEnabledSkillSummaries();
+    const slideSkills = skills.filter(
+      (s) =>
+        /スライド|提案|プレゼン|slide|proposal|present/i.test(s.name) ||
+        /スライド|提案|プレゼン|slide|proposal|present/i.test(s.description),
+    );
+    if (slideSkills.length > 0) {
+      const loaded = await Promise.all(
+        slideSkills.slice(0, 3).map((s) => getSkillByName(s.name)),
+      );
+      const contents = loaded
+        .filter(Boolean)
+        .map((s) => `### ${s!.name}\n${s!.content}`)
+        .join("\n\n");
+      if (contents) {
+        _cachedSkillContext = `\n\n## 参考スキル（スライドデザインガイドライン）\n${contents}`;
+        _cachedSkillTime = Date.now();
+        return _cachedSkillContext;
+      }
+    }
+  } catch {
+    // Skills not available
+  }
+  _cachedSkillContext = "";
+  _cachedSkillTime = Date.now();
+  return "";
+}
 
 export async function POST(req: Request) {
   try {
@@ -47,8 +86,9 @@ export async function POST(req: Request) {
     }
 
     const model = getSlideModel();
+    const skillContext = await getSkillContext();
 
-    // Build prompt, optionally include template reference
+    // Build prompt, optionally include template reference + skills
     let prompt = buildRenderPrompt(
       slide_plan_section,
       slide_title,
@@ -61,6 +101,10 @@ export async function POST(req: Request) {
 
     if (template_html) {
       prompt += `\n\n【テンプレート参考】\n以下のHTMLテンプレートのスタイル（色・レイアウト・フォント）を参考にしてください：\n${template_html.slice(0, 2000)}`;
+    }
+
+    if (skillContext) {
+      prompt += skillContext;
     }
 
     let html: string;

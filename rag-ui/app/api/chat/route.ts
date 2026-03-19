@@ -214,6 +214,7 @@ function buildSystemPrompt(
 2. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
 
 **重要ルール**:
+- fetchAndAnalyze を呼ぶ**前に**、関連するスキルがあれば loadSkill で読み込む（業界分析、提案書ガイドライン、ソリューション知識等）。スキルの知識が分析の質を高める
 - fetchAndAnalyze 完了後も、追加で searchKnowledgeBase / webSearch を呼んで情報を補強してよい。多くの情報源を活用するほど分析の質が上がる
 - fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は呼ばない**こと（ProposalPanel と機能が重複するため）。ただしユーザーが明示的に「スライドを作って」と依頼した場合は generateSlides を使ってよい
 - ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する

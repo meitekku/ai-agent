@@ -147,7 +147,11 @@ rag-ui/
 │       ├── skills/
 │       │   ├── route.ts               # GET/POST スキル一覧/新規作成
 │       │   ├── [id]/route.ts          # PUT/DELETE スキル更新/削除
-│       │   └── upload/route.ts        # POST ZIP スキルアップロード
+│       │   ├── upload/route.ts        # POST ZIP スキルアップロード
+│       │   └── registry/
+│       │       ├── route.ts           # GET skills.sh 検索プロキシ
+│       │       ├── install/route.ts   # POST skills.sh スキルインストール
+│       │       └── update/route.ts    # POST registry スキル一括更新
 │       ├── history/chats/
 │       │   ├── route.ts               # GET/POST チャット履歴一覧/新規作成
 │       │   └── [id]/
@@ -206,7 +210,7 @@ rag-ui/
 │   ├── slide-preview.tsx      # PresentationPlan → HTML プレビュー（16:9、inch→%変換）
 │   ├── documents-page.tsx     # ナレッジベース一覧ページ
 │   ├── kb-detail-page.tsx     # ナレッジベース詳細（ドキュメント管理+設定編集）
-│   └── skills-page.tsx        # スキル CRUD + ZIP アップロードページコンポーネント
+│   └── skills-page.tsx        # スキル CRUD + ZIP アップロード + skills.sh レジストリ（自動更新）
 ├── lib/
 │   ├── utils.ts           # shadcn 自動生成
 │   ├── store.ts           # Zustand store（sidebar 状態管理）
@@ -223,6 +227,7 @@ rag-ui/
 │   ├── slide-store.ts     # 簡易スライド状態管理（Zustand）
 │   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg、source_type 列対応）
 │   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
+│   ├── skill-registry.ts  # skills.sh レジストリ共有ヘルパー（GitHub SKILL.md 取得 + frontmatter 解析）
 │   ├── slide-db.ts        # PostgreSQL スライドCRUD（pg）
 │   ├── slide-types.ts     # スライド共有型定義
 │   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート）
@@ -278,6 +283,9 @@ rag-ui/
 | GET/POST             | /api/skills                      | スキル一覧 / 新規作成                                                           |
 | PUT/DELETE           | /api/skills/[id]                 | スキル更新 / 削除                                                               |
 | POST                 | /api/skills/upload               | ZIP スキルアップロード（SKILL.md + references）                                 |
+| GET                  | /api/skills/registry             | skills.sh 検索プロキシ                                                          |
+| POST                 | /api/skills/registry/install     | skills.sh スキルインストール（GitHub SKILL.md 取得）                            |
+| POST                 | /api/skills/registry/update      | registry スキル一括更新（ページ開放時自動実行）                                 |
 | GET/POST             | /api/history/chats               | チャット履歴一覧 / 新規会話作成                                                 |
 | GET/PATCH/DELETE     | /api/history/chats/[id]          | 会話詳細 / 更新 / 削除                                                          |
 | POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                                            |
@@ -314,7 +322,7 @@ bun run format:check # Prettier チェック
 
 ## 已安装 shadcn 组件
 
-button, badge, card, input, textarea, dropdown-menu, label, separator, select, alert-dialog, input-group, field, combobox, tooltip, hover-card, spinner, dialog, button-group, command, switch, scroll-area, tabs
+button, badge, card, input, textarea, dropdown-menu, label, separator, select, alert-dialog, input-group, field, combobox, tooltip, hover-card, spinner, dialog, button-group, command, switch, scroll-area, tabs, sonner
 
 ## 性能优化记录
 

@@ -136,12 +136,16 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/crm/proposal-session/[key]/route.ts` | **rag-deploy のみ** | — | GET 提案セッションデータ取得 |
 | `crm-service/` | `~/Desktop/AIAgent-performance/` から移植 | — | CRM + 提案書マイクロサービス（Gemini only） |
 | `rag-ui/components/documents-page.tsx` | 同上 | 一致 | ドキュメント管理ページ |
-| `rag-ui/components/skills-page.tsx` | 同上 | 一致 | スキル CRUD ページ |
+| `rag-ui/components/skills-page.tsx` | 同上 | **rag-deploy のみ** | スキル CRUD + skills.sh レジストリ検索/インストール/自動更新 + sonner toast |
 | `rag-ui/components/chat-message.tsx` | 同上 | **rag-deploy のみ** | マルチモーダル表示 + AI 生成画像大表示 + generateImage ツール indicator + fetchAndAnalyze インラインボタン + reasoning インライン表示 |
 | `rag-ui/lib/store.ts` | 同上 | **rag-deploy のみ** | sidebar state + `isImageModel()` + `imageGenerating` 状態（Zustand） |
 | `rag-ui/lib/chat-db.ts` | 同上 | 一致 | Chat PostgreSQL CRUD |
 | `rag-ui/lib/chat-tree.ts` | 同上 | 一致 | ツリー管理 Zustand ストア |
-| `rag-ui/lib/skills-db.ts` | 同上 | 一致 | Skills PostgreSQL CRUD |
+| `rag-ui/lib/skills-db.ts` | 同上 | **rag-deploy のみ** | Skills PostgreSQL CRUD + `updateSkillByRegistryId()` |
+| `rag-ui/lib/skill-registry.ts` | **rag-deploy のみ** | — | skills.sh レジストリ共有ヘルパー（GitHub Tree API で SKILL.md 取得 + frontmatter name マッチ） |
+| `rag-ui/app/api/skills/registry/route.ts` | **rag-deploy のみ** | — | GET skills.sh 検索プロキシ |
+| `rag-ui/app/api/skills/registry/install/route.ts` | **rag-deploy のみ** | — | POST skills.sh スキルインストール |
+| `rag-ui/app/api/skills/registry/update/route.ts` | **rag-deploy のみ** | — | POST registry スキル一括更新（ページ開放時自動実行） |
 | `rag-ui/lib/kb-config-db.ts` | 同上 | 一致 | KB Config PostgreSQL CRUD（single-row） |
 | `rag-ui/lib/semantic-cache.ts` | 同上 | 一致 | Valkey 語義キャッシュ（v2 prefix） |
 | `rag-ui/lib/constants.ts` | 同上 | 一致 | TAVILY_API_KEY 追加 |
@@ -177,7 +181,10 @@ cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag
 # API
 cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/kb-config ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/kb-config
-cp -r ~/Desktop/uiForAI/rag-ui/app/api/skills ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills
+# ⚠️ skills API は個別コピー（registry/ はコピーしない、rag-deploy のみ）
+cp ~/Desktop/uiForAI/rag-ui/app/api/skills/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/route.ts
+cp ~/Desktop/uiForAI/rag-ui/app/api/skills/\[id\]/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/\[id\]/route.ts
+cp ~/Desktop/uiForAI/rag-ui/app/api/skills/upload/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/upload/route.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/skill-zip-parser.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skill-zip-parser.ts
 cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/history/chats
 # コンポーネント
@@ -188,7 +195,7 @@ cp ~/Desktop/uiForAI/rag-ui/components/chat-input.tsx ~/Desktop/uiForAI/rag-depl
 cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/chat-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-page.tsx
 cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/skills-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/skills-page.tsx
+# ⚠️ skills-page.tsx はコピーしない（rag-deploy のみ skills.sh レジストリ + sonner 追加）
 cp ~/Desktop/uiForAI/rag-ui/components/image-lightbox.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/image-lightbox.tsx
 # フック
 cp -r ~/Desktop/uiForAI/rag-ui/hooks ~/Desktop/uiForAI/rag-deploy/rag-ui/hooks
@@ -196,7 +203,7 @@ cp -r ~/Desktop/uiForAI/rag-ui/hooks ~/Desktop/uiForAI/rag-deploy/rag-ui/hooks
 cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-db.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/chat-tree.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-tree.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/skills-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skills-db.ts
+# ⚠️ skills-db.ts はコピーしない（rag-deploy のみ updateSkillByRegistryId 追加）
 cp ~/Desktop/uiForAI/rag-ui/lib/kb-config-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/kb-config-db.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/semantic-cache.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/semantic-cache.ts
 cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
