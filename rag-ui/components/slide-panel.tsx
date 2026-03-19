@@ -460,7 +460,7 @@ export function SlidePanel() {
   // Generation
   const [generatedSlides, setGeneratedSlides] = useState<GeneratedSlide[]>([]);
   const [generatingTotal, setGeneratingTotal] = useState(0);
-  const [, setGeneratingCompleted] = useState(0);
+  const [generatingCompleted, setGeneratingCompleted] = useState(0);
 
   // Viewer
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1974,7 +1974,7 @@ export function SlidePanel() {
               <span className="text-muted-foreground">
                 スライド生成中{" "}
                 <span className="font-medium text-foreground">
-                  {generatedSlides.length}/{generatingTotal}
+                  {generatingCompleted}/{generatingTotal}
                 </span>
               </span>
             </div>
@@ -1982,7 +1982,7 @@ export function SlidePanel() {
               <div
                 className="h-full rounded-full bg-primary transition-all duration-300"
                 style={{
-                  width: `${generatingTotal ? (generatedSlides.length / generatingTotal) * 100 : 0}%`,
+                  width: `${generatingTotal ? (generatingCompleted / generatingTotal) * 100 : 0}%`,
                 }}
               />
             </div>
@@ -2000,19 +2000,26 @@ export function SlidePanel() {
                         ? "border-amber-500/40"
                         : "border-border/60",
                     )}
+                    style={{ containerType: "inline-size" }}
                   >
-                    {slide ? (
+                    {slide?.html ? (
                       <>
                         <iframe
                           srcDoc={slideSrcDoc(slide.html)}
-                          className="pointer-events-none"
+                          className="pointer-events-none absolute top-0 left-0 origin-top-left"
                           style={{
                             width: SLIDE_W,
                             height: SLIDE_H,
-                            transform: `scale(${240 / SLIDE_W})`,
+                            transform: `scale(${1 / SLIDE_W})`,
                             transformOrigin: "top left",
+                            /* scale will be overridden by ResizeObserver below */
                           }}
                           tabIndex={-1}
+                          ref={(el) => {
+                            if (!el?.parentElement) return;
+                            const s = el.parentElement.clientWidth / SLIDE_W;
+                            el.style.transform = `scale(${s})`;
+                          }}
                         />
                         {slide.failed && (
                           <div className="absolute top-1 right-1">
