@@ -49,9 +49,12 @@ Browser useChat → /api/chat Route Handler → isImageModel?
   - アーキテクチャ: MessageResponse → parseAllShowWidgets() でテキスト/widget セグメント分割 → テキストは Streamdown、widget は WidgetRenderer
   - isStreaming 判定: コードフェンスの閉じ ``` 検出（streamdown の isIncomplete に依存しない）
   - セキュリティ: `sandbox="allow-scripts"` + CSP（script-src CDN 白名単 + unsafe-inline、connect-src 'none'）
-  - Streaming: sanitizeForStreaming（script 除去）→ postMessage widget:update
-  - Finalize: sanitizeForIframe（embedding タグのみ除去）→ postMessage widget:finalize → script clone + replaceChild で実行
+  - DOM 更新: morphdom v2.7.4（iframe 内インライン）で DOM diff。innerHTML 全置換ではなく変更ノードのみパッチ → テキスト逐次表示
+  - 逐語アニメーション: morphdom 更新後、新規テキストを `[data-wa]` span で包み CSS stagger delay で順次表示（streamdown animated 方式）
+  - Streaming: sanitizeForStreaming（script 除去 + 未閉じタグ除去）→ requestAnimationFrame → postMessage widget:update
+  - Finalize: sanitizeForIframe（embedding タグのみ除去）→ postMessage widget:finalize → script clone + appendChild で実行
   - テーマ同期: MutationObserver で html class 変化検出 → postMessage widget:theme
+  - デザイン: フラット（外側カード/shadow/border なし）、背景透明、motion アニメーションなし
 
 ## LLM 后端自動切替
 

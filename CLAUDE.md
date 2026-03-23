@@ -70,11 +70,11 @@ rag-deploy/
     ├── .dockerignore
     ├── app/                        # ページ + API Routes
     ├── components/                 # UI コンポーネント
-    │   ├── widget-renderer.tsx     # Generative UI: sandbox iframe（CodePilot 方式）
+    │   ├── widget-renderer.tsx     # Generative UI: sandbox iframe + morphdom DOM diff
     │   └── widget-shimmer.tsx      # Widget ローディングシマー
     └── lib/                        # ユーティリティ + プロバイダー
         ├── widget-parser.ts        # show-widget フェンス解析
-        ├── widget-sanitizer.ts     # HTML 消毒 + iframe srcdoc
+        ├── widget-sanitizer.ts     # HTML 消毒 + iframe srcdoc + morphdom インライン + 逐語アニメーション
         ├── widget-css-bridge.ts    # CSS 変数ブリッジ
         └── widget-guidelines.ts    # Widget システムプロンプト
 ```
