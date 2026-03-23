@@ -100,6 +100,65 @@ function getToolOutput(part: Record<string, unknown>): unknown {
   return ("result" in part ? part.result : part.output) ?? null;
 }
 
+/** Aspect ratio → Tailwind class */
+const AR_CLASS: Record<string, string> = {
+  "1:1": "aspect-square",
+  "3:4": "aspect-[3/4]",
+  "4:3": "aspect-[4/3]",
+  "9:16": "aspect-[9/16]",
+  "16:9": "aspect-video",
+};
+
+// ---------------------------------------------------------------------------
+// GeneratedImageCard — fixed-height card with skeleton, fade-in, download
+// ---------------------------------------------------------------------------
+
+const GeneratedImageCard = memo(function GeneratedImageCard({
+  url,
+  aspectRatio = "1:1",
+  onClickExpand,
+}: {
+  url: string;
+  aspectRatio?: string;
+  onClickExpand: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const arClass = AR_CLASS[aspectRatio] ?? "aspect-square";
+
+  return (
+    <div
+      className={`group/img relative h-80 max-w-full ${arClass} cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md`}
+      onClick={onClickExpand}
+    >
+      {/* Skeleton until loaded */}
+      {!loaded && (
+        <div className="absolute inset-0 animate-pulse rounded-xl bg-muted/60" />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="Generated image"
+        className={`size-full rounded-xl object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setLoaded(true)}
+      />
+      {/* Hover overlay */}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
+        <Maximize2Icon className="size-5 text-white opacity-0 drop-shadow-lg transition-opacity group-hover/img:opacity-90" />
+      </div>
+      {/* Download button */}
+      <a
+        href={`${url}?dl=1`}
+        download
+        onClick={(e) => e.stopPropagation()}
+        className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-md border border-border bg-background/90 shadow-sm backdrop-blur-sm opacity-0 transition-all duration-200 hover:bg-background group-hover/img:opacity-100"
+        title="ダウンロード"
+      >
+        <DownloadIcon className="size-4" />
+      </a>
+    </div>
+  );
+});
+
 function getMessageText(message: UIMessage): string {
   return message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -884,14 +943,15 @@ export const ChatMessage = memo(function ChatMessage({
             );
           }
           if (segment.type === "tool-group") {
-            // Extract generateImage results for direct rendering
+            // Extract generateImage entries with aspect ratio
             const genImageTools = segment.tools.filter(
               (t) => t.toolName === "generateImage",
             );
             const isGeneratingImage = genImageTools.some(
               (t) => t.part.state !== "output-available",
             );
-            const generatedImages = genImageTools.flatMap((t) => {
+            // Collect completed images with their aspect ratio
+            const genImageEntries = genImageTools.flatMap((t) => {
               if (t.part.state !== "output-available") return [];
               const out = getToolOutput(
                 t.part as Record<string, unknown>,
@@ -899,34 +959,29 @@ export const ChatMessage = memo(function ChatMessage({
                 success?: boolean;
                 images?: { url: string; mediaType: string }[];
               } | null;
-              return out?.success && Array.isArray(out.images)
-                ? out.images
-                : [];
+              if (!out?.success || !Array.isArray(out.images)) return [];
+              const ar =
+                t.part.input &&
+                typeof t.part.input === "object" &&
+                "aspectRatio" in t.part.input
+                  ? ((t.part.input as { aspectRatio?: string }).aspectRatio ??
+                    "1:1")
+                  : "1:1";
+              return out.images.map((img) => ({ ...img, aspectRatio: ar }));
             });
-            // Determine skeleton aspect ratio from args
-            const skeletonRatio = (() => {
-              if (!isGeneratingImage) return "";
+            // Determine skeleton aspect ratio from the generating tool's args
+            const skeletonAr = (() => {
+              if (!isGeneratingImage) return "1:1";
               const imgTool = genImageTools.find(
                 (t) => t.part.state !== "output-available",
               );
-              const ar =
-                imgTool?.part.input &&
+              return (
+                (imgTool?.part.input &&
                 typeof imgTool.part.input === "object" &&
                 "aspectRatio" in imgTool.part.input
                   ? (imgTool.part.input as { aspectRatio?: string }).aspectRatio
-                  : undefined;
-              switch (ar) {
-                case "16:9":
-                  return "aspect-video";
-                case "9:16":
-                  return "aspect-[9/16]";
-                case "4:3":
-                  return "aspect-[4/3]";
-                case "3:4":
-                  return "aspect-[3/4]";
-                default:
-                  return "aspect-square";
-              }
+                  : undefined) ?? "1:1"
+              );
             })();
 
             return (
@@ -939,39 +994,19 @@ export const ChatMessage = memo(function ChatMessage({
                 {/* Skeleton placeholder while image is generating */}
                 {isGeneratingImage && (
                   <div
-                    className={`mt-2 w-64 ${skeletonRatio} animate-pulse rounded-xl bg-muted/60`}
+                    className={`mt-2 h-80 max-w-full ${AR_CLASS[skeletonAr] ?? "aspect-square"} animate-pulse rounded-xl bg-muted/60`}
                   />
                 )}
                 {/* Render generated images directly from tool output */}
-                {generatedImages.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {generatedImages.map((img, i) => (
-                      <div
+                {genImageEntries.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    {genImageEntries.map((img) => (
+                      <GeneratedImageCard
                         key={img.url}
-                        className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
-                        onClick={() => setLightboxSrc(img.url)}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.url}
-                          alt={`Generated image ${i + 1}`}
-                          className="block max-w-md rounded-xl"
-                        />
-                        {/* Hover overlay with expand icon */}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
-                          <Maximize2Icon className="size-4 text-white opacity-0 drop-shadow-md transition-opacity group-hover/img:opacity-90" />
-                        </div>
-                        {/* Download button */}
-                        <a
-                          href={`${img.url}?dl=1`}
-                          download
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-md border border-border bg-background/90 shadow-sm backdrop-blur-sm opacity-0 transition-all duration-200 hover:bg-background group-hover/img:opacity-100"
-                          title="ダウンロード"
-                        >
-                          <DownloadIcon className="size-4" />
-                        </a>
-                      </div>
+                        url={img.url}
+                        aspectRatio={img.aspectRatio}
+                        onClickExpand={() => setLightboxSrc(img.url)}
+                      />
                     ))}
                   </div>
                 )}

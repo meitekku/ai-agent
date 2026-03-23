@@ -23,6 +23,7 @@ export const ALLOWED_GEMINI_MODELS = new Set([
   "gemini-2.5-flash-lite",
   "gemini-3-flash-preview",
   "gemini-3.1-pro-preview",
+  "gemini-3.1-flash-image-preview",
 ]);
 
 /** Check if a model ID is an image generation model */
@@ -30,8 +31,8 @@ export function isImageModel(modelId: string): boolean {
   return modelId.includes("-image");
 }
 
-/** Gemini image model for generateImage() tool */
-export const geminiImageModel = gemini?.image("gemini-2.5-flash-image");
+/** Gemini image model for generateImage() tool (Nano Banana 2) */
+export const geminiImageModel = gemini?.image("gemini-3.1-flash-image-preview");
 
 /** Auto-select: Gemini if API key is set, otherwise MLX. Accepts optional model override. */
 export function getChatModel(modelOverride?: string | null) {
