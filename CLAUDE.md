@@ -336,6 +336,10 @@ docker compose --profile prod build --no-cache
 | Widget: streamdown `renderers` API の `isIncomplete` が false に遷移しない | streamdown の CustomRenderer はフェンス完了後も `isIncomplete=true` のまま | streamdown 外で widget 解析する CodePilot 方式に変更。`isStreaming` はフェンス閉じ検出で自前判定 |
 | Widget: `tmp.innerHTML` で script 内容が切断される | sandbox iframe 内の `tmp` div で `innerHTML` 解析時に script `textContent` が不完全になるケース | CodePilot 原版の `finalizeHtml`（`tmp` div + `querySelectorAll` + `appendChild`）をそのまま採用 |
 | Widget: CDN script の `onload` attribute が動的 script で発火しない場合がある | `setAttribute('onload', ...)` は動的生成 script 要素で不安定 | `addEventListener('load', ...)` + 動的 inline script 生成で対処 |
+| Widget: ストリーミング中に `<span` 等の生タグが一瞬表示される | innerHTML が未閉じタグをテキストとして表示 | `sanitizeForStreaming` の最後に `/<[a-zA-Z\/][^>]*$/` で未閉じタグを除去 |
+| Widget: テキストが一塊で出現し逐次表示されない | iframe 内で `innerHTML` 全置換 + 120ms throttle | morphdom v2.7.4 インライン（DOM diff で既存ノード保持）+ requestAnimationFrame（毎フレーム更新）+ 逐語 span アニメーション（`[data-wa]` + CSS stagger delay） |
+| Widget: 外側カード shadow が overflow:hidden で切断される | WidgetRenderer の外側 div に overflow-hidden + motion アニメーション | motion.div 廃止、overflow-hidden 削除、widget guidelines でフラットデザイン（shadow/border なし）を指示 |
+| streamdown math で数式が重複表示される | `@streamdown/math` が KaTeX HTML を生成するが KaTeX CSS 未読込 → MathML 層と視覚層の両方が表示 | `layout.tsx` に `import "katex/dist/katex.min.css"` 追加 |
 | CSV アップロードで知識グラフの関係が破壊される | `extract.py` が CSV を 1 枚の巨大 Markdown 表格に変換 → chunk 切割で列ヘッダーと行データが分離 | CSV 構造化抽出に改修: エンコード自動検出(UTF-8/cp932) + グループ列検出 + レコード単位の自然言語ドキュメントに変換。小表格(≤10行×8列)は従来の Markdown 表格を維持 |
 | CRM 分析・提案書が KB/Web 情報を参照できない | `analyzeDeal`/`generateProposal` が CRM データのみで分析、KB/Web 検索結果が断絶 | 3 ツール（analyze/revise/pptx）に `additionalContext` パラメータ追加。LLM が事前に KB/Web 検索した情報を渡し、crm-service の Gemini プロンプトに注入 |
 | CRM Tool chain が不安定（7 ステップ、~20K tokens） | LLM が 7 tool を順次呼出、KB/Web 検索を飛ばすことがある。データ重複 3 回でトークン浪費 | `fetchAndAnalyze` に統合（CRM fetch + KB 全検索 + Web 検索 + analyze を 1 tool 内で実行）。`generateProposal` は廃止し、`fetchAndAnalyze` の sessionKey 返却で ProposalPanel が自動開放。2 tool、~6K tokens に削減 |
