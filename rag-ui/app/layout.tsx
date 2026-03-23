@@ -6,6 +6,7 @@ import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/sonner";
+import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "./globals.css";
 
