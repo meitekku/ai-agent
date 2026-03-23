@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { motion } from "motion/react";
 import {
   resolveThemeVars,
   getWidgetIframeStyleBlock,
@@ -63,8 +62,6 @@ function WidgetRendererInner({
     (_heightCache.get(cacheKey(widgetCode)) || 0) > 0,
   );
   const heightLockedRef = useRef(false);
-  // If mounted with isStreaming=false, this is a restored message — skip entrance animation
-  const isRestoredRef = useRef(!isStreaming);
 
   const hasCDN = useMemo(() => CDN_PATTERN.test(widgetCode), [widgetCode]);
 
@@ -200,16 +197,10 @@ function WidgetRendererInner({
 
   const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
-  // eslint-disable-next-line react-hooks/refs -- read once at mount for initial animation
-  const [restored] = useState(() => isRestoredRef.current);
-
   return (
-    <motion.div
+    <div
       className="group/widget relative my-2 w-full overflow-hidden"
       style={{ minWidth: "min(100%, 600px)" }}
-      initial={restored ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
     >
       {title && (
         <div className="mb-1 text-xs font-medium text-muted-foreground">
@@ -217,12 +208,9 @@ function WidgetRendererInner({
         </div>
       )}
 
-      <motion.div
-        className="overflow-hidden"
-        animate={{ height: showCode ? 0 : (iframeHeight || "auto") }}
-        transition={
-          restored ? { duration: 0 } : { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
-        }
+      <div
+        className="overflow-hidden transition-[height] duration-300 ease-out"
+        style={{ height: showCode ? 0 : (iframeHeight || "auto") }}
       >
         <iframe
           ref={iframeRef}
@@ -240,7 +228,7 @@ function WidgetRendererInner({
             borderRadius: "var(--radius)",
           }}
         />
-      </motion.div>
+      </div>
 
       {(showCdnOverlay || showOverlay) && <WidgetShimmer />}
 
@@ -256,6 +244,6 @@ function WidgetRendererInner({
       >
         {showCode ? "Hide Code" : "Show Code"}
       </button>
-    </motion.div>
+    </div>
   );
 }
