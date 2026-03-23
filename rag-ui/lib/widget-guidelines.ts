@@ -1,13 +1,13 @@
 /**
  * Widget system prompt for generative UI.
  *
- * Minimal capability declaration (~150 tokens), always injected into
+ * Minimal capability declaration (~200 tokens), always injected into
  * the system prompt. Tells the model how to output show-widget fences.
  */
 
 export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 
-\`show-widget\` コードフェンスで、グラフ・計算機・可視化などの**インタラクティブ HTML ウィジェット**をチャット内に埋め込めます。
+\`show-widget\` コードフェンスで、**インタラクティブ HTML ウィジェット**をチャット内に埋め込めます。
 
 ### フォーマット
 \`\`\`show-widget
@@ -34,16 +34,53 @@ iframe には **Tailwind CSS v3**（Play CDN）がプリロード済み。\`dark
 - Chart.js: データ色は hex。軸ラベル・グリッド線は半透明: \`color:'rgba(150,150,150,0.7)'\`, \`grid:{color:'rgba(150,150,150,0.15)'}\`
 - SVG: テキスト fill に \`var(--color-text-primary)\`。線は \`rgba(150,150,150,0.3)\`
 
-### 使用場面（積極的に使うこと）
+### 使用場面（積極的に使うこと！）
 ユーザーが以下に該当するものを求めた場合、**コードブロックではなく show-widget で直接表示**すること:
-- データの可視化（棒グラフ、円グラフ、折れ線グラフ）
-- インタラクティブな計算機・シミュレーター
-- フォーム・入力 UI（申請フォーム、アンケート、登録フォーム等）
-- フローチャート、タイムライン、アーキテクチャ図
-- ゲーム・クイズ・インタラクティブデモ
-- **使わない**: 純粋なテキスト回答、単純な表
+- **ダッシュボード・統計カード**: KPI、メトリクス、プロフィール、商品情報をカード形式で美しく構造化表示
+- **フォーム・入力 UI**: 申請フォーム、設定パネル、アンケート、予約フォーム、検索フィルター
+- **データ可視化**: 棒グラフ・円グラフ・折れ線（Chart.js）、プログレスバー、ゲージ、ランキング
+- **インタラクティブツール**: 計算機、単位変換、BMI 計算、ローンシミュレーター、クイズ
+- **タイムライン・プロセス**: ステップ表示、ロードマップ、進捗トラッカー、ワークフロー図
+- **比較・料金表**: プラン比較、機能比較表、Before/After、評価・レビュー表示
+- **ゲーム・デモ**: ミニゲーム（じゃんけん、クイズ、記憶ゲーム等）、インタラクティブチュートリアル
+- **カンバン・リスト**: タスクボード、To-Do リスト、ドラッグ可能なカード
+- **使わない**: 純粋なテキスト回答、単純な箇条書き
 
-### Chart.js テンプレート
+### テンプレート
+
+#### ダッシュボード/カード（Tailwind のみ、JS 不要）
+\`\`\`
+<div class="p-6 space-y-4">
+  <h2 class="text-xl font-bold text-gray-900 dark:text-white">タイトル</h2>
+  <div class="grid grid-cols-3 gap-3">
+    <div class="rounded-xl bg-indigo-50 dark:bg-indigo-900/30 p-4">
+      <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400">ラベル</p>
+      <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">1,234</p>
+      <p class="text-xs text-emerald-600 mt-1">+12.5%</p>
+    </div>
+  </div>
+</div>
+\`\`\`
+
+#### インタラクティブ UI（イベント処理）
+\`\`\`
+<div class="p-6 space-y-4">
+  <div class="flex items-center gap-3">
+    <input id="inp" type="range" min="0" max="100" value="50" oninput="update(this.value)"
+      class="flex-1 accent-indigo-500" />
+    <span id="val" class="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400 w-12 text-right">50</span>
+  </div>
+  <div id="bar" class="h-3 rounded-full bg-indigo-500 transition-all duration-200" style="width:50%"></div>
+</div>
+<script>
+function update(v){
+  document.getElementById('val').textContent=v;
+  document.getElementById('bar').style.width=v+'%';
+}
+</script>
+\`\`\`
+
+#### Chart.js
 \`\`\`
 <div style="position:relative;width:100%;height:300px"><canvas id="c"></canvas></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" onload="init()"></script>

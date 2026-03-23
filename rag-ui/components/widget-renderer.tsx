@@ -26,7 +26,6 @@ interface WidgetRendererProps {
 }
 
 const MAX_IFRAME_HEIGHT = 2000;
-const STREAM_DEBOUNCE = 120;
 const CDN_PATTERN =
   /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.sh/;
 
@@ -51,9 +50,8 @@ function WidgetRendererInner({
   showOverlay,
 }: WidgetRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef(0);
   const lastSentRef = useRef("");
-  const lastSentTimeRef = useRef(0);
   const [iframeReady, setIframeReady] = useState(false);
   const [iframeHeight, setIframeHeight] = useState(
     () => _heightCache.get(cacheKey(widgetCode)) || 0,
@@ -147,33 +145,16 @@ function WidgetRendererInner({
     iframe.contentWindow.postMessage({ type: "widget:update", html }, "*");
   }, []);
 
-  // Throttle (leading + trailing): fire immediately on first call,
-  // then at most once per STREAM_DEBOUNCE interval.
-  // Pure debounce never fires during rapid streaming because each token
-  // resets the timer before it can trigger.
+  // Send updates on each animation frame for smooth progressive rendering.
+  // With morphdom in the iframe, DOM diffing is cheap (~0.1ms), so 60fps
+  // updates are fine. Each frame shows the latest HTML — text fills in
+  // nearly character-by-character instead of in 120ms chunks.
   useEffect(() => {
     if (!isStreaming || !iframeReady) return;
-    const sanitized = sanitizeForStreaming(widgetCode);
-
-    const now = Date.now();
-    const elapsed = now - lastSentTimeRef.current;
-
-    if (elapsed >= STREAM_DEBOUNCE) {
-      // Enough time passed — send immediately (leading edge)
-      sendUpdate(sanitized);
-      lastSentTimeRef.current = now;
-    } else {
-      // Too soon — schedule trailing-edge call
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        sendUpdate(sanitized);
-        lastSentTimeRef.current = Date.now();
-      }, STREAM_DEBOUNCE - elapsed);
-    }
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    rafRef.current = requestAnimationFrame(() => {
+      sendUpdate(sanitizeForStreaming(widgetCode));
+    });
+    return () => cancelAnimationFrame(rafRef.current);
   }, [widgetCode, isStreaming, iframeReady, sendUpdate]);
 
   // ── Finalize ───────────────────────────────────────────────────────────
@@ -182,11 +163,8 @@ function WidgetRendererInner({
     const sanitized = sanitizeForIframe(widgetCode);
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
-    // Clear any pending streaming debounce
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
+    // Cancel any pending streaming RAF
+    cancelAnimationFrame(rafRef.current);
     finalizedRef.current = true;
     lastSentRef.current = sanitized;
     heightLockedRef.current = true;
