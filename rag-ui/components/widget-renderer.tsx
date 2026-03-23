@@ -208,10 +208,7 @@ function WidgetRendererInner({
         </div>
       )}
 
-      <div
-        className="overflow-hidden transition-[height] duration-300 ease-out"
-        style={{ height: showCode ? 0 : (iframeHeight || "auto") }}
-      >
+      {!showCode && (
         <iframe
           ref={iframeRef}
           sandbox="allow-scripts"
@@ -222,13 +219,12 @@ function WidgetRendererInner({
             width: "100%",
             height: iframeHeight || 200,
             border: "none",
-            display: showCode ? "none" : "block",
             overflow: "hidden",
             colorScheme: "auto",
             borderRadius: "var(--radius)",
           }}
         />
-      </div>
+      )}
 
       {(showCdnOverlay || showOverlay) && <WidgetShimmer />}
 

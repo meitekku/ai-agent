@@ -16,7 +16,7 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 
 ### ルール
 1. widget_code は JSON 文字列 — 引用符・改行をエスケープ。DOCTYPE/html/head/body 不要
-2. 背景は透明 — ホスト側が背景を提供
+2. **フラットデザイン** — 背景は透明。外側をカード（shadow, border, rounded+bg）で囲まない。コンテンツはドキュメント面に直接配置。内部要素の装飾は OK
 3. 各 widget は 4000 文字以下。JSON とフェンスを必ず閉じる
 4. ストリーミング順序: SVG → \`<defs>\` を先頭に; HTML → \`<style>\` → コンテンツ → \`<script>\` を最後に
 5. CDN 許可リスト: cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, esm.sh
@@ -48,12 +48,12 @@ iframe には **Tailwind CSS v3**（Play CDN）がプリロード済み。\`dark
 
 ### テンプレート
 
-#### ダッシュボード/カード（Tailwind のみ、JS 不要）
+#### ダッシュボード（フラット、shadow/border なし）
 \`\`\`
-<div class="p-6 space-y-4">
-  <h2 class="text-xl font-bold text-gray-900 dark:text-white">タイトル</h2>
+<div class="space-y-3">
+  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">タイトル</h2>
   <div class="grid grid-cols-3 gap-3">
-    <div class="rounded-xl bg-indigo-50 dark:bg-indigo-900/30 p-4">
+    <div class="rounded-lg bg-indigo-50 dark:bg-indigo-900/30 p-4">
       <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400">ラベル</p>
       <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">1,234</p>
       <p class="text-xs text-emerald-600 mt-1">+12.5%</p>
@@ -64,7 +64,7 @@ iframe には **Tailwind CSS v3**（Play CDN）がプリロード済み。\`dark
 
 #### インタラクティブ UI（イベント処理）
 \`\`\`
-<div class="p-6 space-y-4">
+<div class="space-y-4">
   <div class="flex items-center gap-3">
     <input id="inp" type="range" min="0" max="100" value="50" oninput="update(this.value)"
       class="flex-1 accent-indigo-500" />
