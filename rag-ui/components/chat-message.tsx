@@ -43,7 +43,6 @@ import {
   FileIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronDownIcon,
   XIcon,
   SendIcon,
   Maximize2Icon,
@@ -516,35 +515,22 @@ const ToolCallGroup = memo(function ToolCallGroup({
   isStreaming?: boolean;
 }) {
   const allComplete = tools.every((t) => t.part.state === "output-available");
+  // Start collapsed only when loaded from history (not streaming)
   const [collapsed, setCollapsed] = useState(
-    () => allComplete && tools.length >= 2,
+    () => !isStreaming && allComplete && tools.length >= 2,
   );
-  const [userExpanded, setUserExpanded] = useState(false);
 
-  // Auto-collapse when all tools finish
-  const prevCompleteRef = useRef(allComplete);
-
+  // Auto-collapse when streaming ends with multiple completed tools
+  const prevStreamingRef = useRef(isStreaming);
   useEffect(() => {
-    if (allComplete && !prevCompleteRef.current && tools.length >= 2) {
-      if (userExpanded) {
-        // User was viewing all tools — brief delay before collapse
-        const timer = setTimeout(() => {
-          setCollapsed(true);
-          setUserExpanded(false);
-        }, 800);
-        prevCompleteRef.current = true;
-        return () => clearTimeout(timer);
-      } else {
-        // Was in "only latest" mode — collapse immediately
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- sync collapse on tool completion
-        setCollapsed(true);
-        prevCompleteRef.current = true;
-      }
+    if (prevStreamingRef.current && !isStreaming && allComplete && tools.length >= 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse once when streaming ends
+      setCollapsed(true);
     }
-    if (!allComplete) prevCompleteRef.current = false;
-  }, [allComplete, tools.length, userExpanded]);
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming, allComplete, tools.length]);
 
-  // Single tool
+  // Single tool — always show inline
   if (tools.length === 1) {
     const t = tools[0];
     const indicator = (
@@ -566,70 +552,29 @@ const ToolCallGroup = memo(function ToolCallGroup({
     );
   }
 
-  // Multiple tools — streaming, not all complete
-  if (isStreaming && !allComplete) {
-    if (!userExpanded) {
-      // Show only the latest tool — old one instantly unmounts via key swap
-      const latestTool = tools[tools.length - 1];
-      return (
-        <div>
+  // During streaming: always show ALL tools stacked (never hide running tools)
+  if (isStreaming) {
+    return (
+      <div className="space-y-1 py-0.5">
+        {tools.map((t) => (
           <motion.div
-            key={`${messageId}-latest-${latestTool.index}`}
-            initial={{ opacity: 0, y: 6 }}
+            key={`${messageId}-${t.index}`}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
           >
             <ToolCallIndicator
-              toolName={latestTool.toolName}
-              state={latestTool.part.state}
-              args={
-                latestTool.part.input as Record<string, unknown> | undefined
-              }
+              toolName={t.toolName}
+              state={t.part.state}
+              args={t.part.input as Record<string, unknown> | undefined}
             />
           </motion.div>
-          {tools.length > 1 && (
-            <button
-              onClick={() => setUserExpanded(true)}
-              className="inline-flex items-center gap-1 ml-3 mt-0.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
-            >
-              <ChevronDownIcon className="size-2.5" />
-              <span>前の{tools.length - 1}ステップを表示</span>
-            </button>
-          )}
-        </div>
-      );
-    }
-    // User expanded — show all tools
-    return (
-      <div>
-        <button
-          onClick={() => setUserExpanded(false)}
-          className="inline-flex items-center gap-1 ml-3 mb-0.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
-        >
-          <ChevronDownIcon className="size-2.5 rotate-180" />
-          <span>最新のみ表示</span>
-        </button>
-        <div className="space-y-1 py-0.5">
-          {tools.map((t) => (
-            <motion.div
-              key={`${messageId}-${t.index}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-            >
-              <ToolCallIndicator
-                toolName={t.toolName}
-                state={t.part.state}
-                args={t.part.input as Record<string, unknown> | undefined}
-              />
-            </motion.div>
-          ))}
-        </div>
+        ))}
       </div>
     );
   }
 
-  // Multiple tools — all complete (or history load): summary row + collapsible
+  // Not streaming (history or finished): summary row + collapsible
   return (
     <div>
       <button

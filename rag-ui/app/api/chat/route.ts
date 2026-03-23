@@ -1052,42 +1052,69 @@ export async function POST(req: Request) {
     console.log("[chat] 📊 CRM tools registered (crm-service connected)");
   }
 
-  // Image generation tool (available to all text models when geminiImageModel exists)
+  // Image generation tool — uses native Gemini generateContent + responseModalities
+  // (same path as the Gemini website for Nano Banana quality)
   if (geminiImageModel) {
+    // Capture the last user message for native image generation
+    const lastUserText = [...messages]
+      .reverse()
+      .find((m) => m.role === "user")
+      ?.parts?.filter(
+        (p): p is { type: "text"; text: string } => p.type === "text",
+      )
+      .map((p) => p.text)
+      .join("") ?? "";
+
     tools.generateImage = tool({
       description:
         "テキストの説明から画像を生成します。ユーザーが「描いて」「画像を作って」「イラスト」等を依頼した場合に使用。",
       inputSchema: z.object({
-        prompt: z.string().describe("生成する画像の詳細な説明（英語推奨）"),
+        prompt: z.string().describe("画像生成の指示（ユーザーの要望を忠実に伝える）"),
         aspectRatio: z
           .enum(["1:1", "3:4", "4:3", "9:16", "16:9"])
           .optional()
           .describe("画像のアスペクト比"),
       }),
       execute: async ({ prompt, aspectRatio }) => {
-        console.log(`[chat] 🎨 generateImage: "${prompt.slice(0, 50)}..."`);
+        // Prefer the user's original message for native generation quality
+        const imagePrompt = lastUserText || prompt;
+        console.log(
+          `[chat] 🎨 generateImage (native): "${imagePrompt.slice(0, 50)}..."`,
+        );
         const t0 = Date.now();
         try {
-          const result = await generateImage({
-            model: geminiImageModel!,
-            prompt,
-            aspectRatio,
-            providerOptions: { google: { personGeneration: "allow_adult" } },
+          const imageModel = getChatModel("gemini-3.1-flash-image-preview");
+          const result = await generateText({
+            model: imageModel,
+            prompt: imagePrompt,
+            providerOptions: {
+              google: {
+                responseModalities: ["TEXT", "IMAGE"],
+                personGeneration: "allow_adult",
+              },
+            },
           });
           const savedUrls: string[] = [];
-          for (const img of result.images) {
-            const ext = img.mediaType === "image/jpeg" ? ".jpg" : ".png";
+          for (const file of result.files ?? []) {
+            const ext =
+              file.mediaType === "image/png"
+                ? ".png"
+                : file.mediaType === "image/jpeg"
+                  ? ".jpg"
+                  : file.mediaType === "image/webp"
+                    ? ".webp"
+                    : ".png";
             const name = `generated-${Date.now()}${ext}`;
             const { id, storedPath } = await saveFile(
-              Buffer.from(img.uint8Array),
+              Buffer.from(file.uint8Array),
               name,
             );
             await insertChatFile({
               id,
               originalName: name,
               storedPath,
-              mediaType: img.mediaType,
-              sizeBytes: img.uint8Array.length,
+              mediaType: file.mediaType,
+              sizeBytes: file.uint8Array.length,
             });
             savedUrls.push(`/api/files/${id}`);
           }
@@ -1098,7 +1125,7 @@ export async function POST(req: Request) {
             success: true,
             images: savedUrls.map((url, i) => ({
               url,
-              mediaType: result.images[i].mediaType,
+              mediaType: (result.files ?? [])[i]?.mediaType ?? "image/png",
             })),
           };
         } catch (err) {
