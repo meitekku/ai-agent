@@ -3,6 +3,7 @@
 import {
   memo,
   useCallback,
+  useMemo,
   useState,
   useRef,
   useEffect,
@@ -46,6 +47,7 @@ import {
   XIcon,
   SendIcon,
   Maximize2Icon,
+  DownloadIcon,
   OctagonIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +57,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const ImageLightbox = lazy(() =>
   import("@/components/image-lightbox").then((m) => ({
@@ -70,10 +78,32 @@ function stripThinkTags(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
+/** Strip markdown images that are either hallucinated (external URLs) or
+ *  already rendered from generateImage tool output (duplicate /api/files/ URLs). */
+function stripGeneratedImages(
+  text: string,
+  generatedUrls?: Set<string>,
+): string {
+  return text
+    .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (match, url: string) => {
+      // Always strip external (hallucinated) URLs
+      if (/^https?:\/\//.test(url)) return "";
+      // Strip /api/files/ URLs already rendered from tool output
+      if (generatedUrls?.has(url)) return "";
+      return match;
+    })
+    .trim();
+}
+
+/** Extract tool output (AI SDK v6 compat: part.result or part.output) */
+function getToolOutput(part: Record<string, unknown>): unknown {
+  return ("result" in part ? part.result : part.output) ?? null;
+}
+
 function getMessageText(message: UIMessage): string {
   return message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => stripThinkTags(p.text))
+    .map((p) => stripGeneratedImages(stripThinkTags(p.text)))
     .join("");
 }
 
@@ -301,21 +331,38 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 
   if (toolName === "generateImage") {
     const prompt = typeof args?.prompt === "string" ? args.prompt : "";
-    return (
+    const truncated = prompt.length > 40;
+    const indicator = (
       <StepIndicator
         icon={ImageIcon}
         activeLabel={
           prompt
-            ? `画像を生成中 — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
+            ? `画像を生成中 — 「${prompt.slice(0, 40)}${truncated ? "..." : ""}」`
             : "画像を生成中..."
         }
         completedLabel={
           prompt
-            ? `画像を生成しました — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
+            ? `画像を生成しました — 「${prompt.slice(0, 40)}${truncated ? "..." : ""}」`
             : "画像を生成しました"
         }
         active={!isComplete}
       />
+    );
+    if (!prompt || !truncated) return indicator;
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <div className="inline-block">{indicator}</div>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            className="max-w-sm text-xs"
+          >
+            {prompt}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   }
 
@@ -664,6 +711,23 @@ export const ChatMessage = memo(function ChatMessage({
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
+  // Collect image URLs from generateImage tool outputs for dedup
+  const generatedImageUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const part of message.parts) {
+      if (!isToolUIPart(part) || getToolName(part) !== "generateImage") continue;
+      if (part.state !== "output-available") continue;
+      const out = getToolOutput(part as Record<string, unknown>) as {
+        success?: boolean;
+        images?: { url: string }[];
+      } | null;
+      if (out?.success && Array.isArray(out.images)) {
+        for (const img of out.images) urls.add(img.url);
+      }
+    }
+    return urls;
+  }, [message.parts]);
+
   const handleCopy = useCallback(() => {
     onCopy(getMessageText(message));
     setCopied(true);
@@ -820,13 +884,98 @@ export const ChatMessage = memo(function ChatMessage({
             );
           }
           if (segment.type === "tool-group") {
+            // Extract generateImage results for direct rendering
+            const genImageTools = segment.tools.filter(
+              (t) => t.toolName === "generateImage",
+            );
+            const isGeneratingImage = genImageTools.some(
+              (t) => t.part.state !== "output-available",
+            );
+            const generatedImages = genImageTools.flatMap((t) => {
+              if (t.part.state !== "output-available") return [];
+              const out = getToolOutput(
+                t.part as Record<string, unknown>,
+              ) as {
+                success?: boolean;
+                images?: { url: string; mediaType: string }[];
+              } | null;
+              return out?.success && Array.isArray(out.images)
+                ? out.images
+                : [];
+            });
+            // Determine skeleton aspect ratio from args
+            const skeletonRatio = (() => {
+              if (!isGeneratingImage) return "";
+              const imgTool = genImageTools.find(
+                (t) => t.part.state !== "output-available",
+              );
+              const ar =
+                imgTool?.part.input &&
+                typeof imgTool.part.input === "object" &&
+                "aspectRatio" in imgTool.part.input
+                  ? (imgTool.part.input as { aspectRatio?: string }).aspectRatio
+                  : undefined;
+              switch (ar) {
+                case "16:9":
+                  return "aspect-video";
+                case "9:16":
+                  return "aspect-[9/16]";
+                case "4:3":
+                  return "aspect-[4/3]";
+                case "3:4":
+                  return "aspect-[3/4]";
+                default:
+                  return "aspect-square";
+              }
+            })();
+
             return (
-              <ToolCallGroup
-                key={`${message.id}-tg-${segment.tools[0].index}`}
-                messageId={message.id}
-                tools={segment.tools}
-                isStreaming={isActiveStreaming}
-              />
+              <div key={`${message.id}-tg-${segment.tools[0].index}`}>
+                <ToolCallGroup
+                  messageId={message.id}
+                  tools={segment.tools}
+                  isStreaming={isActiveStreaming}
+                />
+                {/* Skeleton placeholder while image is generating */}
+                {isGeneratingImage && (
+                  <div
+                    className={`mt-2 w-64 ${skeletonRatio} animate-pulse rounded-xl bg-muted/60`}
+                  />
+                )}
+                {/* Render generated images directly from tool output */}
+                {generatedImages.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {generatedImages.map((img, i) => (
+                      <div
+                        key={img.url}
+                        className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
+                        onClick={() => setLightboxSrc(img.url)}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.url}
+                          alt={`Generated image ${i + 1}`}
+                          className="block max-w-md rounded-xl"
+                        />
+                        {/* Hover overlay with expand icon */}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/15">
+                          <Maximize2Icon className="size-4 text-white opacity-0 drop-shadow-md transition-opacity group-hover/img:opacity-90" />
+                        </div>
+                        {/* Download button */}
+                        <a
+                          href={`${img.url}?dl=1`}
+                          download
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-md border border-border bg-background/90 shadow-sm backdrop-blur-sm opacity-0 transition-all duration-200 hover:bg-background group-hover/img:opacity-100"
+                          title="ダウンロード"
+                        >
+                          <DownloadIcon className="size-4" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           }
           if (segment.type !== "part") return null;
@@ -842,7 +991,10 @@ export const ChatMessage = memo(function ChatMessage({
                   }
                 >
                   {message.role === "assistant"
-                    ? stripThinkTags(part.text)
+                    ? stripGeneratedImages(
+                        stripThinkTags(part.text),
+                        generatedImageUrls,
+                      )
                     : part.text}
                 </MessageResponse>
               );
