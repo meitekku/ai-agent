@@ -60,7 +60,8 @@ export function sanitizeForStreaming(html: string): string {
         if (/^\s*(javascript|data)\s*:/i.test(url)) return "";
         return match;
       },
-    );
+    )
+    .replace(/<[a-zA-Z\/][^>]*$/, ""); // Strip incomplete HTML tag at end of stream
 }
 
 /**
