@@ -1044,7 +1044,7 @@ export const ChatMessage = memo(function ChatMessage({
                 return (
                   <div
                     key={key}
-                    className="group/img relative inline-block cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
+                    className="group/img relative inline-block w-fit cursor-pointer overflow-hidden rounded-xl border border-border/60 bg-muted/20 shadow-sm transition-shadow hover:shadow-md"
                     onClick={() => setLightboxSrc(part.url)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
