@@ -148,6 +148,17 @@ export async function listConversations(
   }));
 }
 
+export async function getConversationTitle(
+  id: string,
+): Promise<string | null> {
+  await ensureChatTables();
+  const res = await getPool().query(
+    `SELECT title FROM chat_conversations WHERE id = $1`,
+    [id],
+  );
+  return res.rows[0]?.title ?? null;
+}
+
 export async function getConversation(id: string): Promise<{
   conversation: ConversationRow;
   messages: MessageRow[];

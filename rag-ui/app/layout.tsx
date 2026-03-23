@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s | Stella",
   },
   description:
-    "ドキュメントをアップロードして知識グラフを構築し、AI とチャットで対話。ナレッジベース検索・ウェブ検索・マルチモーダル対応の統合 AI アシスタント。",
+    "RAG ナレッジベース検索、CRM 商機分析、提案書スライド自動生成、画像認識・生成、ウェブ検索、Generative UI を統合した AI アシスタント。",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -34,9 +34,9 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
-    title: "Stella",
+    title: "Stella — 統合 AI アシスタント",
     description:
-      "ドキュメントから知識グラフを構築し、AI と対話するナレッジベースチャット",
+      "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム",
     type: "website",
     locale: "ja_JP",
     siteName: "Stella",
