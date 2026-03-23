@@ -57,12 +57,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 const ImageLightbox = lazy(() =>
   import("@/components/image-lightbox").then((m) => ({
@@ -390,38 +384,21 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
 
   if (toolName === "generateImage") {
     const prompt = typeof args?.prompt === "string" ? args.prompt : "";
-    const truncated = prompt.length > 40;
-    const indicator = (
+    return (
       <StepIndicator
         icon={ImageIcon}
         activeLabel={
           prompt
-            ? `画像を生成中 — 「${prompt.slice(0, 40)}${truncated ? "..." : ""}」`
+            ? `画像を生成中 — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
             : "画像を生成中..."
         }
         completedLabel={
           prompt
-            ? `画像を生成しました — 「${prompt.slice(0, 40)}${truncated ? "..." : ""}」`
+            ? `画像を生成しました — 「${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}」`
             : "画像を生成しました"
         }
         active={!isComplete}
       />
-    );
-    if (!prompt || !truncated) return indicator;
-    return (
-      <TooltipProvider>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <div className="inline-block">{indicator}</div>
-          </TooltipTrigger>
-          <TooltipContent
-            side="top"
-            className="max-w-sm text-xs"
-          >
-            {prompt}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
     );
   }
 
