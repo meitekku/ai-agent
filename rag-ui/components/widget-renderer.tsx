@@ -199,7 +199,7 @@ function WidgetRendererInner({
 
   return (
     <div
-      className="group/widget relative my-2 w-full overflow-hidden"
+      className="group/widget relative my-2 w-full"
       style={{ minWidth: "min(100%, 600px)" }}
     >
       {title && (
