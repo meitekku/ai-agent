@@ -182,8 +182,8 @@ parent.postMessage({type:'widget:ready'},'*');
 <style>
 ${styleBlock}
 </style>
-<script>tailwind.config={darkMode:'class',corePlugins:{preflight:false}}</script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',corePlugins:{preflight:false}}</script>
 </head>
 <body style="margin:0;padding:0;">
 <div id="__root"></div>

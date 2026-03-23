@@ -1,7 +1,7 @@
 "use client";
 
 import type { UIMessage } from "ai";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type { ComponentProps, HTMLAttributes, ReactElement, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
@@ -343,17 +343,16 @@ const sdClassName =
  * Renders markdown with inline widget support.
  * Widget parsing happens OUTSIDE streamdown (CodePilot pattern) so that
  * isStreaming is derived from fence-close detection, not streamdown internals.
+ *
+ * Key anti-flicker strategy:
+ * - Unified rendering path for streaming/complete (same keys across transitions)
+ * - Completed text segments never re-animate (animated=false)
+ * - Only the last text segment animates, and only when streaming after all fences
  */
 export const MessageResponse = memo(
   ({ className, isActiveStreaming, ...props }: MessageResponseProps) => {
     const content = typeof props.children === "string" ? props.children : "";
     const hasWidgetFence = content.includes("```show-widget");
-
-    // Streamdown native per-word animation (uses defaults from styles.css)
-    const animProps = {
-      animated: !!isActiveStreaming,
-      isAnimating: !!isActiveStreaming,
-    };
 
     // ── Fast path: no widgets — render with Streamdown directly ──────
     if (!hasWidgetFence) {
@@ -361,89 +360,45 @@ export const MessageResponse = memo(
         <Streamdown
           className={cn(sdClassName, className)}
           plugins={streamdownPlugins}
-          {...animProps}
+          animated={!!isActiveStreaming}
+          isAnimating={!!isActiveStreaming}
           {...props}
         />
       );
     }
 
-    // ── Check if last fence is still being streamed ──────────────────
+    // ── Widget path (unified for streaming + complete) ───────────────
     const lastFenceStart = content.lastIndexOf("```show-widget");
     const afterLastFence = content.slice(lastFenceStart);
     const lastFenceClosed = /```show-widget\s*\n?[\s\S]*?\n?\s*```/.test(
       afterLastFence,
     );
 
-    // All fences complete
-    if (lastFenceClosed) {
-      const segments = parseAllShowWidgets(content);
-      return (
-        <div className={cn(sdClassName, className)}>
-          {segments.map((seg, i) =>
-            seg.type === "text" ? (
-              <Streamdown
-                key={`t-${i}`}
-                plugins={streamdownPlugins}
-                {...animProps}
-              >
-                {seg.content}
-              </Streamdown>
-            ) : (
-              <WidgetRenderer
-                key={`w-${i}`}
-                widgetCode={seg.widgetCode}
-                isStreaming={false}
-                title={seg.title}
-              />
-            ),
-          )}
-        </div>
-      );
-    }
-
-    // ── Last fence still streaming ───────────────────────────────────
-    const beforePart = content.slice(0, lastFenceStart).trim();
-    const hasCompleted = beforePart && /```show-widget/.test(beforePart);
-    const completedSegments = hasCompleted
-      ? parseAllShowWidgets(beforePart)
+    // Always parse the completed portion the same way — this ensures
+    // segment keys stay stable across streaming→complete transitions
+    const completedContent = lastFenceClosed
+      ? content
+      : content.slice(0, lastFenceStart).trim();
+    const completedSegments = completedContent
+      ? parseAllShowWidgets(completedContent)
       : [];
 
-    // Extract partial widget from the open fence
-    const fenceBody = content
-      .slice(lastFenceStart + "```show-widget".length)
-      .trim();
-    const partial = extractPartialWidget(fenceBody);
-    const partialKey = computePartialWidgetKey(content);
+    // Only animate the very last text segment, and only when streaming
+    // continues after all widget fences are closed (i.e. new text is
+    // being appended after the last widget)
+    const animateLastText = !!isActiveStreaming && lastFenceClosed;
 
-    return (
-      <div className={cn(sdClassName, className)}>
-        {/* Text before first widget (no completed fences) */}
-        {!hasCompleted && beforePart && (
-          <Streamdown key="pre-text" plugins={streamdownPlugins} {...animProps}>
-            {beforePart}
-          </Streamdown>
-        )}
-        {/* Completed fences + interleaved text */}
-        {completedSegments.map((seg, i) =>
-          seg.type === "text" ? (
-            <Streamdown
-              key={`t-${i}`}
-              plugins={streamdownPlugins}
-              {...animProps}
-            >
-              {seg.content}
-            </Streamdown>
-          ) : (
-            <WidgetRenderer
-              key={`w-${i}`}
-              widgetCode={seg.widgetCode}
-              isStreaming={false}
-              title={seg.title}
-            />
-          ),
-        )}
-        {/* Streaming partial widget */}
-        {partial.widgetCode && partial.widgetCode.length > 10 ? (
+    // Streaming partial widget (only when last fence is still open)
+    let streamingWidget: ReactNode = null;
+    if (!lastFenceClosed) {
+      const fenceBody = content
+        .slice(lastFenceStart + "```show-widget".length)
+        .trim();
+      const partial = extractPartialWidget(fenceBody);
+      const partialKey = computePartialWidgetKey(content);
+
+      streamingWidget =
+        partial.widgetCode && partial.widgetCode.length > 10 ? (
           <WidgetRenderer
             key={partialKey}
             widgetCode={partial.widgetCode}
@@ -452,10 +407,42 @@ export const MessageResponse = memo(
             showOverlay={partial.scriptsTruncated}
           />
         ) : (
-          <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+          <div
+            key="widget-loading"
+            className="flex items-center gap-2 py-2 text-sm text-muted-foreground"
+          >
             <span className="animate-soft-pulse">Widget を生成中...</span>
           </div>
-        )}
+        );
+    }
+
+    return (
+      <div className={cn(sdClassName, className)}>
+        {completedSegments.map((seg, i) => {
+          if (seg.type === "text") {
+            const isLast = i === completedSegments.length - 1;
+            const shouldAnimate = animateLastText && isLast;
+            return (
+              <Streamdown
+                key={`t-${i}`}
+                plugins={streamdownPlugins}
+                animated={shouldAnimate}
+                isAnimating={shouldAnimate}
+              >
+                {seg.content}
+              </Streamdown>
+            );
+          }
+          return (
+            <WidgetRenderer
+              key={`w-${i}`}
+              widgetCode={seg.widgetCode}
+              isStreaming={false}
+              title={seg.title}
+            />
+          );
+        })}
+        {streamingWidget}
       </div>
     );
   },

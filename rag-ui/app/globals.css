@@ -48,72 +48,113 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 261.692);
+  /* Salesforce Lightning — Light Theme */
+
+  /* Page: cool near-white with subtle blue tint */
+  --background: oklch(0.98 0.005 250);
+  /* Text: dark navy */
+  --foreground: oklch(0.16 0.03 255);
+
+  /* Card: white */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 261.692);
+  --card-foreground: oklch(0.16 0.03 255);
+
+  /* Popover: white */
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: oklch(0.6 0.13 163);
-  --primary-foreground: oklch(0.98 0.02 166);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.003 264.542);
-  --muted-foreground: oklch(0.551 0.027 264.364);
-  --accent: oklch(0.6 0.13 163);
-  --accent-foreground: oklch(0.98 0.02 166);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 264.531);
-  --input: oklch(0.928 0.006 264.531);
-  --ring: oklch(0.707 0.022 261.325);
-  --chart-1: oklch(0.85 0.13 165);
-  --chart-2: oklch(0.77 0.15 163);
-  --chart-3: oklch(0.7 0.15 162);
-  --chart-4: oklch(0.6 0.13 163);
-  --chart-5: oklch(0.51 0.1 166);
+  --popover-foreground: oklch(0.16 0.03 255);
+
+  /* Primary: SF Accessible Brand Blue (#0176D3) */
+  --primary: oklch(0.56 0.155 248);
+  --primary-foreground: oklch(1 0 0);
+
+  /* Secondary: clean light blue (user message bubble) */
+  --secondary: oklch(0.96 0.02 250);
+  --secondary-foreground: oklch(0.25 0.04 255);
+
+  /* Muted */
+  --muted: oklch(0.955 0.008 250);
+  --muted-foreground: oklch(0.50 0.02 255);
+
+  /* Accent: SF Blue 95 (#EEF4FF) */
+  --accent: oklch(0.97 0.015 255);
+  --accent-foreground: oklch(0.56 0.155 248);
+
+  /* Destructive: SF Red 50 (#EA001E) */
+  --destructive: oklch(0.52 0.24 25);
+
+  /* Border: cool blue-gray */
+  --border: oklch(0.91 0.008 250);
+  --input: oklch(0.90 0.008 250);
+  /* Ring: SF Blue 60 (#1B96FF) */
+  --ring: oklch(0.66 0.175 255);
+
+  /* Charts: SF brand palette */
+  --chart-1: oklch(0.66 0.175 255);
+  --chart-2: oklch(0.56 0.155 248);
+  --chart-3: oklch(0.55 0.12 150);
+  --chart-4: oklch(0.75 0.16 60);
+  --chart-5: oklch(0.52 0.18 275);
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 247.839);
-  --sidebar-foreground: oklch(0.13 0.028 261.692);
-  --sidebar-primary: oklch(0.6 0.13 163);
-  --sidebar-primary-foreground: oklch(0.98 0.02 166);
-  --sidebar-accent: oklch(0.6 0.13 163);
-  --sidebar-accent-foreground: oklch(0.98 0.02 166);
-  --sidebar-border: oklch(0.928 0.006 264.531);
-  --sidebar-ring: oklch(0.707 0.022 261.325);
+
+  /* Sidebar: LIGHT — SF Blue 98 tint (component uses text-foreground) */
+  --sidebar: oklch(0.97 0.008 250);
+  --sidebar-foreground: oklch(0.16 0.03 255);
+  --sidebar-primary: oklch(0.56 0.155 248);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.94 0.015 250);
+  --sidebar-accent-foreground: oklch(0.16 0.03 255);
+  --sidebar-border: oklch(0.90 0.008 250);
+  --sidebar-ring: oklch(0.66 0.175 255);
 }
 
 .dark {
-  --background: oklch(0.105 0.02 260);
+  /* Salesforce Lightning — Dark Theme */
+
+  --background: oklch(0.16 0.025 255);
   --foreground: oklch(0.93 0.005 250);
-  --card: oklch(0.155 0.022 262);
+
+  --card: oklch(0.20 0.03 255);
   --card-foreground: oklch(0.93 0.005 250);
-  --popover: oklch(0.155 0.022 262);
+
+  --popover: oklch(0.20 0.03 255);
   --popover-foreground: oklch(0.93 0.005 250);
-  --primary: oklch(0.72 0.17 165);
-  --primary-foreground: oklch(0.15 0.04 170);
-  --secondary: oklch(0.19 0.015 260);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.2 0.02 258);
-  --muted-foreground: oklch(0.6 0.015 260);
-  --accent: oklch(0.72 0.17 165);
-  --accent-foreground: oklch(0.15 0.04 170);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 8%);
+
+  /* Primary: SF Blue 60 — brighter for dark bg */
+  --primary: oklch(0.66 0.175 255);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.22 0.02 255);
+  --secondary-foreground: oklch(0.93 0.005 250);
+
+  --muted: oklch(0.24 0.025 255);
+  --muted-foreground: oklch(0.60 0.015 250);
+
+  --accent: oklch(0.27 0.08 255);
+  --accent-foreground: oklch(0.93 0.005 250);
+
+  /* Destructive: SF Red 60 — brighter for dark bg */
+  --destructive: oklch(0.65 0.20 22);
+
+  --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.72 0.17 165 / 40%);
-  --chart-1: oklch(0.85 0.13 165);
-  --chart-2: oklch(0.77 0.15 163);
-  --chart-3: oklch(0.7 0.15 162);
-  --chart-4: oklch(0.6 0.13 163);
-  --chart-5: oklch(0.51 0.1 166);
-  --sidebar: oklch(0.12 0.018 262);
+  --ring: oklch(0.66 0.175 255 / 40%);
+
+  --chart-1: oklch(0.70 0.175 255);
+  --chart-2: oklch(0.60 0.155 248);
+  --chart-3: oklch(0.60 0.12 150);
+  --chart-4: oklch(0.75 0.16 60);
+  --chart-5: oklch(0.58 0.18 275);
+
+  /* Sidebar: dark navy */
+  --sidebar: oklch(0.13 0.04 260);
   --sidebar-foreground: oklch(0.93 0.005 250);
-  --sidebar-primary: oklch(0.77 0.15 163);
-  --sidebar-primary-foreground: oklch(0.15 0.04 170);
-  --sidebar-accent: oklch(0.72 0.17 165);
-  --sidebar-accent-foreground: oklch(0.15 0.04 170);
+  --sidebar-primary: oklch(0.66 0.175 255);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.22 0.06 255);
+  --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.72 0.17 165 / 40%);
+  --sidebar-ring: oklch(0.66 0.175 255 / 40%);
 }
 
 @layer base {
@@ -124,64 +165,62 @@
     @apply bg-background text-foreground;
   }
 
-  /* Thin overlay scrollbar — standard properties only.
-     ::-webkit-scrollbar pseudo-elements force overlay → classic conversion,
-     so we avoid them to keep scrollbars floating over content. */
+  /* Thin overlay scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.4 0.06 264) transparent;
+    scrollbar-color: oklch(0.7 0.01 250) transparent;
   }
   .dark * {
-    scrollbar-color: oklch(0.25 0.02 264) transparent;
+    scrollbar-color: oklch(0.3 0.01 260) transparent;
   }
 }
 
-/* --- Utility classes for refined UI --- */
+/* --- Utility classes --- */
 
 @layer utilities {
-  /* Glass-morphism header */
+  /* Glass header */
   .glass-header {
     backdrop-filter: blur(16px) saturate(1.4);
-    background: oklch(1 0 0 / 75%);
+    background: oklch(0.98 0.005 250 / 80%);
     border-bottom: 1px solid oklch(0 0 0 / 8%);
   }
   .dark .glass-header {
-    background: oklch(0.105 0.02 260 / 75%);
+    background: oklch(0.16 0.025 255 / 80%);
     border-bottom: 1px solid oklch(1 0 0 / 6%);
   }
 
-  /* Glass-morphism sidebar */
+  /* Glass sidebar — light blue tint in light mode */
   .glass-sidebar {
     backdrop-filter: blur(12px) saturate(1.3);
-    background: oklch(0.985 0.002 248 / 85%);
+    background: oklch(0.97 0.008 250 / 92%);
   }
   .dark .glass-sidebar {
-    background: oklch(0.12 0.018 262 / 85%);
+    background: oklch(0.13 0.04 260 / 95%);
   }
 
-  /* Subtle background radial for empty state */
+  /* Background radial glow — SF blue */
   .bg-radial-glow {
     background:
       radial-gradient(
         ellipse 60% 50% at 50% 45%,
-        oklch(0.72 0.17 165 / 6%) 0%,
+        oklch(0.66 0.175 255 / 6%) 0%,
         transparent 70%
       ),
       radial-gradient(
         ellipse 40% 35% at 55% 50%,
-        oklch(0.65 0.12 250 / 4%) 0%,
+        oklch(0.52 0.18 275 / 4%) 0%,
         transparent 60%
       );
   }
 
-  /* Glow ring for focused input */
+  /* Glow ring — SF blue */
   .glow-ring {
     box-shadow:
-      0 0 0 1px oklch(0.72 0.17 165 / 20%),
-      0 0 12px -2px oklch(0.72 0.17 165 / 10%);
+      0 0 0 1px oklch(0.66 0.175 255 / 20%),
+      0 0 12px -2px oklch(0.66 0.175 255 / 10%);
   }
 
-  /* Smooth pulse for step indicators */
+  /* Smooth pulse */
   @keyframes soft-pulse {
     0%,
     100% {
@@ -195,7 +234,7 @@
     animation: soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
-  /* Skeleton shimmer wave for active indicators */
+  /* Shimmer wave — SF blue */
   @keyframes shimmer-wave {
     0% {
       background-position: 200% 0;
@@ -209,9 +248,9 @@
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      oklch(0.72 0.17 165 / 8%) 40%,
-      oklch(0.72 0.17 165 / 15%) 50%,
-      oklch(0.72 0.17 165 / 8%) 60%,
+      oklch(0.66 0.175 255 / 8%) 40%,
+      oklch(0.66 0.175 255 / 15%) 50%,
+      oklch(0.66 0.175 255 / 8%) 60%,
       transparent 100%
     );
     animation: shimmer-wave 2s ease-in-out infinite;
@@ -220,9 +259,9 @@
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      oklch(0.72 0.17 165 / 6%) 40%,
-      oklch(0.72 0.17 165 / 12%) 50%,
-      oklch(0.72 0.17 165 / 6%) 60%,
+      oklch(0.66 0.175 255 / 6%) 40%,
+      oklch(0.66 0.175 255 / 12%) 50%,
+      oklch(0.66 0.175 255 / 6%) 60%,
       transparent 100%
     );
   }
