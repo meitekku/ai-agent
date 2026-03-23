@@ -159,10 +159,10 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/files/upload/route.ts` | 同上 | 一致 | POST ファイルアップロード |
 | `rag-ui/app/api/files/[id]/route.ts` | 同上 | **rag-deploy のみ** | GET ファイル配信 + `?dl=1` ダウンロードモード |
 | `rag-ui/hooks/use-file-upload.ts` | 同上 | 一致 | クライアント自動アップロードフック（リトライ対応） |
-| `rag-ui/components/widget-renderer.tsx` | **rag-deploy のみ** | — | Generative UI: sandbox iframe + postMessage（CodePilot 方式） |
+| `rag-ui/components/widget-renderer.tsx` | **rag-deploy のみ** | — | Generative UI: sandbox iframe + morphdom DOM diff + requestAnimationFrame 更新 |
 | `rag-ui/components/widget-shimmer.tsx` | **rag-deploy のみ** | — | Widget ローディングシマー |
 | `rag-ui/lib/widget-parser.ts` | **rag-deploy のみ** | — | show-widget コードフェンス解析 |
-| `rag-ui/lib/widget-sanitizer.ts` | **rag-deploy のみ** | — | Widget HTML 消毒 + iframe srcdoc ビルダー |
+| `rag-ui/lib/widget-sanitizer.ts` | **rag-deploy のみ** | — | Widget HTML 消毒 + iframe srcdoc（morphdom インライン + 逐語アニメーション） |
 | `rag-ui/lib/widget-css-bridge.ts` | **rag-deploy のみ** | — | CSS 変数ブリッジ（oklch → widget 変数） |
 | `rag-ui/lib/widget-guidelines.ts` | **rag-deploy のみ** | — | Widget 生成システムプロンプト |
 | `rag-ui/components/ai-elements/message.tsx` | 同上 | **rag-deploy のみ** | MessageResponse に widget セグメント分割ロジック追加 |
