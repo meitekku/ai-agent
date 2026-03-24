@@ -16,7 +16,11 @@ if config.LLM_PROVIDER == "gemini":
     from lightrag.llm.gemini import gemini_model_complete
     _llm_func = gemini_model_complete
     _llm_name = config.GEMINI_MODEL
-    _llm_kwargs = {}
+    _llm_kwargs = {
+        "generation_config": {
+            "thinking_config": {"thinking_budget": 0, "include_thoughts": False}
+        }
+    }
     _llm_max_async = 8
 elif config.LLM_PROVIDER == "mlx":
     from lightrag.llm.openai import openai_complete
@@ -129,6 +133,7 @@ async def get_rag(kb_slug: str) -> LightRAG:
         graph_storage="NetworkXStorage",
         doc_status_storage="PGDocStatusStorage",
         llm_model_max_async=_llm_max_async,
+        entity_extract_max_gleaning=0,
         default_llm_timeout=3600 if config.LLM_PROVIDER == "local" else 120,
         addon_params={"language": "Japanese"},
         # Use kb_slug as workspace to isolate PG table data per KB
