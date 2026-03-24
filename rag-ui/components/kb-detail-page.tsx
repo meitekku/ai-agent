@@ -31,6 +31,11 @@ import {
   RotateCcwIcon,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // Concurrency control
@@ -462,14 +467,19 @@ export const KBDetailPage = memo(function KBDetailPage({
       <div className="shrink-0 border-b border-border px-6 py-5">
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/documents")}
-              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground self-start mt-0.5"
-              aria-label="一覧に戻る"
-            >
-              <ArrowLeftIcon className="size-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => router.push("/documents")}
+                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground self-start mt-0.5"
+                  aria-label="一覧に戻る"
+                >
+                  <ArrowLeftIcon className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">一覧に戻る</TooltipContent>
+            </Tooltip>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {editingHeaderName ? (
@@ -515,14 +525,19 @@ export const KBDetailPage = memo(function KBDetailPage({
                     <h2 className="text-lg font-semibold tracking-tight truncate">
                       {kb?.name ?? slug}
                     </h2>
-                    <button
-                      type="button"
-                      onClick={() => setEditingHeaderName(true)}
-                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                      aria-label="名前を編集"
-                    >
-                      <PencilIcon className="size-3.5" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setEditingHeaderName(true)}
+                          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                          aria-label="名前を編集"
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>名前を編集</TooltipContent>
+                    </Tooltip>
                   </>
                 )}
               </div>
@@ -690,53 +705,77 @@ export const KBDetailPage = memo(function KBDetailPage({
                       </div>
                     </div>
                     {doc.file_id && (
-                      <a
-                        href={`/api/kb-files/${doc.file_id}?dl=1`}
-                        download
-                        className="flex size-7 shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                        aria-label={`${doc.name} をダウンロード`}
-                      >
-                        <DownloadIcon className="size-3.5" />
-                      </a>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a
+                            href={`/api/kb-files/${doc.file_id}?dl=1`}
+                            download
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                            aria-label={`${doc.name} をダウンロード`}
+                          >
+                            <DownloadIcon className="size-3.5" />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent>ダウンロード</TooltipContent>
+                      </Tooltip>
                     )}
                     {doc.status === "failed" && doc.file_id && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="shrink-0 text-muted-foreground hover:text-primary"
-                        onClick={() => {
-                          setError(null);
-                          retryMutation.mutate(doc);
-                        }}
-                        disabled={retryingId === doc.id}
-                        aria-label={`${doc.name} をリトライ`}
-                      >
-                        {retryingId === doc.id ? (
-                          <Loader2Icon className="size-3.5 animate-spin" />
-                        ) : (
-                          <RotateCcwIcon className="size-3.5" />
-                        )}
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="shrink-0 text-muted-foreground hover:text-primary"
+                            onClick={() => {
+                              setError(null);
+                              retryMutation.mutate(doc);
+                            }}
+                            disabled={retryingId === doc.id}
+                            aria-label={`${doc.name} をリトライ`}
+                          >
+                            {retryingId === doc.id ? (
+                              <Loader2Icon className="size-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcwIcon className="size-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>リトライ</TooltipContent>
+                      </Tooltip>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(doc)}
-                      disabled={
-                        deletingId === doc.id ||
-                        (doc.status !== "processed" &&
-                          doc.status !== "failed" &&
-                          doc.status !== undefined)
-                      }
-                      aria-label={`${doc.name} を削除`}
-                    >
-                      {deletingId === doc.id ? (
-                        <Loader2Icon className="size-3.5 animate-spin" />
-                      ) : (
-                        <TrashIcon className="size-3.5" />
-                      )}
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className={`shrink-0 transition-opacity text-muted-foreground hover:text-destructive ${
+                            doc.status && IN_PROGRESS_STATUSES.includes(doc.status)
+                              ? ""
+                              : "opacity-0 group-hover:opacity-100"
+                          }`}
+                          onClick={() => setDeleteTarget(doc)}
+                          disabled={deletingId === doc.id}
+                          aria-label={
+                            doc.status && IN_PROGRESS_STATUSES.includes(doc.status)
+                              ? `${doc.name} をキャンセル`
+                              : `${doc.name} を削除`
+                          }
+                        >
+                          {deletingId === doc.id ? (
+                            <Loader2Icon className="size-3.5 animate-spin" />
+                          ) : doc.status && IN_PROGRESS_STATUSES.includes(doc.status) ? (
+                            <XIcon className="size-3.5" />
+                          ) : (
+                            <TrashIcon className="size-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {doc.status && IN_PROGRESS_STATUSES.includes(doc.status)
+                          ? "キャンセル"
+                          : "削除"}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 ))}
               </div>
@@ -751,21 +790,32 @@ export const KBDetailPage = memo(function KBDetailPage({
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>ドキュメントを削除</AlertDialogTitle>
-            <AlertDialogDescription>
-              「{deleteTarget?.name}」を削除しますか？この操作は取り消せません。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteTarget && confirmDelete(deleteTarget)}
-            >
-              削除
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {(() => {
+            const isCancelling = deleteTarget?.status != null && IN_PROGRESS_STATUSES.includes(deleteTarget.status);
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {isCancelling ? "処理をキャンセル" : "ドキュメントを削除"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    「{deleteTarget?.name}」{isCancelling
+                      ? "の処理をキャンセルしますか？"
+                      : "を削除しますか？この操作は取り消せません。"}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>戻る</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => deleteTarget && confirmDelete(deleteTarget)}
+                  >
+                    {isCancelling ? "キャンセル" : "削除"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
         </AlertDialogContent>
       </AlertDialog>
 
