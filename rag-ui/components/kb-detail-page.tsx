@@ -70,6 +70,8 @@ interface DocumentInfo {
   status?: string;
   error_msg?: string | null;
   file_id?: string | null;
+  total_chunks?: number;
+  processed_chunks?: number;
 }
 
 interface KBInfo {
@@ -125,9 +127,13 @@ async function fetchKB(slug: string): Promise<KBInfo> {
 function StatusBadge({
   status,
   errorMsg,
+  totalChunks,
+  processedChunks,
 }: {
   status?: string;
   errorMsg?: string | null;
+  totalChunks?: number;
+  processedChunks?: number;
 }) {
   if (!status || status === "processed") return null;
 
@@ -156,6 +162,10 @@ function StatusBadge({
   if (!c) return null;
 
   const isSpinning = IN_PROGRESS_STATUSES.includes(status);
+  const chunkLabel =
+    status === "extracting" && totalChunks && totalChunks > 0
+      ? ` ${processedChunks ?? 0}/${totalChunks}`
+      : "";
 
   return (
     <span
@@ -164,6 +174,7 @@ function StatusBadge({
     >
       {isSpinning && <Loader2Icon className="size-3 animate-spin" />}
       {c.label}
+      {chunkLabel}
     </span>
   );
 }
@@ -724,6 +735,8 @@ export const KBDetailPage = memo(function KBDetailPage({
                         <StatusBadge
                           status={doc.status}
                           errorMsg={doc.error_msg}
+                          totalChunks={doc.total_chunks}
+                          processedChunks={doc.processed_chunks}
                         />
                       </div>
                     </div>

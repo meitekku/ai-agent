@@ -17,16 +17,22 @@ async def list_documents(kb: str = Query(..., description="KB slug")):
         raise HTTPException(404, f"KB '{kb}' not found")
 
     jobs = await db.fetch_all_jobs(kb)
-    documents = [
-        {
+    documents = []
+    for j in jobs:
+        doc = {
             "id": j["doc_id"],
             "name": j["name"],
             "page_count": j["page_count"],
             "status": j["status"],
             "error_msg": j.get("error_msg"),
         }
-        for j in jobs
-    ]
+        # Attach chunk progress for extracting documents
+        if j["status"] == "extracting" and j.get("track_id"):
+            progress = await db.get_chunk_progress(j["track_id"], kb)
+            if progress:
+                doc["total_chunks"] = progress["total_chunks"]
+                doc["processed_chunks"] = progress["processed_chunks"]
+        documents.append(doc)
     return {"documents": documents}
 
 

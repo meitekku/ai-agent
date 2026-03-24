@@ -195,3 +195,37 @@ async def get_stale_jobs() -> list[dict]:
         "WHERE status NOT IN ('processed', 'failed')"
     )
     return [dict(r) for r in rows]
+
+
+async def get_chunk_progress(track_id: str, kb_slug: str) -> dict | None:
+    """Get chunk extraction progress by querying LightRAG internal tables.
+
+    Returns { total_chunks, processed_chunks } or None if not available.
+    lightrag_llm_cache (cache_type='extract') is written per-chunk immediately,
+    making it a reliable real-time progress proxy.
+    """
+    # Map track_id → lightrag internal doc ID (doc-<hex> format)
+    doc_id = await _pool.fetchval(
+        "SELECT id FROM lightrag_doc_status WHERE track_id = $1 AND workspace = $2",
+        track_id, kb_slug,
+    )
+    if not doc_id:
+        return None
+
+    # Total chunks (created during enqueue, before extraction)
+    total = await _pool.fetchval(
+        "SELECT COUNT(*) FROM lightrag_doc_chunks WHERE full_doc_id = $1 AND workspace = $2",
+        doc_id, kb_slug,
+    )
+    if not total:
+        return None
+
+    # Extracted chunks (llm_cache written per-chunk in real time)
+    processed = await _pool.fetchval(
+        "SELECT COUNT(DISTINCT chunk_id) FROM lightrag_llm_cache "
+        "WHERE chunk_id IN (SELECT id FROM lightrag_doc_chunks WHERE full_doc_id = $1 AND workspace = $2) "
+        "AND workspace = $2 AND cache_type = 'extract'",
+        doc_id, kb_slug,
+    )
+
+    return {"total_chunks": total, "processed_chunks": processed or 0}
