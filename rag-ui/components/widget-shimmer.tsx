@@ -10,7 +10,7 @@ export function WidgetShimmer() {
       className="absolute inset-0 pointer-events-none rounded-lg"
       style={{
         background:
-          "linear-gradient(90deg, transparent 0%, oklch(0.72 0.17 165 / 6%) 50%, transparent 100%)",
+          "linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.08) 50%, transparent 100%)",
         backgroundSize: "200% 100%",
         animation: "shimmer-wave 1.5s ease-in-out infinite",
       }}

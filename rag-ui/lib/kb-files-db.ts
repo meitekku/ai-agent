@@ -119,6 +119,18 @@ export async function deleteKbFile(id: string): Promise<string | null> {
   return res.rows[0].stored_path;
 }
 
+export async function updateKbFileDocId(
+  oldDocId: string,
+  newDocId: string,
+): Promise<boolean> {
+  await ensureKbFilesTables();
+  const res = await getPool().query(
+    `UPDATE kb_files SET doc_id = $1 WHERE doc_id = $2`,
+    [newDocId, oldDocId],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
 export async function deleteKbFilesByKb(kbSlug: string): Promise<string[]> {
   await ensureKbFilesTables();
   const res = await getPool().query(

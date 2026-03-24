@@ -25,9 +25,6 @@ interface WidgetRendererProps {
 }
 
 const MAX_IFRAME_HEIGHT = 2000;
-const CDN_PATTERN =
-  /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.sh/;
-
 /** Module-level height cache: survives component remounts. */
 const _heightCache = new Map<string, number>();
 function cacheKey(code: string): string {
@@ -55,15 +52,10 @@ function WidgetRendererInner({
   const [iframeHeight, setIframeHeight] = useState(
     () => _heightCache.get(cacheKey(widgetCode)) || 0,
   );
-  const [showCode, setShowCode] = useState(false);
-  const [finalized, setFinalized] = useState(false);
   const finalizedRef = useRef(false);
   const hasFirstHeight = useRef(
     (_heightCache.get(cacheKey(widgetCode)) || 0) > 0,
   );
-  const heightLockedRef = useRef(false);
-
-  const hasCDN = useMemo(() => CDN_PATTERN.test(widgetCode), [widgetCode]);
 
   // Build receiver srcdoc once
   const srcdoc = useMemo(() => {
@@ -90,15 +82,6 @@ function WidgetRendererInner({
           if (typeof e.data.height !== "number" || e.data.height <= 0) break;
           const newH = Math.min(e.data.height + 2, MAX_IFRAME_HEIGHT);
           const key = cacheKey(widgetCode);
-
-          if (heightLockedRef.current) {
-            setIframeHeight((prev) => {
-              const h = Math.max(prev, newH);
-              _heightCache.set(key, h);
-              return h;
-            });
-            break;
-          }
 
           _heightCache.set(key, newH);
           if (!hasFirstHeight.current) {
@@ -164,17 +147,10 @@ function WidgetRendererInner({
     cancelAnimationFrame(rafRef.current);
     finalizedRef.current = true;
     lastSentRef.current = sanitized;
-    heightLockedRef.current = true;
     iframe.contentWindow.postMessage(
       { type: "widget:finalize", html: sanitized },
       "*",
     );
-    setTimeout(() => {
-      heightLockedRef.current = false;
-      setFinalized(true);
-      // Re-measure after lock releases in case content shrank during finalize
-      iframe.contentWindow?.postMessage({ type: "widget:measure" }, "*");
-    }, 400);
   }, [isStreaming, iframeReady, widgetCode]);
 
   // ── Theme sync ─────────────────────────────────────────────────────────
@@ -195,8 +171,6 @@ function WidgetRendererInner({
     return () => observer.disconnect();
   }, [iframeReady]);
 
-  const showCdnOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
-
   return (
     <div
       className="group/widget relative my-2 w-full"
@@ -208,38 +182,22 @@ function WidgetRendererInner({
         </div>
       )}
 
-      {!showCode && (
-        <iframe
-          ref={iframeRef}
-          sandbox="allow-scripts"
-          srcDoc={srcdoc}
-          title={title || "Widget"}
-          onLoad={() => setIframeReady(true)}
-          style={{
-            width: "100%",
-            height: iframeHeight || 200,
-            border: "none",
-            overflow: "hidden",
-            colorScheme: "auto",
-            borderRadius: "var(--radius)",
-          }}
-        />
-      )}
+      <iframe
+        ref={iframeRef}
+        sandbox="allow-scripts"
+        srcDoc={srcdoc}
+        title={title || "Widget"}
+        onLoad={() => setIframeReady(true)}
+        style={{
+          width: "100%",
+          height: iframeHeight || 200,
+          border: "none",
+          overflow: "hidden",
+          borderRadius: "var(--radius)",
+        }}
+      />
 
-      {(showCdnOverlay || showOverlay) && <WidgetShimmer />}
-
-      {showCode && (
-        <pre className="max-h-80 overflow-x-auto overflow-y-auto rounded-lg border border-border/30 bg-muted/30 p-3 text-xs">
-          <code>{widgetCode}</code>
-        </pre>
-      )}
-
-      <button
-        onClick={() => setShowCode(!showCode)}
-        className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/50 opacity-0 transition-opacity hover:bg-muted/50 hover:text-muted-foreground group-hover/widget:opacity-100"
-      >
-        {showCode ? "Hide Code" : "Show Code"}
-      </button>
+      {showOverlay && <WidgetShimmer />}
     </div>
   );
 }

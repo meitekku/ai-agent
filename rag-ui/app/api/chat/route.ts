@@ -53,6 +53,53 @@ const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 const hasCrm = !!CRM_SERVICE_URL;
 
+// ---------------------------------------------------------------------------
+// Skills — progressive disclosure (official AI SDK pattern)
+// ---------------------------------------------------------------------------
+
+interface SkillSummary {
+  name: string;
+  description: string;
+}
+
+function buildSkillsPrompt(skills: SkillSummary[]): string {
+  if (skills.length === 0) return "";
+  const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  return `\n\n## スキル（重要・積極活用）\n\n以下のスキルが有効です。ユーザーの質問やタスクに関連するスキルがあれば、**聞かずに自動で** \`loadSkill\` を呼んで読み込み、その指示に従って回答してください。「スキルを使いますか？」と確認しない。関連性が少しでもあれば読み込む — 不要な読み込みのコストは低く、活用漏れのコストは高い。\n\n${list}`;
+}
+
+const skillCallOptionsSchema = z.object({
+  skills: z.array(
+    z.object({ name: z.string(), description: z.string() }),
+  ),
+});
+
+const loadSkillTool = tool({
+  description:
+    "スキルの完全な指示を読み込む。ユーザーのタスクに関連するスキルがあれば確認せず自動で呼び出す。",
+  inputSchema: z.object({
+    name: z.string().describe("読み込むスキル名"),
+  }),
+  execute: async ({ name }, { experimental_context }) => {
+    const ctx = experimental_context as
+      | { skills: SkillSummary[] }
+      | undefined;
+    const skills = ctx?.skills ?? [];
+    // Validate against known skills — reject hallucinated names without DB hit
+    if (
+      skills.length > 0 &&
+      !skills.find((s) => s.name.toLowerCase() === name.toLowerCase())
+    ) {
+      console.log(`[chat] 📖 loadSkill: "${name}" — not in available skills`);
+      return { error: `スキル「${name}」が見つかりません` };
+    }
+    console.log(`[chat] 📖 loadSkill: ${name}`);
+    const skill = await getSkillByName(name);
+    if (!skill) return { error: `スキル「${name}」が見つかりません` };
+    return { name: skill.name, content: skill.content };
+  },
+});
+
 /**
  * Post-process model messages to resolve file data to binary Uint8Array.
  * Handles both server file URLs (/api/files/{id}) and legacy data: URLs.
@@ -223,7 +270,6 @@ function buildSystemPrompt(
 2. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
 
 **重要ルール**:
-- fetchAndAnalyze を呼ぶ**前に**、関連するスキルがあれば loadSkill で読み込む（業界分析、提案書ガイドライン、ソリューション知識等）。スキルの知識が分析の質を高める
 - fetchAndAnalyze 完了後も、追加で searchKnowledgeBase / webSearch を呼んで情報を補強してよい。多くの情報源を活用するほど分析の質が上がる
 - fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は呼ばない**こと（ProposalPanel と機能が重複するため）。ただしユーザーが明示的に「スライドを作って」と依頼した場合は generateSlides を使ってよい
 - ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する
@@ -761,20 +807,19 @@ export async function POST(req: Request) {
     execute: async () => ({ suggested: true }),
   });
 
-  // loadSkill: progressive disclosure — load full skill content on demand
-  tools.loadSkill = tool({
-    description:
-      "スキルの完全な指示を読み込む。ユーザーのタスクに関連するスキルがあれば確認せず自動で呼び出す。",
-    inputSchema: z.object({
-      name: z.string().describe("読み込むスキル名"),
-    }),
-    execute: async ({ name }) => {
-      console.log(`[chat] 📖 loadSkill: ${name}`);
-      const skill = await getSkillByName(name);
-      if (!skill) return { error: `スキル「${name}」が見つかりません` };
-      return { name: skill.name, content: skill.content };
-    },
-  });
+  // loadSkill: registered only when skills exist (prevents LLM hallucination)
+  let skillSummaries: SkillSummary[] = [];
+  try {
+    skillSummaries = await getEnabledSkillSummaries();
+    if (skillSummaries.length > 0) {
+      tools.loadSkill = loadSkillTool;
+      console.log(
+        `[chat] 📖 ${skillSummaries.length} skills available: ${skillSummaries.map((s) => s.name).join(", ")}`,
+      );
+    }
+  } catch (e) {
+    console.error("[chat] skills fetch failed:", e);
+  }
 
   // CRM tools (only when CRM_SERVICE_URL is configured)
   if (hasCrm) {
@@ -1464,19 +1509,6 @@ ${op.instruction}
       systemPrompt += `\n\n## 現在の提案書スライド (deckId: ${activeDeckId})\n${slidesSummary}\nスライド編集は reviseSlides ツールを使用してください。テキスト変更は type:"update" + oldStr/newStr、大幅な変更は type:"rewrite" + instruction。`;
     }
 
-    // Inject skill summaries into system prompt (progressive disclosure)
-    try {
-      const skillSummaries = await getEnabledSkillSummaries();
-      if (skillSummaries.length > 0) {
-        const list = skillSummaries
-          .map((s) => `- ${s.name}: ${s.description}`)
-          .join("\n");
-        systemPrompt += `\n\n## スキル（重要・積極活用）\n\n以下のスキルが有効です。ユーザーの質問やタスクに関連するスキルがあれば、**聞かずに自動で** \`loadSkill\` を呼んで読み込み、その指示に従って回答してください。「スキルを使いますか？」と確認しない。関連性が少しでもあれば読み込む — 不要な読み込みのコストは低く、活用漏れのコストは高い。\n\n${list}`;
-      }
-    } catch (e) {
-      console.error("[chat] skills injection failed:", e);
-    }
-
     const chatModel = getChatModel(modelOverride);
     if (modelOverride)
       console.log(`[chat] 🤖 model override: ${modelOverride}`);
@@ -1487,6 +1519,13 @@ ${op.instruction}
       tools,
       stopWhen: stepCountIs(10),
       maxOutputTokens: 8192,
+      callOptionsSchema: skillCallOptionsSchema,
+      prepareCall: ({ options, ...settings }) => ({
+        ...settings,
+        instructions:
+          settings.instructions + buildSkillsPrompt(options.skills),
+        experimental_context: { skills: options.skills },
+      }),
       ...(thinking && useGemini
         ? {
             providerOptions: {
@@ -1502,6 +1541,7 @@ ${op.instruction}
     });
 
     const result = await agent.stream({
+      options: { skills: skillSummaries },
       messages: modelMessages,
       experimental_transform: smoothStream({
         delayInMs: 20,

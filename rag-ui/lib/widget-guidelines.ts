@@ -27,7 +27,7 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 10. SVG: \`<svg width="100%" viewBox="0 0 680 H">\` 形式
 
 ### スタイリング（Tailwind CSS 優先）
-iframe には **Tailwind CSS v3**（Play CDN）がプリロード済み。\`darkMode:'class'\` 設定済み。
+iframe には **Tailwind CSS v4**（@tailwindcss/browser）がプリロード済み。\`dark:\` バリアントはクラスベース（\`.dark\` クラス）設定済み。
 - **レイアウト・装飾は Tailwind クラスを使う**。\`<style>\` ブロックや inline style は原則不要
 - ダークモード: \`dark:\` バリアントで対応（例: \`class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"\`）
 - セマンティック CSS 変数も使用可: \`var(--color-text-primary)\`, \`var(--color-background-secondary)\`, \`var(--color-border-tertiary)\`

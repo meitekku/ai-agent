@@ -28,6 +28,7 @@ import {
   XIcon,
   NetworkIcon,
   DownloadIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -175,6 +176,7 @@ export const KBDetailPage = memo(function KBDetailPage({
 
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
   const [showDeleteKb, setShowDeleteKb] = useState(false);
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
@@ -396,6 +398,27 @@ export const KBDetailPage = memo(function KBDetailPage({
     [deleteMutation],
   );
 
+  // Retry failed document
+  const retryMutation = useMutation({
+    mutationFn: async (doc: DocumentInfo) => {
+      setRetryingId(doc.id);
+      const res = await fetch(
+        `/api/documents/${doc.id}/retry?kb=${encodeURIComponent(slug)}`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "リトライに失敗しました");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents", slug] });
+    },
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : "リトライに失敗しました"),
+    onSettled: () => setRetryingId(null),
+  });
+
   if (kbError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
@@ -616,7 +639,7 @@ export const KBDetailPage = memo(function KBDetailPage({
       )}
 
       {/* Document list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="mx-auto max-w-3xl px-6 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-16">
@@ -675,6 +698,25 @@ export const KBDetailPage = memo(function KBDetailPage({
                       >
                         <DownloadIcon className="size-3.5" />
                       </a>
+                    )}
+                    {doc.status === "failed" && doc.file_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0 text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          setError(null);
+                          retryMutation.mutate(doc);
+                        }}
+                        disabled={retryingId === doc.id}
+                        aria-label={`${doc.name} をリトライ`}
+                      >
+                        {retryingId === doc.id ? (
+                          <Loader2Icon className="size-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcwIcon className="size-3.5" />
+                        )}
+                      </Button>
                     )}
                     <Button
                       variant="ghost"

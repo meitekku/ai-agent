@@ -33,7 +33,6 @@ export const CDN_WHITELIST = [
   "cdn.jsdelivr.net",
   "unpkg.com",
   "esm.sh",
-  "cdn.tailwindcss.com",
 ];
 
 // ── HTML sanitization ────────────────────────────────────────────────────
@@ -222,7 +221,7 @@ parent.postMessage({type:'widget:ready'},'*');
 })();`;
 
   return `<!DOCTYPE html>
-<html class="${isDark ? "dark" : ""}">
+<html class="${isDark ? "dark" : ""}" style="background:transparent!important">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -232,10 +231,12 @@ ${styleBlock}
 @keyframes sd-show{to{opacity:1}}
 [data-wa]{opacity:0;animation:sd-show 0s step-end var(--d,0ms) forwards}
 </style>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config={darkMode:'class',corePlugins:{preflight:false}}</script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+</style>
 </head>
-<body style="margin:0;padding:0;">
+<body style="margin:0;padding:0;background:transparent!important;overflow:hidden">
 <div id="__root"></div>
 <script>${MORPHDOM_MIN}</script>
 <script>${receiverScript}</script>

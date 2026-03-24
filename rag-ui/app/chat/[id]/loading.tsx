@@ -1,8 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChatInputSkeleton } from "@/components/chat-input-skeleton";
 
 export default function ChatLoading() {
   return (
-    <div className="flex flex-1 flex-col min-h-0 relative">
+    <div className="flex flex-1 flex-col min-h-0">
       {/* Messages area */}
       <div className="flex-1 overflow-hidden px-4">
         <div className="mx-auto max-w-3xl space-y-6 py-8">
@@ -34,13 +35,7 @@ export default function ChatLoading() {
         </div>
       </div>
 
-      {/* Input area placeholder */}
-      <div className="absolute bottom-0 inset-x-0 px-4 pb-4 pt-6 bg-gradient-to-t from-background via-background to-transparent">
-        <div className="mx-auto max-w-3xl">
-          <Skeleton className="h-[52px] w-full rounded-xl" />
-          <Skeleton className="mx-auto mt-1.5 h-3 w-64" />
-        </div>
-      </div>
+      <ChatInputSkeleton />
     </div>
   );
 }

@@ -32,9 +32,7 @@ async def _pipeline_processor():
     """
     from lightrag.base import DocStatus
 
-    PIPELINE_TIMEOUT = 1800  # 30 min max per batch (large CSV can have 1000+ entities)
     POLL_INTERVAL = 5        # seconds between status checks
-    POLL_MAX_WAIT = 600      # 10 min max polling after timeout
 
     while True:
         doc_id, track_id, kb_slug = await _process_queue.get()
@@ -42,28 +40,19 @@ async def _pipeline_processor():
             rag = await get_rag(kb_slug)
             print(f"[ingest] Pipeline processing: {doc_id} ({track_id}) kb={kb_slug}")
 
-            try:
-                await asyncio.wait_for(
-                    rag.apipeline_process_enqueue_documents(),
-                    timeout=PIPELINE_TIMEOUT,
-                )
-            except asyncio.TimeoutError:
-                print(f"[ingest] Pipeline call timed out after {PIPELINE_TIMEOUT}s, polling doc status...")
+            # No timeout — large PDFs (500+ pages) can take hours
+            await rag.apipeline_process_enqueue_documents()
 
-            # Poll doc_status until terminal state (handles both normal return and timeout)
-            waited = 0
-            while waited < POLL_MAX_WAIT:
+            # Poll doc_status until terminal state
+            while True:
                 docs = await rag.aget_docs_by_track_id(track_id)
                 if not docs:
                     break
                 statuses = {d.status for d in docs.values()}
-                # All terminal → done
                 if statuses <= {DocStatus.PROCESSED, DocStatus.FAILED}:
                     break
                 await asyncio.sleep(POLL_INTERVAL)
-                waited += POLL_INTERVAL
 
-            # Check final results
             docs = await rag.aget_docs_by_track_id(track_id)
             if not docs:
                 await db.update_job_status(doc_id, "failed", "ドキュメントが見つかりません")
@@ -75,14 +64,12 @@ async def _pipeline_processor():
                     error_msgs = [d.error_msg or "unknown error" for d in failed]
                     await db.update_job_status(doc_id, "failed", "; ".join(error_msgs))
                 elif len(processed) == len(docs):
-                    # All docs are PROCESSED — genuinely done
                     await db.update_job_status(doc_id, "processed")
                 else:
-                    # Still processing after timeout — mark as failed
                     remaining = [s.value for s in statuses if s not in (DocStatus.PROCESSED, DocStatus.FAILED)]
                     await db.update_job_status(
                         doc_id, "failed",
-                        f"処理タイムアウト（残りステータス: {', '.join(remaining)}）。再アップロードしてください。"
+                        f"処理未完了（残りステータス: {', '.join(remaining)}）"
                     )
             print(f"[ingest] Pipeline done: {doc_id} ({track_id})")
         except Exception as e:

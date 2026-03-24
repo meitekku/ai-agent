@@ -2,9 +2,9 @@
  * CSS variable bridge — maps widget variable names to rag-ui's OKLCH
  * design tokens so model-generated widgets inherit the current theme.
  *
- * Tailwind CSS v3 (Play CDN) is loaded in the iframe srcdoc.
+ * Tailwind CSS v4 (@tailwindcss/browser) is loaded in the iframe srcdoc.
  * This file provides: CSS variable bridge, form element base styles,
- * and fallback utility classes (for when Tailwind CDN hasn't loaded yet).
+ * and fallback utility classes (for when Tailwind hasn't loaded yet).
  */
 
 // ── CSS variable mapping (widget names → rag-ui token names) ─────────────
