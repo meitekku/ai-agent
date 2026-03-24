@@ -32,6 +32,7 @@ async def list_documents(kb: str = Query(..., description="KB slug")):
             if progress:
                 doc["total_chunks"] = progress["total_chunks"]
                 doc["processed_chunks"] = progress["processed_chunks"]
+                doc["phase"] = progress["phase"]
         documents.append(doc)
     return {"documents": documents}
 

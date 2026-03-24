@@ -204,13 +204,16 @@ async def get_chunk_progress(track_id: str, kb_slug: str) -> dict | None:
     lightrag_llm_cache (cache_type='extract') is written per-chunk immediately,
     making it a reliable real-time progress proxy.
     """
-    # Map track_id → lightrag internal doc ID (doc-<hex> format)
-    doc_id = await _pool.fetchval(
-        "SELECT id FROM lightrag_doc_status WHERE track_id = $1 AND workspace = $2",
+    # Map track_id → lightrag internal doc ID + status (doc-<hex> format)
+    row = await _pool.fetchrow(
+        "SELECT id, status FROM lightrag_doc_status WHERE track_id = $1 AND workspace = $2",
         track_id, kb_slug,
     )
-    if not doc_id:
+    if not row:
         return None
+
+    doc_id = row["id"]
+    internal_status = row["status"]  # pending / extracting / processing / processed / failed
 
     # Total chunks (created during enqueue, before extraction)
     total = await _pool.fetchval(
@@ -218,7 +221,7 @@ async def get_chunk_progress(track_id: str, kb_slug: str) -> dict | None:
         doc_id, kb_slug,
     )
     if not total:
-        return None
+        return {"total_chunks": 0, "processed_chunks": 0, "phase": internal_status}
 
     # Extracted chunks (llm_cache written per-chunk in real time)
     processed = await _pool.fetchval(
@@ -228,4 +231,4 @@ async def get_chunk_progress(track_id: str, kb_slug: str) -> dict | None:
         doc_id, kb_slug,
     )
 
-    return {"total_chunks": total, "processed_chunks": processed or 0}
+    return {"total_chunks": total, "processed_chunks": processed or 0, "phase": internal_status}

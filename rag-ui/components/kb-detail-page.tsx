@@ -72,6 +72,7 @@ interface DocumentInfo {
   file_id?: string | null;
   total_chunks?: number;
   processed_chunks?: number;
+  phase?: string;
 }
 
 interface KBInfo {
@@ -129,11 +130,13 @@ function StatusBadge({
   errorMsg,
   totalChunks,
   processedChunks,
+  phase,
 }: {
   status?: string;
   errorMsg?: string | null;
   totalChunks?: number;
   processedChunks?: number;
+  phase?: string;
 }) {
   if (!status || status === "processed") return null;
 
@@ -162,10 +165,32 @@ function StatusBadge({
   if (!c) return null;
 
   const isSpinning = IN_PROGRESS_STATUSES.includes(status);
-  const chunkLabel =
-    status === "extracting" && totalChunks && totalChunks > 0
-      ? ` ${processedChunks ?? 0}/${totalChunks}`
-      : "";
+
+  // Derive label for extracting status using LightRAG internal phase + chunk progress
+  let extractingLabel = c.label;
+  if (status === "extracting" && phase) {
+    if (phase === "pending") {
+      extractingLabel = "キュー待ち";
+    } else if (phase === "processing") {
+      extractingLabel = "合併・保存中";
+    } else if (phase === "processed") {
+      extractingLabel = "完了処理中";
+    } else if (
+      (phase === "extracting" || phase === "pending") &&
+      totalChunks &&
+      totalChunks > 0
+    ) {
+      extractingLabel = `解析中 ${processedChunks ?? 0}/${totalChunks}`;
+    }
+  } else if (
+    status === "extracting" &&
+    totalChunks &&
+    totalChunks > 0
+  ) {
+    extractingLabel = `解析中 ${processedChunks ?? 0}/${totalChunks}`;
+  }
+
+  const label = status === "extracting" ? extractingLabel : c.label;
 
   return (
     <span
@@ -173,8 +198,7 @@ function StatusBadge({
       title={status === "failed" ? errorMsg || undefined : undefined}
     >
       {isSpinning && <Loader2Icon className="size-3 animate-spin" />}
-      {c.label}
-      {chunkLabel}
+      {label}
     </span>
   );
 }
@@ -194,6 +218,7 @@ export const KBDetailPage = memo(function KBDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryTarget, setRetryTarget] = useState<DocumentInfo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
   const [showDeleteKb, setShowDeleteKb] = useState(false);
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
@@ -737,6 +762,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                           errorMsg={doc.error_msg}
                           totalChunks={doc.total_chunks}
                           processedChunks={doc.processed_chunks}
+                          phase={doc.phase}
                         />
                       </div>
                     </div>
@@ -746,7 +772,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                           <a
                             href={`/api/kb-files/${doc.file_id}?dl=1`}
                             download
-                            className="flex size-7 shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                             aria-label={`${doc.name} をダウンロード`}
                           >
                             <DownloadIcon className="size-3.5" />
@@ -786,10 +812,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                             variant="ghost"
                             size="icon-sm"
                             className="shrink-0 text-muted-foreground hover:text-primary"
-                            onClick={() => {
-                              setError(null);
-                              retryMutation.mutate(doc);
-                            }}
+                            onClick={() => setRetryTarget(doc)}
                             disabled={retryingId === doc.id}
                             aria-label={`${doc.name} を最初からリトライ`}
                           >
@@ -808,11 +831,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          className={`shrink-0 transition-opacity text-muted-foreground hover:text-destructive ${
-                            doc.status && IN_PROGRESS_STATUSES.includes(doc.status)
-                              ? ""
-                              : "opacity-0 group-hover:opacity-100"
-                          }`}
+                          className="shrink-0 text-destructive/60 hover:text-destructive hover:bg-destructive/10"
                           onClick={() => setDeleteTarget(doc)}
                           disabled={deletingId === doc.id}
                           aria-label={
@@ -876,6 +895,36 @@ export const KBDetailPage = memo(function KBDetailPage({
               </>
             );
           })()}
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Retry confirmation */}
+      <AlertDialog
+        open={!!retryTarget}
+        onOpenChange={(o) => !o && setRetryTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>最初からリトライ</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{retryTarget?.name}」を最初から再処理しますか？OCR
+              から全てやり直します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>戻る</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (retryTarget) {
+                  setRetryTarget(null);
+                  setError(null);
+                  retryMutation.mutate(retryTarget);
+                }
+              }}
+            >
+              リトライ
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 

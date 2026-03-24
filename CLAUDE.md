@@ -55,7 +55,7 @@ rag-deploy/
 │   └── app/
 │       ├── config.py               # 環境変数設定
 │       ├── main.py                 # FastAPI エントリ + lifespan
-│       ├── rag.py                  # LightRAG LRU マルチインスタンス + Gemini embedding 速率制限
+│       ├── rag.py                  # LightRAG LRU マルチインスタンス + Gemini embedding 速率制限 + thinking=0 + safety OFF
 │       ├── extract.py              # マルチフォーマットテキスト抽出（CSV 構造化対応）
 │       ├── ocr.py                  # OCR（Gemini Vision / GLM-OCR）
 │       ├── db.py                   # asyncpg + knowledge_bases + ingest_jobs テーブル
@@ -63,7 +63,7 @@ rag-deploy/
 │           ├── kbs.py              # CRUD /kbs（ナレッジベース管理）
 │           ├── ingest.py           # POST /ingest?kb=（asyncio.Queue 排隊処理）
 │           ├── query.py            # POST /query?kb= + /query/search-only?kb=
-│           ├── documents.py        # GET/DELETE /documents?kb=
+│           ├── documents.py        # GET/DELETE /documents?kb= + POST /documents/{id}/resume
 │           └── doc_status.py       # GET /ingest/status/{track_id}?kb=
 └── rag-ui/                         # Next.js フロントエンド
     ├── Dockerfile                  # oven/bun:1 + standalone
@@ -93,7 +93,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | ファイル | ソース | 同期 | 差分内容 |
 |---------|--------|------|---------|
 | `lightrag-service/app/config.py` | `~/Desktop/ai/rag-system/lightrag-service/` | **意図的に不一致** | PG デフォルト値: deploy=`raguser/ragpass`、local=個人認証情報 |
-| `lightrag-service/app/rag.py` | 同上 | **rag-deploy のみ** | Gemini embedding 速率制限（Semaphore(4) + 0.25s interval）+ `workspace=kb_slug`（v1.4.9.11 で namespace→workspace に変更）。ソース側は Ollama embedding 使用のため不要 |
+| `lightrag-service/app/rag.py` | 同上 | **rag-deploy のみ** | Gemini embedding 速率制限（Semaphore(4) + 0.25s interval）+ `workspace=kb_slug`（v1.4.9.11 で namespace→workspace に変更）+ thinking_budget=0（実体抽出高速化）+ safety_settings OFF（法規文書の誤ブロック防止）+ entity_extract_max_gleaning=1。ソース側は Ollama embedding 使用のため不要 |
 | `lightrag-service/app/extract.py` | 同上 | **rag-deploy のみ** | CSV 構造化抽出（エンコード自動検出 + グループ化レコード分割）。ソース側は小規模 CSV のみのため不要 |
 | `lightrag-service/app/ocr.py` | 同上 | **rag-deploy のみ** | Gemini OCR async 化（`await client.aio.models.generate_content`）。ソース側は GLM-OCR 使用のため不要 |
 | `lightrag-service/app/main.py` | 同上 | **rag-deploy のみ** | stale job recovery 改善（全非終端ステータス対応）。ソース側は PM2 で常駐のため不要 |
@@ -326,6 +326,8 @@ docker compose --profile prod build --no-cache
 | 問題 | 原因 | 対処 |
 |------|------|------|
 | `text-embedding-004 is not found` | Google が v1beta API から廃止 | `gemini-embedding-001` に変更 |
+| 実体抽出が極端に遅い（500 ページ ~2h） | Gemini 2.5 Flash の thinking モードが実体抽出のような構造化タスクでも内部推理を実行し 2-5 倍遅延 | `rag.py` に `thinking_config: {"thinking_budget": 0}` 追加。`entity_extract_max_gleaning=1`（デフォルト維持）。~4 倍高速化 |
+| `InvalidResponseError: Gemini response did not contain any text content` で文書が failed | Gemini 2.5 Flash が法規文書の「苦情処理措置」等の実体 summary 生成時に空応答を返す。thinking モード + 安全フィルター誤判定の複合要因 | `rag.py` に `safety_settings: [OFF x 4]` 追加 + thinking=0 で空応答確率を大幅低減。失敗文書は `POST /documents/{id}/resume` で OCR スキップ再処理可能 |
 | Embedding 429 RESOURCE_EXHAUSTED | LightRAG が `llm_model_max_async=8` で並列実体抽出 → 各実体/関係ごとに embedding 呼出 → 瞬間数百リクエスト爆発で Tier 1 でも超過 | `rag.py` の `_embed_gemini` に速率制限追加: `Semaphore(4)` + `0.25s` interval → 最大 ~240 RPM に抑制 |
 | 複数ファイル同時アップロードで誤った processed 状態 | LightRAG の `apipeline_process_enqueue_documents` 内部 busy フラグで後続呼出が即 return | `ingest.py` を asyncio.Queue + 単一 worker に改修 |
 | ブラウザでファイル選択後リクエストが発生しない | `FileList` は活参照、`input.value=""` で空になる。`Array.from()` 前に clear していた | `Array.from()` でコピー後に clear するよう修正 |
