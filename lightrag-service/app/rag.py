@@ -18,7 +18,13 @@ if config.LLM_PROVIDER == "gemini":
     _llm_name = config.GEMINI_MODEL
     _llm_kwargs = {
         "generation_config": {
-            "thinking_config": {"thinking_budget": 0, "include_thoughts": False}
+            "thinking_config": {"thinking_budget": 0, "include_thoughts": False},
+            "safety_settings": [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"},
+            ],
         }
     }
     _llm_max_async = 8

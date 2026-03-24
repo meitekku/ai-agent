@@ -29,6 +29,7 @@ import {
   NetworkIcon,
   DownloadIcon,
   RotateCcwIcon,
+  PlayIcon,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -424,6 +425,28 @@ export const KBDetailPage = memo(function KBDetailPage({
     onSettled: () => setRetryingId(null),
   });
 
+  // Resume failed document (skip OCR, re-trigger pipeline)
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  const resumeMutation = useMutation({
+    mutationFn: async (doc: DocumentInfo) => {
+      setResumingId(doc.id);
+      const res = await fetch(
+        `/api/documents/${doc.id}/resume?kb=${encodeURIComponent(slug)}`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "続行に失敗しました");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents", slug] });
+    },
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : "続行に失敗しました"),
+    onSettled: () => setResumingId(null),
+  });
+
   if (kbError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
@@ -719,6 +742,30 @@ export const KBDetailPage = memo(function KBDetailPage({
                         <TooltipContent>ダウンロード</TooltipContent>
                       </Tooltip>
                     )}
+                    {doc.status === "failed" && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="shrink-0 text-muted-foreground hover:text-primary"
+                            onClick={() => {
+                              setError(null);
+                              resumeMutation.mutate(doc);
+                            }}
+                            disabled={resumingId === doc.id}
+                            aria-label={`${doc.name} を続行`}
+                          >
+                            {resumingId === doc.id ? (
+                              <Loader2Icon className="size-3.5 animate-spin" />
+                            ) : (
+                              <PlayIcon className="size-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>続行</TooltipContent>
+                      </Tooltip>
+                    )}
                     {doc.status === "failed" && doc.file_id && (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -731,7 +778,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                               retryMutation.mutate(doc);
                             }}
                             disabled={retryingId === doc.id}
-                            aria-label={`${doc.name} をリトライ`}
+                            aria-label={`${doc.name} を最初からリトライ`}
                           >
                             {retryingId === doc.id ? (
                               <Loader2Icon className="size-3.5 animate-spin" />
@@ -740,7 +787,7 @@ export const KBDetailPage = memo(function KBDetailPage({
                             )}
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>リトライ</TooltipContent>
+                        <TooltipContent>最初からリトライ</TooltipContent>
                       </Tooltip>
                     )}
                     <Tooltip>

@@ -283,7 +283,8 @@ rag-ui/
 | GET/PUT              | /api/ui-config                   | UI設定（サイドバー状態等、JSONB preferences）                                   |
 | GET                  | /api/documents                   | 文档列表                                                                        |
 | POST                 | /api/documents/upload            | PDF 上传（→ LightRAG /ingest）                                                  |
-| DELETE               | /api/documents/[id]              | 文档削除（→ LightRAG 知識グラフ+ベクトル完全削除）                              |
+| DELETE               | /api/documents/[id]              | 文档削除/キャンセル（→ LightRAG 知識グラフ+ベクトル完全削除）                   |
+| POST                 | /api/documents/[id]/retry        | 失敗ドキュメントのリトライ（KB 保存ファイルから再入庫）                          |
 | GET/POST             | /api/skills                      | スキル一覧 / 新規作成                                                           |
 | PUT/DELETE           | /api/skills/[id]                 | スキル更新 / 削除                                                               |
 | POST                 | /api/skills/upload               | ZIP スキルアップロード（SKILL.md + references）                                 |

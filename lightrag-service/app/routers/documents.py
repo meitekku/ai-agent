@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .. import db
 from ..rag import get_rag, BASE_DATA_DIR
+from . import ingest
 
 router = APIRouter()
 
@@ -27,6 +28,24 @@ async def list_documents(kb: str = Query(..., description="KB slug")):
         for j in jobs
     ]
     return {"documents": documents}
+
+
+@router.post("/documents/{doc_id}/resume")
+async def resume_document(doc_id: str, kb: str = Query(..., description="KB slug")):
+    """Resume a failed document's extraction (skips OCR, re-triggers LightRAG pipeline)."""
+    job = await db.get_job(doc_id)
+    if not job:
+        raise HTTPException(404, "Document not found")
+    if job["status"] != "failed":
+        raise HTTPException(400, "Only failed documents can be resumed")
+    if not job.get("track_id"):
+        raise HTTPException(400, "track_id がありません。最初からリトライしてください。")
+
+    await db.update_job_status(doc_id, "extracting")
+    await ingest._process_background(doc_id, job["track_id"], job["kb_slug"])
+    print(f"[documents] Resumed: {doc_id} (track_id={job['track_id']}) kb={kb}")
+
+    return {"doc_id": doc_id, "status": "extracting"}
 
 
 @router.delete("/documents/{doc_id}")

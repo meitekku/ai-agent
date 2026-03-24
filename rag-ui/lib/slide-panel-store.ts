@@ -1,6 +1,15 @@
 import { create } from "zustand";
 import type { StyleOptions } from "@/components/style-options-panel";
 
+type SlideEntry = { index: number; title: string; html: string; type: string };
+
+interface SavedSlideState {
+  deckId: number | null;
+  cachedSlides: SlideEntry[] | null;
+  cachedDeckTitle: string | null;
+  conversationDeckId: number | null;
+}
+
 interface SlidePanelState {
   open: boolean;
   question: string;
@@ -10,10 +19,12 @@ interface SlidePanelState {
   deckId: number | null;
   sourceMessageId: string | null;
   // v2: cache + version tracking
-  cachedSlides: { index: number; title: string; html: string; type: string }[] | null;
+  cachedSlides: SlideEntry[] | null;
   cachedDeckTitle: string | null;
   conversationDeckId: number | null;
   refreshToken: number;
+  // v3: per-conversation state persistence
+  savedStates: Record<string, SavedSlideState>;
 
   openPanel: (
     question: string,
@@ -27,13 +38,13 @@ interface SlidePanelState {
   reopenPanel: () => void;
   resetPanel: () => void;
   // v2 actions
-  setCachedSlides: (
-    slides: { index: number; title: string; html: string; type: string }[],
-    title: string,
-  ) => void;
+  setCachedSlides: (slides: SlideEntry[], title: string) => void;
   clearCache: () => void;
   triggerRefresh: () => void;
   setConversationDeckId: (deckId: number | null) => void;
+  // v3 actions: per-conversation save/restore
+  saveForConversation: (convId: string) => void;
+  restoreForConversation: (convId: string) => void;
 }
 
 export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
@@ -48,6 +59,7 @@ export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
   cachedDeckTitle: null,
   conversationDeckId: null,
   refreshToken: 0,
+  savedStates: {},
 
   openPanel: (
     question,
@@ -114,4 +126,51 @@ export const useSlidePanelStore = create<SlidePanelState>((set, get) => ({
   triggerRefresh: () => set((s) => ({ refreshToken: s.refreshToken + 1 })),
 
   setConversationDeckId: (deckId) => set({ conversationDeckId: deckId }),
+
+  saveForConversation: (convId) => {
+    const s = get();
+    if (!s.cachedSlides && !s.conversationDeckId && !s.deckId) return;
+    set({
+      savedStates: {
+        ...s.savedStates,
+        [convId]: {
+          deckId: s.deckId,
+          cachedSlides: s.cachedSlides,
+          cachedDeckTitle: s.cachedDeckTitle,
+          conversationDeckId: s.conversationDeckId,
+        },
+      },
+    });
+  },
+
+  restoreForConversation: (convId) => {
+    const saved = get().savedStates[convId];
+    if (!saved) {
+      set({
+        open: false,
+        question: "",
+        answer: "",
+        instructions: null,
+        styleOptions: null,
+        deckId: null,
+        sourceMessageId: null,
+        cachedSlides: null,
+        cachedDeckTitle: null,
+        conversationDeckId: null,
+      });
+      return;
+    }
+    set({
+      open: false,
+      question: "",
+      answer: "",
+      instructions: null,
+      styleOptions: null,
+      deckId: saved.deckId,
+      sourceMessageId: null,
+      cachedSlides: saved.cachedSlides,
+      cachedDeckTitle: saved.cachedDeckTitle,
+      conversationDeckId: saved.conversationDeckId,
+    });
+  },
 }));

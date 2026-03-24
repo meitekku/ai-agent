@@ -24,7 +24,7 @@ import {
   type WizardConfig,
 } from "@/components/slide-setup-wizard";
 import type { SlideDeck } from "@/lib/slide-types";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   BookOpenIcon,
   AlertCircleIcon,
@@ -375,6 +375,22 @@ export function ChatPage({
       })
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
+
+  // Close panels and save/restore slide state on chat navigation (remount)
+  useEffect(() => {
+    useSlidePanelStore.getState().closePanel();
+    useProposalPanelStore.getState().close();
+    if (initialConvId) {
+      useSlidePanelStore.getState().restoreForConversation(initialConvId);
+    } else {
+      useSlidePanelStore.getState().resetPanel();
+    }
+    return () => {
+      const convId = convIdRef.current;
+      if (convId) useSlidePanelStore.getState().saveForConversation(convId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Detect generateSlides / fetchAndAnalyze / reviseSlides tool results
   const openProposal = useProposalPanelStore((s) => s.open);
@@ -972,8 +988,21 @@ export function ChatPage({
         <ConversationScrollButton />
       </Conversation>
 
-      {/* Slide Panel (right side) */}
-      {slidePanelOpen && <SlidePanel />}
+      {/* Slide Panel (right side, animated) */}
+      <AnimatePresence>
+        {slidePanelOpen && (
+          <motion.div
+            key="slide-panel"
+            initial={{ width: 0 }}
+            animate={{ width: "auto" }}
+            exit={{ width: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="h-full shrink-0 overflow-hidden"
+          >
+            <SlidePanel />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal Slide Viewers (non-html modes) */}
       <SlideViewer />
@@ -998,10 +1027,21 @@ export function ChatPage({
         onDeckChange={setStudioDeck}
         onRequestRefine={handleStudioRefine}
       />
-      {/* Proposal Panel (right side, mutually exclusive with SlidePanel) */}
-      {proposalOpen && !slidePanelOpen && (
-        <ProposalPanel onOpenSlidePanel={handleProposalOpenSlidePanel} />
-      )}
+      {/* Proposal Panel (right side, animated, mutually exclusive with SlidePanel) */}
+      <AnimatePresence>
+        {proposalOpen && !slidePanelOpen && (
+          <motion.div
+            key="proposal-panel"
+            initial={{ width: 0 }}
+            animate={{ width: "auto" }}
+            exit={{ width: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="h-full shrink-0 overflow-hidden"
+          >
+            <ProposalPanel onOpenSlidePanel={handleProposalOpenSlidePanel} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
