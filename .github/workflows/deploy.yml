@@ -22,6 +22,7 @@ jobs:
       - name: Sync files to Orange Pi
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           # Write deploy key
           mkdir -p ~/.ssh
@@ -42,11 +43,10 @@ jobs:
             seed-data/ \
             "$REMOTE:$REMOTE_DIR/seed-data/"
 
-          # Write GCP Service Account JSON on remote
-          ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/gcp-sa.json << 'GCPEOF'
-          ${{ secrets.GCP_SA_KEY }}
-          GCPEOF
-          sed -i 's/^[[:space:]]*//' $REMOTE_DIR/gcp-sa.json"
+          # Write GCP Service Account JSON (printenv avoids shell quoting issues)
+          printenv GCP_SA_KEY > /tmp/gcp-sa.json
+          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa-test.json"
+          rm -f /tmp/gcp-sa.json
 
           # Write .env on remote
           ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/.env << 'EOF'
