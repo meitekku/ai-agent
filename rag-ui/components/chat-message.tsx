@@ -85,6 +85,11 @@ function stripGeneratedImages(
       if (generatedUrls?.has(url)) return "";
       return match;
     })
+    .replace(/<img\s[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, (match, url: string) => {
+      if (/^https?:\/\//.test(url)) return "";
+      if (generatedUrls?.has(url)) return "";
+      return match;
+    })
     .trim();
 }
 
