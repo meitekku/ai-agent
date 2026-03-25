@@ -45,7 +45,7 @@ jobs:
 
           # Write GCP Service Account JSON (printenv avoids shell quoting issues)
           printenv GCP_SA_KEY > /tmp/gcp-sa.json
-          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa-test.json"
+          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
           rm -f /tmp/gcp-sa.json
 
           # Write .env on remote
