@@ -51,8 +51,12 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 
 | 変数 | 必須 | 説明 |
 |------|------|------|
-| `GEMINI_API_KEY` | Yes | Gemini API Key |
+| `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
 | `GEMINI_MODEL` | No | デフォルト `gemini-3-flash-preview` |
+| `USE_VERTEX_AI` | No | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
+| `GCP_PROJECT_ID` | Vertex 時 | GCP プロジェクト ID |
+| `GCP_LOCATION` | No | デフォルト `global` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Vertex 時 | Service Account JSON パス |
 | `DATABASE_URL` | Yes | PostgreSQL 接続 URL |
 | `SALESFORCE_INSTANCE_URL` | No | SF インスタンス URL |
 | `SALESFORCE_CLIENT_ID` | No | SF クライアント ID |

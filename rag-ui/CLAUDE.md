@@ -58,14 +58,17 @@ Browser useChat → /api/chat Route Handler → isImageModel?
 
 ## LLM 后端自動切替
 
-`GEMINI_API_KEY` の有無で自動的に LLM バックエンドを選択。UI でのバックエンド切替は廃止。
+`GEMINI_API_KEY` または `USE_VERTEX_AI` の設定で自動的に LLM バックエンドを選択。UI でのバックエンド切替は廃止。
 
 | 条件                        | バックエンド | 説明                                       |
 | --------------------------- | ------------ | ------------------------------------------ |
-| `GEMINI_API_KEY` が設定済み | **Gemini**   | gemini-3-flash-preview（クラウド、デフォルト） |
-| `GEMINI_API_KEY` が未設定   | **MLX**      | Qwen3.5-35B-A3B-4bit（ローカル port 8008） |
+| `USE_VERTEX_AI=true`        | **Gemini (Vertex AI)** | GCP billing 経由（Free Trial credit 使用可） |
+| `GEMINI_API_KEY` が設定済み | **Gemini (AI Studio)** | API Key 認証（直接課金） |
+| どちらも未設定              | **MLX**      | Qwen3.5-35B-A3B-4bit（ローカル port 8008） |
 
 - 判定ロジック: `lib/ollama-provider.ts` の `getChatModel()` / `useGemini`
+- Vertex AI 使用時は `providerOptionsKey` が `"vertex"` になり、`providerOptions` のキーが動的に切替
+- Vertex AI 使用時は Google Search grounding（`geminiGoogleSearch`）非対応、ウェブ検索は Tavily 必須
 - MLX 使用時はシステムプロンプト末尾に `/no_think` を付加
 - `next.config.ts` の `env.NEXT_PUBLIC_LLM_BACKEND` でクライアント側にバックエンド名を公開
 - Ollama は **Embedding 専用**（qwen3-embedding:8b）、LLM 生成には使用しない

@@ -47,7 +47,7 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 ### 前提条件
 
 - [Docker](https://docs.docker.com/get-docker/) + Docker Compose v2
-- [Gemini API Key](https://aistudio.google.com/apikey)（無料枠で動作可能）
+- [Gemini API Key](https://aistudio.google.com/apikey) または GCP Service Account（Vertex AI）
 
 ### 1. クローンと設定
 
@@ -57,11 +57,22 @@ cd rag-deploy
 cp .env.example .env
 ```
 
-`.env` を編集して Gemini API Key を入力：
+`.env` を編集（2 つの方式から選択）：
 
+**方式 A: AI Studio（簡単、API Key のみ）**
 ```
 GEMINI_API_KEY=AIzaSy...your-key-here
 ```
+
+**方式 B: Vertex AI（GCP Free Trial credit ¥46,955 使用可）**
+```
+USE_VERTEX_AI=true
+GCP_PROJECT_ID=your-project-id
+GCP_LOCATION=global
+GCP_SA_KEY_FILE=./your-service-account.json
+```
+
+> **注意**: GCP Free Trial の $300 credit は AI Studio には使えませんが、Vertex AI には使えます。
 
 ### 2. ビルドと起動
 
@@ -84,17 +95,21 @@ docker compose --profile prod up -d
 
 ## 設定
 
-### 必須
+### Gemini API 認証（どちらか一方）
 
 | 変数 | 説明 |
 |------|------|
-| `GEMINI_API_KEY` | Google Gemini API Key（[こちらで取得](https://aistudio.google.com/apikey)） |
+| `GEMINI_API_KEY` | AI Studio 方式: API Key（[こちらで取得](https://aistudio.google.com/apikey)） |
+| `USE_VERTEX_AI` | Vertex AI 方式: `true` で有効化（GCP credit 使用可） |
+| `GCP_PROJECT_ID` | Vertex AI 用 GCP プロジェクト ID |
+| `GCP_LOCATION` | Vertex AI 用リージョン（デフォルト `global`、Gemini 3.x は `global` のみ） |
+| `GCP_SA_KEY_FILE` | Service Account JSON ファイルパス |
 
 ### オプション
 
 | 変数 | 説明 |
 |------|------|
-| `TAVILY_API_KEY` | [Tavily](https://tavily.com/) API Key（設定するとウェブ検索 Tool Calling が有効化） |
+| `TAVILY_API_KEY` | [Tavily](https://tavily.com/) API Key（設定するとウェブ検索 Tool Calling が有効化。Vertex AI 使用時は必須） |
 | `SALESFORCE_INSTANCE_URL` | Salesforce インスタンス URL（CRM 連携用） |
 | `SALESFORCE_CLIENT_ID` | Salesforce OAuth2 クライアント ID |
 | `SALESFORCE_CLIENT_SECRET` | Salesforce OAuth2 クライアントシークレット |
@@ -121,6 +136,8 @@ docker compose --profile prod up -d
 | 画像生成 | gemini-2.0-flash-exp | ユーザー依頼時 |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
+
+> **コスト最適化**: Vertex AI モード（`USE_VERTEX_AI=true`）を使用すると、GCP Free Trial の $300 credit から差し引かれます。AI Studio の API Key 課金は GCP credit 対象外のためご注意ください。
 
 ## コマンド
 

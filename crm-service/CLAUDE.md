@@ -60,7 +60,7 @@ crm-service/
     │   ├── templates.ts          # GET/POST/DELETE/PATCH /templates, POST /templates/detect
     │   └── proposal-pptx.ts      # POST /proposal/generate-pptx, /generate-plan, /render-pptx, /revise-slide
     └── lib/
-        ├── gemini.ts             # GoogleGenerativeAI wrapper
+        ├── gemini.ts             # Gemini wrapper（AI Studio / Vertex AI デュアルモード）
         ├── db.ts                 # pg Pool + ensureCrmTables()
         ├── scoring.ts            # 商機評分アルゴリズム
         ├── prompts.ts            # 全 AI プロンプト
@@ -129,8 +129,12 @@ Gemini の出力が長い場合、JSON が途中で切れることがある。`g
 
 | 変数 | 必須 | 説明 |
 |------|------|------|
-| `GEMINI_API_KEY` | Yes | Gemini API Key |
+| `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
 | `GEMINI_MODEL` | No | デフォルト `gemini-3-flash-preview`（リクエスト body の `model` フィールドで上書き可） |
+| `USE_VERTEX_AI` | No | `true` で Vertex AI 経由に切替（GCP Free Trial credit 使用可） |
+| `GCP_PROJECT_ID` | Vertex 時 | GCP プロジェクト ID |
+| `GCP_LOCATION` | No | GCP リージョン（デフォルト `global`） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Vertex 時 | Service Account JSON パス |
 | `DATABASE_URL` | Yes | PostgreSQL 接続 URL |
 | `SALESFORCE_INSTANCE_URL` | No | SF OAuth2 インスタンス URL |
 | `SALESFORCE_CLIENT_ID` | No | SF OAuth2 クライアント ID |

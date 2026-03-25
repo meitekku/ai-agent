@@ -69,8 +69,12 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 | 変数 | デフォルト | 説明 |
 |------|----------|------|
 | `LLM_PROVIDER` | gemini | LLM バックエンド（`local` / `mlx` / `gemini`） |
-| `GEMINI_API_KEY` | (必須) | Gemini API Key |
+| `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
 | `GEMINI_MODEL` | gemini-2.5-flash | Gemini LLM モデル |
+| `USE_VERTEX_AI` | `false` | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
+| `GCP_PROJECT_ID` | — | GCP プロジェクト ID（Vertex AI 時必須） |
+| `GCP_LOCATION` | `global` | GCP リージョン（Gemini 3.x は `global` のみ） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | — | Service Account JSON パス（Vertex AI 時必須） |
 | `EMBEDDING_PROVIDER` | gemini | Embedding バックエンド（`local` / `gemini`） |
 | `GEMINI_EMBEDDING_MODEL` | gemini-embedding-001 | Gemini Embedding モデル |
 | `EMBEDDING_DIM` | 768 | Embedding 次元数（Matryoshka 縮小） |
@@ -99,7 +103,7 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 |---------|---------|
 | `pyproject.toml` | `pymupdf` 追加（Gemini Vision OCR 用） |
 | `config.py` | PG デフォルト値を Docker 用に変更（`raguser/ragpass`） |
-| `rag.py` | Gemini embedding 速率制限（Semaphore + interval）、`workspace=kb_slug` |
+| `rag.py` | Gemini embedding 速率制限（Semaphore + interval）、`workspace=kb_slug`、Vertex AI デュアルモード（カスタム `_vertex_gemini_complete`） |
 | `extract.py` | CSV 構造化抽出（エンコード自動検出 + グループ化レコード分割） |
 | `ocr.py` | Gemini OCR async 化（`await client.aio.models.generate_content`） |
 | `main.py` | stale job recovery 改善（全非終端ステータス対応） |

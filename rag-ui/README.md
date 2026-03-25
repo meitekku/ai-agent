@@ -42,8 +42,12 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 
 | 変数 | デフォルト | 説明 |
 |------|----------|------|
-| `GEMINI_API_KEY` | (必須) | Gemini API Key |
+| `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
 | `GEMINI_MODEL` | `gemini-3-flash-preview` | デフォルト LLM モデル（チャット別変更可） |
+| `USE_VERTEX_AI` | `false` | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
+| `GCP_PROJECT_ID` | — | GCP プロジェクト ID（Vertex AI 時必須） |
+| `GCP_LOCATION` | `global` | GCP リージョン（Gemini 3.x は `global` のみ） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | — | Service Account JSON パス（Vertex AI 時必須） |
 | `LIGHTRAG_URL` | `http://lightrag:8007` | LightRAG サービス |
 | `CRM_SERVICE_URL` | `http://crm-service:8009` | CRM サービス（設定時→CRM ツール有効） |
 | `REDIS_URL` | `redis://valkey:6379` | Valkey キャッシュ |
