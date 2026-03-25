@@ -1,7 +1,13 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { VertexAI } from "@google-cloud/vertexai";
 
+const USE_VERTEX_AI =
+  (process.env.USE_VERTEX_AI || "").toLowerCase() === "true";
+const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || "";
+const GCP_LOCATION = process.env.GCP_LOCATION || "global";
+
+// AI Studio provider
 let genAI: GoogleGenerativeAI | null = null;
-
 function getGenAI(): GoogleGenerativeAI {
   if (!genAI) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -11,9 +17,30 @@ function getGenAI(): GoogleGenerativeAI {
   return genAI;
 }
 
-export async function generateText(prompt: string, maxTokens = 4000, modelOverride?: string): Promise<string> {
-  const modelName = modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
-  const model = getGenAI().getGenerativeModel({ model: modelName });
+// Vertex AI provider
+let vertexAI: VertexAI | null = null;
+function getVertexAI(): VertexAI {
+  if (!vertexAI) {
+    vertexAI = new VertexAI({ project: GCP_PROJECT_ID, location: GCP_LOCATION });
+  }
+  return vertexAI;
+}
+
+function getModel(modelOverride?: string) {
+  const modelName =
+    modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+  if (USE_VERTEX_AI) {
+    return getVertexAI().getGenerativeModel({ model: modelName });
+  }
+  return getGenAI().getGenerativeModel({ model: modelName });
+}
+
+export async function generateText(
+  prompt: string,
+  maxTokens = 4000,
+  modelOverride?: string,
+): Promise<string> {
+  const model = getModel(modelOverride);
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: { maxOutputTokens: maxTokens },
@@ -27,7 +54,25 @@ export async function generateChat(
   maxTokens = 4000,
   modelOverride?: string,
 ): Promise<string> {
-  const modelName = modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+  const modelName =
+    modelOverride || process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+  if (USE_VERTEX_AI) {
+    const model = getVertexAI().getGenerativeModel({
+      model: modelName,
+      systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+    });
+    const chat = model.startChat({
+      history: messages.slice(0, -1).map((m) => ({
+        role: m.role === "user" ? ("user" as const) : ("model" as const),
+        parts: [{ text: m.content }],
+      })),
+    });
+    const lastMsg = messages[messages.length - 1];
+    const result = await chat.sendMessage(lastMsg.content);
+    return result.response.text();
+  }
+
+  // AI Studio path
   const model = getGenAI().getGenerativeModel({
     model: modelName,
     systemInstruction: systemPrompt,

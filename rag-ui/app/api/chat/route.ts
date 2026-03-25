@@ -20,6 +20,7 @@ import {
   ALLOWED_GEMINI_MODELS,
   isImageModel,
   geminiImageModel,
+  providerOptionsKey,
 } from "@/lib/ollama-provider";
 import {
   searchOnly,
@@ -1139,7 +1140,7 @@ export async function POST(req: Request) {
             model: imageModel,
             prompt: imagePrompt,
             providerOptions: {
-              google: {
+              [providerOptionsKey]: {
                 responseModalities: ["TEXT", "IMAGE"],
                 personGeneration: "allow_adult",
               },
@@ -1391,7 +1392,7 @@ ${op.instruction}
 - テキストでの説明も併せて提供してください
 - ユーザーの質問と同じ言語で回答してください`,
         providerOptions: {
-          google: { responseModalities: ["TEXT", "IMAGE"] },
+          [providerOptionsKey]: { responseModalities: ["TEXT", "IMAGE"] },
         },
         // No abortSignal — let image generation complete even if client disconnects
       });
@@ -1535,7 +1536,7 @@ ${op.instruction}
       ...(thinking && useGemini
         ? {
             providerOptions: {
-              google: {
+              [providerOptionsKey]: {
                 thinkingConfig: {
                   thinkingBudget: 8192,
                   includeThoughts: true,

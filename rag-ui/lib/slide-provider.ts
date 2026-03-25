@@ -7,8 +7,12 @@ import {
   SLIDE_LLM_BASE_URL,
   SLIDE_LLM_API_KEY,
   SLIDE_LLM_MODEL,
+  USE_VERTEX_AI,
+  GCP_PROJECT_ID,
+  GCP_LOCATION,
 } from "./constants";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createVertex } from "@ai-sdk/google-vertex";
 
 // Dedicated slide provider (created lazily if configured)
 let _slideProvider: ReturnType<typeof createOpenAI> | null = null;
@@ -29,13 +33,18 @@ function getSlideProvider() {
  *
  * Priority:
  * 1. If SLIDE_LLM_* env vars are set → use dedicated provider
- * 2. If GEMINI_API_KEY is set → Gemini
- * 3. Fallback → MLX
+ * 2. If USE_VERTEX_AI is set → Vertex AI
+ * 3. If GEMINI_API_KEY is set → AI Studio
+ * 4. Fallback → MLX
  */
 export function getSlideModel() {
   const dedicated = getSlideProvider();
   if (dedicated && SLIDE_LLM_MODEL) {
     return dedicated.chat(SLIDE_LLM_MODEL);
+  }
+  if (USE_VERTEX_AI) {
+    const vertex = createVertex({ project: GCP_PROJECT_ID, location: GCP_LOCATION });
+    return vertex(GEMINI_MODEL);
   }
   if (GEMINI_API_KEY) {
     const gemini = createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY });

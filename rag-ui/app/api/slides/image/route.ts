@@ -1,6 +1,13 @@
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { GEMINI_API_KEY } from "@/lib/constants";
+import { createVertex } from "@ai-sdk/google-vertex";
+import {
+  GEMINI_API_KEY,
+  USE_VERTEX_AI,
+  GCP_PROJECT_ID,
+  GCP_LOCATION,
+} from "@/lib/constants";
+import { providerOptionsKey } from "@/lib/ollama-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -9,9 +16,9 @@ const IMAGE_MODEL = "gemini-2.5-flash-preview-05-20";
 
 export async function POST(req: Request) {
   try {
-    if (!GEMINI_API_KEY) {
+    if (!GEMINI_API_KEY && !USE_VERTEX_AI) {
       return Response.json(
-        { error: "Image generation requires GEMINI_API_KEY" },
+        { error: "Image generation requires GEMINI_API_KEY or USE_VERTEX_AI" },
         { status: 503 },
       );
     }
@@ -22,12 +29,14 @@ export async function POST(req: Request) {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    const gemini = createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY });
+    const provider = USE_VERTEX_AI
+      ? createVertex({ project: GCP_PROJECT_ID, location: GCP_LOCATION })
+      : createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY });
 
     const result = await generateText({
-      model: gemini(IMAGE_MODEL),
+      model: provider(IMAGE_MODEL),
       providerOptions: {
-        google: { responseModalities: ["TEXT", "IMAGE"] },
+        [providerOptionsKey]: { responseModalities: ["TEXT", "IMAGE"] },
       },
       prompt,
     });

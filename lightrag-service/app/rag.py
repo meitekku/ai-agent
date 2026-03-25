@@ -11,22 +11,60 @@ from lightrag.utils import EmbeddingFunc
 
 from . import config
 
+# Gemini generation config (shared between AI Studio and Vertex AI)
+_gemini_generation_config = {
+    "thinking_config": {"thinking_budget": 0, "include_thoughts": False},
+    "safety_settings": [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"},
+    ],
+}
+
 # LLM provider switch
-if config.LLM_PROVIDER == "gemini":
+if config.LLM_PROVIDER == "gemini" and not config.USE_VERTEX_AI:
     from lightrag.llm.gemini import gemini_model_complete
     _llm_func = gemini_model_complete
     _llm_name = config.GEMINI_MODEL
-    _llm_kwargs = {
-        "generation_config": {
-            "thinking_config": {"thinking_budget": 0, "include_thoughts": False},
-            "safety_settings": [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"},
-            ],
-        }
-    }
+    _llm_kwargs = {"generation_config": _gemini_generation_config}
+    _llm_max_async = 8
+elif config.LLM_PROVIDER == "gemini" and config.USE_VERTEX_AI:
+    # Custom LLM function for Vertex AI (LightRAG's gemini_model_complete uses API key auth)
+    async def _vertex_gemini_complete(
+        prompt, system_prompt=None, history_messages=[], keyword_extraction=False, **kwargs
+    ) -> str:
+        from google.genai import types
+        client = _get_gemini_client()
+        contents = []
+        for msg in history_messages:
+            role = msg.get("role", "user")
+            contents.append(types.Content(
+                role="model" if role == "assistant" else "user",
+                parts=[types.Part.from_text(text=msg.get("content", ""))],
+            ))
+        contents.append(types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=prompt)],
+        ))
+        gen_config = kwargs.get("generation_config", _gemini_generation_config)
+        model_name = kwargs.get("model_name", config.GEMINI_MODEL)
+        response = await client.aio.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                thinking_config=types.ThinkingConfig(**gen_config.get("thinking_config", {})),
+                safety_settings=[
+                    types.SafetySetting(**s) for s in gen_config.get("safety_settings", [])
+                ],
+            ),
+        )
+        return response.text or ""
+
+    _llm_func = _vertex_gemini_complete
+    _llm_name = config.GEMINI_MODEL
+    _llm_kwargs = {"generation_config": _gemini_generation_config}
     _llm_max_async = 8
 elif config.LLM_PROVIDER == "mlx":
     from lightrag.llm.openai import openai_complete
@@ -76,7 +114,14 @@ def _get_gemini_client():
     global _gemini_client
     if _gemini_client is None:
         from google import genai
-        _gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+        if config.USE_VERTEX_AI:
+            _gemini_client = genai.Client(
+                vertexai=True,
+                project=config.GCP_PROJECT_ID,
+                location=config.GCP_LOCATION,
+            )
+        else:
+            _gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
     return _gemini_client
 
 

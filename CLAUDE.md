@@ -228,7 +228,7 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 
 ## 環境変数
 
-ユーザー設定: `.env` の `GEMINI_API_KEY`（必須）+ `TAVILY_API_KEY`（オプション）
+ユーザー設定: `.env` の `GEMINI_API_KEY`（AI Studio 使用時必須）+ `TAVILY_API_KEY`（オプション）+ Vertex AI 設定（オプション）
 
 ### docker-compose.yml で設定済み
 
@@ -258,8 +258,12 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 
 | 変数 | 説明 |
 |------|------|
-| `GEMINI_API_KEY` | Gemini API Key（必須） |
+| `GEMINI_API_KEY` | Gemini API Key（AI Studio 使用時必須、Vertex AI 使用時は不要） |
 | `TAVILY_API_KEY` | Tavily API Key（オプション、設定時→Tavily ウェブ検索、未設定→Gemini Google Search grounding にフォールバック） |
+| `USE_VERTEX_AI` | `true` で Vertex AI 経由に切替（GCP Free Trial credit が使える） |
+| `GCP_PROJECT_ID` | GCP プロジェクト ID（Vertex AI 使用時必須） |
+| `GCP_LOCATION` | GCP リージョン（デフォルト `global`。Gemini 3.x preview は `global` のみ対応） |
+| `GCP_SA_KEY_FILE` | Service Account JSON ファイルパス（Vertex AI 使用時必須、Docker volume mount 用） |
 | `SALESFORCE_INSTANCE_URL` | Salesforce インスタンス URL（オプション） |
 | `SALESFORCE_CLIENT_ID` | Salesforce クライアント ID（オプション） |
 | `SALESFORCE_CLIENT_SECRET` | Salesforce クライアントシークレット（オプション） |
@@ -320,6 +324,33 @@ docker compose --profile prod build --no-cache
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
 - **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
+
+## Vertex AI / AI Studio デュアルモード
+
+同じ Gemini モデルに対して 2 つの課金経路がある:
+
+| | AI Studio | Vertex AI |
+|--|-----------|-----------|
+| エンドポイント | `generativelanguage.googleapis.com` | `aiplatform.googleapis.com` |
+| 認証 | `GEMINI_API_KEY` | Service Account JSON |
+| GCP Free Trial credit | **使用不可**（明示的に除外） | **使用可** |
+| 設定 | `GEMINI_API_KEY=xxx` | `USE_VERTEX_AI=true` + SA JSON |
+
+### 切替方法
+
+`.env` に以下を設定するだけ:
+```
+USE_VERTEX_AI=true
+GCP_PROJECT_ID=your-project-id
+GCP_LOCATION=global
+GCP_SA_KEY_FILE=./your-sa-key.json
+```
+
+### Vertex AI 制約事項
+
+- **GCP_LOCATION=global 必須**: Gemini 3.x preview モデルは `global` のみ対応（`asia-northeast1` 等では 404）
+- **Google Search grounding**: Vertex AI モードでは `gemini.tools.googleSearch()` 非対応。ウェブ検索は Tavily（`TAVILY_API_KEY`）が必要
+- **コード変更箇所**: `rag.py`, `ocr.py`, `ollama-provider.ts`, `embedding-client.ts`, `slide-provider.ts`, `crm-service/lib/gemini.ts`, `chat/route.ts`（providerOptions key 切替）
 
 ## 踩坑記録
 

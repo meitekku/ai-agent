@@ -34,3 +34,9 @@ export const SLIDE_LLM_MODEL = process.env.SLIDE_LLM_MODEL || "";
 
 // CRM Service (optional — enables CRM tools in chat when set)
 export const CRM_SERVICE_URL = process.env.CRM_SERVICE_URL || "";
+
+// Vertex AI (when set, uses GCP billing / Free Trial credit instead of AI Studio)
+export const USE_VERTEX_AI =
+  (process.env.USE_VERTEX_AI || "").toLowerCase() === "true";
+export const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || "";
+export const GCP_LOCATION = process.env.GCP_LOCATION || "global";

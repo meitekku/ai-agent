@@ -14,6 +14,10 @@ __pycache__/
 # Data
 lightrag-service/data/
 
+# GCP Service Account keys
+*.sa.json
+gen-lang-client-*.json
+
 # OS
 .DS_Store
 

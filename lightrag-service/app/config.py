@@ -24,3 +24,8 @@ PG_DATABASE = os.getenv("PG_DATABASE", "lightrag")
 OCR_PROVIDER = os.getenv("OCR_PROVIDER", "local")
 GLM_OCR_URL = os.getenv("GLM_OCR_URL", "http://localhost:8000")
 PORT = int(os.getenv("PORT", "8007"))
+
+# Vertex AI (when set, uses GCP billing / Free Trial credit instead of AI Studio)
+USE_VERTEX_AI = os.getenv("USE_VERTEX_AI", "").lower() in ("true", "1", "yes")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCP_LOCATION = os.getenv("GCP_LOCATION", "global")

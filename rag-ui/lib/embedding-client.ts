@@ -3,16 +3,69 @@ import {
   GEMINI_API_KEY,
   GEMINI_EMBEDDING_MODEL,
   EMBEDDING_PROVIDER,
+  USE_VERTEX_AI,
+  GCP_PROJECT_ID,
+  GCP_LOCATION,
 } from "./constants";
 
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "qwen3-embedding:8b";
 
+/** Lazy-initialized Vertex AI access token getter */
+let _getAccessToken: (() => Promise<string>) | null = null;
+
+async function getVertexAccessToken(): Promise<string> {
+  if (!_getAccessToken) {
+    const { GoogleAuth } = await import("google-auth-library");
+    const auth = new GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
+    const client = await auth.getClient();
+    _getAccessToken = async () => {
+      const res = await client.getAccessToken();
+      return res.token ?? "";
+    };
+  }
+  return _getAccessToken();
+}
+
 /**
  * Generate an embedding vector.
- * Switches between Ollama (local) and Gemini API based on EMBEDDING_PROVIDER.
+ * Switches between Ollama (local), Gemini AI Studio, and Vertex AI.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (EMBEDDING_PROVIDER === "gemini") {
+    if (USE_VERTEX_AI) {
+      // Vertex AI endpoint
+      const token = await getVertexAccessToken();
+      const res = await fetch(
+        `https://${GCP_LOCATION}-aiplatform.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/publishers/google/models/${GEMINI_EMBEDDING_MODEL}:predict`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            instances: [{ content: text }],
+          }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          `Vertex AI embedding failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const data = (await res.json()) as {
+        predictions: { embeddings: { values: number[] } }[];
+      };
+      if (!data.predictions?.[0]?.embeddings?.values) {
+        throw new Error("No embedding returned from Vertex AI");
+      }
+      return data.predictions[0].embeddings.values;
+    }
+
+    // AI Studio endpoint
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`,
       {

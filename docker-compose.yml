@@ -35,7 +35,7 @@ services:
     build: ./lightrag-service
     environment:
       LLM_PROVIDER: gemini
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: gemini-2.5-flash
       EMBEDDING_PROVIDER: gemini
       GEMINI_EMBEDDING_MODEL: gemini-embedding-001
@@ -46,11 +46,17 @@ services:
       PG_USER: raguser
       PG_PASSWORD: ragpass
       PG_DATABASE: lightrag
+      # Vertex AI (set USE_VERTEX_AI=true in .env to use GCP credit)
+      USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_LOCATION: ${GCP_LOCATION:-global}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
     ports:
       - "${LIGHTRAG_PORT:-127.0.0.1:8007}:8007"
     volumes:
       - lightrag-data:/app/data
       - ./seed-data/graph_chunk_entity_relation.graphml:/app/seed/graph_chunk_entity_relation.graphml:ro
+      - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,7 +72,7 @@ services:
     build: ./crm-service
     profiles: ["prod"]
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: gemini-3-flash-preview
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
       SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
@@ -75,6 +81,13 @@ services:
       KINTONE_SUBDOMAIN: ${KINTONE_SUBDOMAIN:-}
       KINTONE_API_TOKEN: ${KINTONE_API_TOKEN:-}
       KINTONE_APP_ID: ${KINTONE_APP_ID:-}
+      # Vertex AI
+      USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_LOCATION: ${GCP_LOCATION:-global}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
+    volumes:
+      - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +105,7 @@ services:
     environment:
       LIGHTRAG_URL: http://lightrag:8007
       REDIS_URL: redis://valkey:6379
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: gemini-3-flash-preview
       GEMINI_EMBEDDING_MODEL: gemini-embedding-001
       EMBEDDING_PROVIDER: gemini
@@ -102,11 +115,17 @@ services:
       CHAT_FILES_DIR: /app/data/chat-files
       KB_FILES_DIR: /app/data/kb-files
       CRM_SERVICE_URL: http://crm-service:8009
+      # Vertex AI
+      USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_LOCATION: ${GCP_LOCATION:-global}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
     ports:
       - "4002:3000"
     volumes:
       - chat-files:/app/data/chat-files
       - kb-files:/app/data/kb-files
+      - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       lightrag:
         condition: service_healthy

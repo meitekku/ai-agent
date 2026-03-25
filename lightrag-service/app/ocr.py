@@ -25,7 +25,14 @@ async def _ocr_pdf_gemini(file_bytes: bytes, filename: str) -> list[dict]:
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
+    if config.USE_VERTEX_AI:
+        client = genai.Client(
+            vertexai=True,
+            project=config.GCP_PROJECT_ID,
+            location=config.GCP_LOCATION,
+        )
+    else:
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     sem = asyncio.Semaphore(OCR_CONCURRENCY)
 

@@ -1,19 +1,39 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { GEMINI_API_KEY, GEMINI_MODEL, MLX_URL, MLX_MODEL } from "./constants";
+import { createVertex } from "@ai-sdk/google-vertex";
+import {
+  GEMINI_API_KEY,
+  GEMINI_MODEL,
+  MLX_URL,
+  MLX_MODEL,
+  USE_VERTEX_AI,
+  GCP_PROJECT_ID,
+  GCP_LOCATION,
+} from "./constants";
 
 const mlx = createOpenAI({
   baseURL: `${MLX_URL}/v1`,
   apiKey: "mlx",
 });
 
-/** true when GEMINI_API_KEY is configured */
-export const useGemini = !!GEMINI_API_KEY;
+/** true when Gemini is available (via AI Studio key OR Vertex AI) */
+export const useGemini = !!GEMINI_API_KEY || USE_VERTEX_AI;
 
-/** Gemini provider instance (reused for tools.googleSearch) */
-const gemini = useGemini
-  ? createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY })
+/** AI Studio provider (when not using Vertex AI) */
+const gemini =
+  !USE_VERTEX_AI && GEMINI_API_KEY
+    ? createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY })
+    : null;
+
+/** Vertex AI provider (when USE_VERTEX_AI=true) */
+const vertex = USE_VERTEX_AI
+  ? createVertex({ project: GCP_PROJECT_ID, location: GCP_LOCATION })
   : null;
+
+/** providerOptions key — "vertex" for Vertex AI, "google" for AI Studio */
+export const providerOptionsKey: "vertex" | "google" = USE_VERTEX_AI
+  ? "vertex"
+  : "google";
 
 /** Allowed Gemini model IDs (whitelist to prevent abuse) */
 export const ALLOWED_GEMINI_MODELS = new Set([
@@ -31,22 +51,24 @@ export function isImageModel(modelId: string): boolean {
   return modelId.includes("-image");
 }
 
-/** Gemini image model for generateImage() tool (Nano Banana 2) */
-export const geminiImageModel = gemini?.image("gemini-3.1-flash-image-preview");
+/** Gemini image model for generateImage() tool */
+export const geminiImageModel =
+  vertex?.image("gemini-3.1-flash-image-preview") ??
+  gemini?.image("gemini-3.1-flash-image-preview") ??
+  null;
 
-/** Auto-select: Gemini if API key is set, otherwise MLX. Accepts optional model override. */
+/** Auto-select: Vertex AI > AI Studio > MLX. Accepts optional model override. */
 export function getChatModel(modelOverride?: string | null) {
-  if (gemini) {
-    const model =
-      modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
-        ? modelOverride
-        : GEMINI_MODEL;
-    return gemini(model);
-  }
+  const model =
+    modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
+      ? modelOverride
+      : GEMINI_MODEL;
+  if (vertex) return vertex(model);
+  if (gemini) return gemini(model);
   return mlx.chat(MLX_MODEL);
 }
 
-/** Google Search tool (Gemini built-in grounding) — available when using Gemini */
-export const geminiGoogleSearch = gemini?.tools.googleSearch({});
+/** Google Search tool (Gemini built-in grounding) — only available with AI Studio provider */
+export const geminiGoogleSearch = gemini?.tools.googleSearch({}) ?? null;
 
 export const backendName = useGemini ? "Gemini" : "MLX";
