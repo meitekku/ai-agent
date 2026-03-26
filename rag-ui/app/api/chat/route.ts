@@ -285,7 +285,8 @@ function buildSystemPrompt(
 fetchAndAnalyze 完了後、分析結果をユーザーに提示する際は以下を心がける：
 - **KPI（受注確率・健全度・推薦サービス比較など）は show-widget を使って視覚的に表示**する。例: ゲージチャート、レーダーチャート、比較カード
 - テキストによる要点解説（課題分析・推奨アクション・ROI 試算）は通常の Markdown で記述
-- 「提案書パネルが右側に開いています」と案内し、スライド生成を促す`;
+- 「提案書パネルが右側に開いています」と案内し、スライド生成を促す
+- **fetchAndAnalyze 完了後にユーザーが「スライド生成して」「詳細なスライドを」等と依頼した場合**: suggestSlides や generateSlides を呼ばないこと。「右側の提案書パネルからスライドを生成できます。パネルの『次へ』ボタンを進めてください」とテキストで案内するだけでよい`;
   }
 
   // 情報の信頼度ヒエラルキー
@@ -1152,7 +1153,8 @@ export async function POST(req: Request) {
             },
           });
           const savedUrls: string[] = [];
-          for (const file of result.files ?? []) {
+          // Gemini sometimes returns multiple images; keep only the first
+          for (const file of (result.files ?? []).slice(0, 1)) {
             const ext =
               file.mediaType === "image/png"
                 ? ".png"
@@ -1403,8 +1405,9 @@ ${op.instruction}
       });
 
       // Save generated images to disk + DB
+      // Gemini sometimes returns multiple images; keep only the first
       const savedFiles: { url: string; mediaType: string }[] = [];
-      for (const file of result.files ?? []) {
+      for (const file of (result.files ?? []).slice(0, 1)) {
         const ext =
           file.mediaType === "image/png"
             ? ".png"
