@@ -125,7 +125,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理、generateProposal 廃止）+ 画像モデルパス + generateImage ツール + reviseSlides ツール（スライド精准編集）+ slide context injection |
 | `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
 | `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + styleOptions 状態管理） |
-| `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | インメモリ提案セッション store（Map + TTL 1h） |
+| `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | 提案セッション store（PostgreSQL 永続化 + インメモリキャッシュ） |
 | `rag-ui/lib/slide-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（cachedSlides + conversationDeckId + refreshToken でスライド持久化・リフレッシュ管理） |
 | `rag-ui/lib/slide-db.ts` | **rag-deploy のみ** | — | slide_decks に conversation_id/current_version 追加 + slide_page_versions テーブル + バージョン管理関数 |
 | `rag-ui/lib/slide-types.ts` | **rag-deploy のみ** | — | SlideVersion 型追加、SlideDeckDetail に current_version/conversation_id 追加 |
@@ -322,7 +322,7 @@ docker compose --profile prod build --no-cache
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history, proposal_sessions）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## Vertex AI / AI Studio デュアルモード
@@ -380,6 +380,14 @@ GCP_SA_KEY_FILE=./your-sa-key.json
 | crm-service PPTX 計画 JSON が切れる | Gemini の maxOutputTokens 不足 + 長い JSON が途中で途切れる | maxTokens 8000→16000 に増量 + 切断 JSON 自動修復（未閉じ括弧を自動補完） |
 | `reviseRationale` がセッション分析を上書き | セッションの analysis 全体を revise 結果で置換、元のスコアが消える | マージ方式に変更: `result.rationale` + `result.analysisUpdates` を既存 analysis にマージ |
 | `kbs.find()` でクラッシュ | API レスポンスが `{ knowledge_bases: [...] }` なのに配列として参照 | `data.knowledge_bases ?? data ?? []` でアンラップ |
+| PDF エクスポートでテキスト消失 | PDF export が innerHTML コピー時に computed styles を未コピー | `captureSlideAsPng()` で iframe 内直接キャプチャに変更（PPTX/PDF 共通） |
+| PPTX がプレビューと異なる | innerHTML を外部 wrapper にコピー → Tailwind CSS が外部 DOM に不在 | iframe 内の body に直接 html2canvas 実行（same-origin srcdoc） |
+| PDF 保存時に PPTX ボタンが回る | PDF/PPTX が `exporting` state を共有 | `exportingPdf` 独立 state 追加、各ボタンに専用 spinner |
+| 提案書に受注率等の内部データ | `buildProposalContent` / `buildPptxPrompt` が内部スコアを含む | 顧客向けコンテンツから除外、PPTX prompt に禁止リスト明記 |
+| 全案件で 3 サービス全推薦 | prompt にサービス選別ルールなし | 「関連サービスのみ推薦、無関係なら含めない」ルール追加 |
+| セッション期限切れで提案書パネル無限 loading | `proposal-session.ts` がインメモリ Map + TTL 1h | PostgreSQL 永続化に変更。メモリキャッシュ + DB fallback |
+| スライドのデザインがページごとにバラバラ | 各スライド独立並列生成、全体コンテキストなし | render prompt に「デッキ全体のデザイン統一ルール」追加 |
+| styleOptions がスライド生成に反映されない | `renderSlides()` が styleOptions を受け取らず API に未送信 | `renderSlides()` に styleOptions パラメータ追加、render API body に含める |
 
 ## トラブルシューティング
 

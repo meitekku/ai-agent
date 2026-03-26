@@ -246,7 +246,7 @@ rag-ui/
 │   ├── widget-css-bridge.ts # CSS 変数ブリッジ（rag-ui oklch → widget 標準変数名）
 │   ├── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
 │   ├── proposal-panel-store.ts # Zustand store（sessionKey + phase + styleOptions 管理）
-│   └── proposal-session.ts  # インメモリ提案セッション（Map + TTL 1h）
+│   └── proposal-session.ts  # 提案セッション（PostgreSQL 永続化 + インメモリキャッシュ）
 ├── hooks/
 │   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
 ├── instrumentation.ts     # 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ
@@ -437,7 +437,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
   → POST /api/slides/plan → /api/slides/render × N → PPTX
 ```
 
-### PostgreSQL テーブル（10表）
+### PostgreSQL テーブル（11表）
 
 | テーブル               | 用途                                                                                                       |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -450,9 +450,10 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | `slide_templates`      | テンプレート（name, position, html, UNIQUE(name, position)）                                               |
 | `skills`               | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
 | `ui_config`            | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
+| `proposal_sessions`    | 提案セッション（key TEXT PK, data JSONB, analysis JSONB, additional_context TEXT）— 永続化、会話再開時も利用可 |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()` / `ensureTable()`(proposal_sessions)）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート
@@ -462,6 +463,8 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | **Mode A**（画像）   | `pngs[]` data URL 配列 | 画像スライド         | 見た目忠実、編集不可 |
 | **Mode B**（構造化） | `deck` JSON            | テキスト+チャート+表 | 編集可能、PptxGenJS  |
 | **PDF**              | `pngs[]` data URL 配列 | Landscape PDF        | jsPDF                |
+
+**PNG キャプチャ方式**: `captureSlideAsPng()` で iframe 内の `body` に対して直接 `html2canvas` を実行。iframe 内では Tailwind CSS が処理済みのため、computed style コピー不要で所見即所得。PPTX/PDF 両方で共通利用。
 
 ### スライド LLM プロバイダー
 
@@ -550,9 +553,10 @@ ProposalPanel は `PanelShell` を使用（デスクトップ: flex sibling で�
 
 ### セッション管理
 
-- `lib/proposal-session.ts`: インメモリ Map + TTL 1h
-- `storeSession()` → nanoid(12) のキーを返却
-- `getSession()` / `updateSessionAnalysis()` で取得・更新
+- `lib/proposal-session.ts`: PostgreSQL 永続化 + インメモリキャッシュ
+- `storeSession()` → nanoid(12) のキーを返却、DB に永続保存（`proposal_sessions` テーブル）
+- `getSession()` → メモリキャッシュ優先、miss 時 DB fallback（async）。会話再開時も利用可
+- `updateSessionAnalysis()` → メモリ + DB 両方を更新
 - `reviseRationale` tool 呼出時にセッションの analysis をマージ更新（rationale + analysisUpdates を個別マージ、全体置換ではない）
 
 ### スライド生成

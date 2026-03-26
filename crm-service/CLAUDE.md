@@ -23,7 +23,7 @@ ProposalPanel (フロントエンド)
   └── 分析表示 → テンプレート確認 → スタイル設定 → SlidePanel（既存 HTML スライド機能）へ遷移
 ```
 
-rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義。`fetchAndAnalyze` が CRM データ取得 + KB 全検索 + Web 検索 + 分析を一括実行し、結果をインメモリセッション（TTL 1h）に保存。sessionKey を返却すると ProposalPanel が自動的に開く（`generateProposal` は廃止）。
+rag-ui の `/api/chat/route.ts` で CRM 系 tool を定義。`fetchAndAnalyze` が CRM データ取得 + KB 全検索 + Web 検索 + 分析を一括実行し、結果を PostgreSQL（`proposal_sessions` テーブル）に永続保存。sessionKey を返却すると ProposalPanel が自動的に開く（`generateProposal` は廃止）。会話を再度開いた場合も DB からセッションデータを取得可能。
 
 ### Tool 統合（v2→v3）
 
@@ -177,3 +177,6 @@ Kintone API 未接続時は 5 件のサンプル商談を自動返却:
 - **Tool result サイズ**: rag-ui の `fetchAndAnalyze` execute 内で活動/メール/Feed を各 5 件に truncate（トークン過多防止）
 - **テンプレートストレージ**: ファイルシステム（元プロジェクト）→ PostgreSQL BYTEA に移行
 - **AI プロバイダー**: 元は Gemini/Claude/ChatGPT 選択式 → Gemini only に統一
+- **サービス推薦ルール**: `buildRationalePrompt` で「顧客の課題に関連するサービスのみ推薦」を明示指示。全 3 サービスを無条件に推薦しない
+- **顧客向け提案書の内部データ除外**: `buildPptxPrompt` で受注確率・ディールスコア・シナリオ分析・リスク要因等の内部分析データを提案書スライドに含めることを明示的に禁止。これらは ProposalPanel Phase 1（社内分析表示）でのみ使用
+- **セッション永続化**: `proposal-session.ts` は PostgreSQL（`proposal_sessions` テーブル）に永続保存。会話を再度開いた場合も DB からセッションデータを取得可能（インメモリ Map + TTL 1h は廃止）
