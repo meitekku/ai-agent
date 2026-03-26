@@ -13,6 +13,7 @@ import {
   CircleAlert,
   ArrowLeft,
   ArrowRight,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,10 +60,10 @@ function buildProposalContent(
     reason: string;
     features: string[];
   }>;
-  const keyDrivers = (analysis.keyDrivers ?? []) as string[];
-  const riskFactors = (analysis.riskFactors ?? []) as string[];
-  const winProb = analysis.winProbability ?? 0;
-  const healthScore = analysis.dealHealthScore ?? 0;
+  // NOTE: 受注確率・健全度・成功要因・リスク要因は内部分析データのため
+  // 顧客向け提案書には含めない（ProposalPanel Phase 1 でのみ表示）
+
+  const challenges = (rationale.customerChallenges ?? []) as string[];
 
   const lines: string[] = [];
 
@@ -75,39 +76,22 @@ function buildProposalContent(
   if (account.NumberOfEmployees)
     lines.push(`- 従業員数: ${account.NumberOfEmployees}名`);
   if (opportunity.Name) lines.push(`- 案件名: ${opportunity.Name}`);
-  if (opportunity.Amount)
-    lines.push(
-      `- 予算: ${Number(opportunity.Amount).toLocaleString()}円`,
-    );
-  if (opportunity.StageName)
-    lines.push(`- ステージ: ${opportunity.StageName}`);
+  if (opportunity.Description)
+    lines.push(`- 概要: ${opportunity.Description}`);
   lines.push("");
 
-  // Scores
-  lines.push("## 商談スコア");
-  lines.push(`- 受注確率: ${winProb}%`);
-  lines.push(`- 健全度: ${healthScore}`);
-  lines.push("");
-
-  // Key drivers
-  if (keyDrivers.length > 0) {
-    lines.push("## 成功要因");
-    for (const d of keyDrivers) lines.push(`- ${d}`);
-    lines.push("");
-  }
-
-  // Risk factors
-  if (riskFactors.length > 0) {
-    lines.push("## リスク要因");
-    for (const r of riskFactors) lines.push(`- ${r}`);
+  // Customer challenges (from rationale — customer-facing, not internal scores)
+  if (challenges.length > 0) {
+    lines.push("## 貴社の課題");
+    for (const c of challenges) lines.push(`- ${c}`);
     lines.push("");
   }
 
   // Recommendations
   if (recs.length > 0) {
-    lines.push("## 推薦ソリューション");
+    lines.push("## ご提案ソリューション");
     for (const rec of recs) {
-      lines.push(`### ${rec.service}（${rec.relevance}）`);
+      lines.push(`### ${rec.service}`);
       lines.push(rec.reason);
       if (rec.features?.length > 0) {
         for (const f of rec.features) lines.push(`- ${f}`);
@@ -126,15 +110,23 @@ function buildProposalContent(
   // KPIs
   const kpis = (rationale.expectedKPIs ?? []) as string[];
   if (kpis.length > 0) {
-    lines.push("## 期待される KPI");
+    lines.push("## 期待される効果");
     for (const k of kpis) lines.push(`- ${k}`);
+    lines.push("");
+  }
+
+  // Proposal hints
+  const hints = (rationale.existingProposalHints ?? []) as string[];
+  if (hints.length > 0) {
+    lines.push("## ご提案のポイント");
+    for (const h of hints) lines.push(`- ${h}`);
     lines.push("");
   }
 
   // Action items
   const actions = (rationale.nextActions ?? rationale.actionItems ?? []) as string[];
   if (actions.length > 0) {
-    lines.push("## アクションプラン");
+    lines.push("## 次のステップ");
     for (const a of actions) lines.push(`- ${a}`);
     lines.push("");
   }
@@ -195,6 +187,9 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [coverages, setCoverages] = useState<ServiceCoverage[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Panel resize state
   const [panelWidth, setPanelWidth] = useState(480);
@@ -218,13 +213,18 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
 
     fetch(`/api/crm/proposal-session/${sessionKey}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("Session fetch failed");
+        if (!res.ok) {
+          setSessionExpired(true);
+          throw new Error("Session fetch failed");
+        }
         const result = await res.json();
+        setSessionExpired(false);
         setSessionData(result.data, result.analysis);
       })
       .catch((err) => {
         console.error("[ProposalPanel] session fetch failed:", err);
         fetchedRef.current = null;
+        setSessionExpired(true);
       });
   }, [isOpen, sessionKey, setSessionData]);
 
@@ -234,6 +234,7 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
       fetchedRef.current = null;
       setTemplates([]);
       setCoverages([]);
+      setSessionExpired(false);
     }
   }, [isOpen]);
 
@@ -280,6 +281,55 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
       setTemplateLoading(false);
     }
   }, [analysis, setPhase]);
+
+  // Upload template file and refresh coverage
+  const handleTemplateUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/crm/templates", { method: "POST", body: form });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Upload failed" }));
+          console.error("[ProposalPanel] template upload failed:", err);
+        }
+      }
+      // Re-fetch templates and recompute coverage
+      const res = await fetch("/api/crm/templates");
+      const result = await res.json();
+      const tpls: TemplateInfo[] = result.templates ?? [];
+      setTemplates(tpls);
+
+      const rationale = analysis?.rationale as Record<string, unknown> | undefined;
+      const recs = (rationale?.serviceRecommendations ?? []) as Array<{
+        service: string;
+        relevance: string;
+      }>;
+      const coverageList: ServiceCoverage[] = recs.map((rec) => {
+        const match = tpls.find(
+          (t) =>
+            t.serviceName &&
+            (t.serviceName.includes(rec.service) ||
+              rec.service.includes(t.serviceName)),
+        );
+        return {
+          service: rec.service,
+          relevance: rec.relevance,
+          hasTemplate: !!match,
+          templateName: match?.name,
+        };
+      });
+      setCoverages(coverageList);
+    } catch (err) {
+      console.error("[ProposalPanel] template upload error:", err);
+    } finally {
+      setUploading(false);
+    }
+  }, [analysis]);
 
   // Enter style setup phase: auto-infer style from CRM data
   const handleStartStyleSetup = useCallback(() => {
@@ -343,7 +393,7 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
 
   if (!isOpen) return null;
 
-  // Loading session
+  // Loading session or session expired
   if (!data || !analysis) {
     return (
       <PanelShell
@@ -352,8 +402,21 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
         onResizeStart={handlePanelResizeStart}
       >
         <PanelHeader onClose={handleClose} />
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
+          {sessionExpired ? (
+            <>
+              <AlertTriangle className="h-8 w-8 text-amber-500" />
+              <p className="text-sm font-medium">セッションの有効期限が切れました</p>
+              <p className="text-xs text-muted-foreground text-center">
+                分析データは一定時間で失効します。チャットで再度「分析して」と依頼してください。
+              </p>
+              <Button variant="outline" size="sm" onClick={handleClose}>
+                閉じる
+              </Button>
+            </>
+          ) : (
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          )}
         </div>
       </PanelShell>
     );
@@ -522,12 +585,36 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
                   )}
                 </div>
 
-                {templates.length > 0 && coverages.some((c) => !c.hasTemplate) && (
-                  <p className="text-xs text-muted-foreground">
-                    テンプレートが不足していても提案書は生成できます。
-                    より高品質な提案書が必要な場合は、サービス紹介資料をアップロードしてください。
-                  </p>
-                )}
+                {/* Template upload */}
+                <div className="rounded-lg border border-dashed p-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.pptx,.ppt,.docx,.doc,.txt,.xlsx,.xls"
+                    multiple
+                    className="hidden"
+                    onChange={handleTemplateUpload}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      サービス紹介資料や提案テンプレートをアップロードすると、より高品質な提案書が生成されます。
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploading ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      {uploading ? "アップロード中..." : "テンプレート追加"}
+                    </Button>
+                  </div>
+                </div>
               </>
             )}
           </>

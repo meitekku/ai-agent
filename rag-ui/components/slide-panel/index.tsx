@@ -89,6 +89,7 @@ export function SlidePanel() {
 
   // Export
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Fullscreen presentation
   const [fullscreen, setFullscreen] = useState(false);
@@ -348,6 +349,7 @@ export function SlidePanel() {
       sections: SlideSection[],
       title: string,
       existingSlides?: GeneratedSlide[],
+      renderStyleOptions?: import("@/lib/slide-types").StyleOptions | null,
     ) => {
       if (sections.length === 0) return;
 
@@ -399,6 +401,7 @@ export function SlidePanel() {
                     total_slides: sections.length,
                     deck_title: title,
                     slide_type: section.type,
+                    style_options: renderStyleOptions || undefined,
                   }),
                   signal: controller.signal,
                 },
@@ -479,13 +482,13 @@ export function SlidePanel() {
 
   const startGeneration = useCallback(() => {
     setGeneratedSlides([]);
-    renderSlides(slideSections, deckTitle);
-  }, [slideSections, deckTitle, renderSlides]);
+    renderSlides(slideSections, deckTitle, undefined, styleOptions);
+  }, [slideSections, deckTitle, styleOptions, renderSlides]);
 
   // Retry only failed slides
   const retryFailed = useCallback(() => {
-    renderSlides(slideSections, deckTitle, generatedSlides);
-  }, [slideSections, deckTitle, generatedSlides, renderSlides]);
+    renderSlides(slideSections, deckTitle, generatedSlides, styleOptions);
+  }, [slideSections, deckTitle, generatedSlides, styleOptions, renderSlides]);
 
   // ============================================================
   // Auto-save after generation
@@ -587,6 +590,63 @@ export function SlidePanel() {
   // PPTX Export
   // ============================================================
 
+  /** Render a slide iframe to PNG data URL via html2canvas.
+   *  Captures directly inside the iframe where Tailwind CSS is already processed,
+   *  so all styles are faithfully reproduced (no computed-style copying needed). */
+  const captureSlideAsPng = useCallback(async (
+    html2canvas: (element: HTMLElement, options?: Record<string, unknown>) => Promise<HTMLCanvasElement>,
+    slideHtml: string,
+    slideTitle: string,
+  ): Promise<string> => {
+    const container = document.createElement("div");
+    container.style.cssText =
+      "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
+    document.body.appendChild(container);
+
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "width:1280px;height:720px;border:none;";
+    container.appendChild(iframe);
+    iframe.srcdoc = slideSrcDoc(slideHtml);
+
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+    });
+    // Wait for Tailwind CSS to process + Google Fonts to load + Lucide icons to render
+    await new Promise((r) => setTimeout(r, 2500));
+
+    let png: string;
+    try {
+      const iframeBody = iframe.contentDocument!.body;
+
+      // Capture directly inside the iframe — Tailwind styles are fully resolved here
+      const canvas = await html2canvas(iframeBody, {
+        width: 1280,
+        height: 720,
+        scale: 2,
+        useCORS: true,
+        backgroundColor: null,
+        // html2canvas uses the element's ownerDocument, which is the iframe document
+        // where Tailwind CSS has already been applied
+      });
+      png = canvas.toDataURL("image/png");
+    } catch {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, 1280, 720);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 40px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(slideTitle || "Slide", 640, 360);
+      png = canvas.toDataURL("image/png");
+    }
+    document.body.removeChild(container);
+    return png;
+  }, []);
+
   const handleExport = useCallback(async () => {
     const validSlides = generatedSlides.filter((s) => !s.failed);
     if (validSlides.length === 0) return;
@@ -597,102 +657,8 @@ export function SlidePanel() {
       const pngs: string[] = [];
 
       for (let i = 0; i < validSlides.length; i++) {
-        const container = document.createElement("div");
-        container.style.cssText =
-          "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-        document.body.appendChild(container);
-
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText = "width:1280px;height:720px;border:none;";
-        container.appendChild(iframe);
-        iframe.srcdoc = slideSrcDoc(validSlides[i].html);
-
-        await new Promise<void>((resolve) => {
-          iframe.onload = () => resolve();
-        });
-        await new Promise((r) => setTimeout(r, 2000));
-
-        try {
-          const iframeDoc = iframe.contentDocument!;
-          const iframeWin = iframe.contentWindow!;
-          const sourceBody = iframeDoc.body;
-
-          const wrapper = document.createElement("div");
-          wrapper.style.cssText =
-            "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-          const bodyComputed = iframeWin.getComputedStyle(sourceBody);
-          wrapper.style.background = bodyComputed.background;
-          wrapper.style.fontFamily = bodyComputed.fontFamily;
-          wrapper.innerHTML = sourceBody.innerHTML;
-          document.body.appendChild(wrapper);
-
-          const sourceEls = sourceBody.querySelectorAll("*");
-          const cloneEls = wrapper.querySelectorAll("*");
-          const styleProps = [
-            "display",
-            "position",
-            "top",
-            "right",
-            "bottom",
-            "left",
-            "width",
-            "height",
-            "margin",
-            "padding",
-            "border",
-            "border-radius",
-            "background",
-            "background-color",
-            "color",
-            "font-size",
-            "font-weight",
-            "font-family",
-            "line-height",
-            "text-align",
-            "flex-direction",
-            "align-items",
-            "justify-content",
-            "gap",
-            "overflow",
-            "opacity",
-            "box-shadow",
-            "transform",
-          ];
-
-          for (let j = 0; j < sourceEls.length && j < cloneEls.length; j++) {
-            const computed = iframeWin.getComputedStyle(sourceEls[j]);
-            const el = cloneEls[j] as HTMLElement;
-            if (!el?.style) continue;
-            for (const prop of styleProps) {
-              const val = computed.getPropertyValue(prop);
-              if (val) el.style.setProperty(prop, val);
-            }
-          }
-
-          const canvas = await html2canvas(wrapper, {
-            width: 1280,
-            height: 720,
-            scale: 2,
-            useCORS: true,
-            backgroundColor: null,
-          });
-          pngs.push(canvas.toDataURL("image/png"));
-          document.body.removeChild(wrapper);
-        } catch {
-          const canvas = document.createElement("canvas");
-          canvas.width = 1280;
-          canvas.height = 720;
-          const ctx = canvas.getContext("2d")!;
-          ctx.fillStyle = "#0f172a";
-          ctx.fillRect(0, 0, 1280, 720);
-          ctx.fillStyle = "#fff";
-          ctx.font = "bold 40px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(validSlides[i].title || "Slide", 640, 360);
-          pngs.push(canvas.toDataURL("image/png"));
-        }
-        document.body.removeChild(container);
+        const png = await captureSlideAsPng(html2canvas, validSlides[i].html, validSlides[i].title);
+        pngs.push(png);
       }
 
       const res = await fetch("/api/slides/pptx", {
@@ -725,7 +691,7 @@ export function SlidePanel() {
   const handlePdfExport = useCallback(async () => {
     const validSlides = generatedSlides.filter((s) => !s.failed);
     if (validSlides.length === 0) return;
-    setExporting(true);
+    setExportingPdf(true);
 
     try {
       const html2canvas = (await import("html2canvas")).default;
@@ -739,55 +705,7 @@ export function SlidePanel() {
       });
 
       for (let i = 0; i < validSlides.length; i++) {
-        const container = document.createElement("div");
-        container.style.cssText =
-          "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-        document.body.appendChild(container);
-
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText = "width:1280px;height:720px;border:none;";
-        container.appendChild(iframe);
-        iframe.srcdoc = slideSrcDoc(validSlides[i].html);
-
-        await new Promise<void>((resolve) => {
-          iframe.onload = () => resolve();
-        });
-        await new Promise((r) => setTimeout(r, 2000));
-
-        let png: string;
-        try {
-          const iframeDoc = iframe.contentDocument!;
-          const iframeWin = iframe.contentWindow!;
-          const sourceBody = iframeDoc.body;
-
-          const wrapper = document.createElement("div");
-          wrapper.style.cssText =
-            "position:fixed;top:0;left:0;width:1280px;height:720px;overflow:hidden;opacity:0;pointer-events:none;z-index:-9999;";
-          const bodyComputed = iframeWin.getComputedStyle(sourceBody);
-          wrapper.style.background = bodyComputed.background;
-          wrapper.innerHTML = sourceBody.innerHTML;
-          document.body.appendChild(wrapper);
-
-          const canvas = await html2canvas(wrapper, {
-            width: 1280,
-            height: 720,
-            scale: 2,
-            useCORS: true,
-            backgroundColor: null,
-          });
-          png = canvas.toDataURL("image/png");
-          document.body.removeChild(wrapper);
-        } catch {
-          const canvas = document.createElement("canvas");
-          canvas.width = 1280;
-          canvas.height = 720;
-          const ctx = canvas.getContext("2d")!;
-          ctx.fillStyle = "#0f172a";
-          ctx.fillRect(0, 0, 1280, 720);
-          png = canvas.toDataURL("image/png");
-        }
-        document.body.removeChild(container);
-
+        const png = await captureSlideAsPng(html2canvas, validSlides[i].html, validSlides[i].title);
         if (i > 0) doc.addPage([SLIDE_W_MM, SLIDE_H_MM], "landscape");
         const base64 = png.includes(",") ? png.split(",")[1] : png;
         doc.addImage(base64, "PNG", 0, 0, SLIDE_W_MM, SLIDE_H_MM);
@@ -801,9 +719,9 @@ export function SlidePanel() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF export failed");
     } finally {
-      setExporting(false);
+      setExportingPdf(false);
     }
-  }, [generatedSlides, deckTitle]);
+  }, [generatedSlides, deckTitle, captureSlideAsPng]);
 
   // ============================================================
   // Editing: full drag/resize/font system (operates on iframe contentDocument)
@@ -1153,9 +1071,29 @@ export function SlidePanel() {
       cleanup = initEditing();
     };
 
+    // iframe may not be ready immediately after activeIndex change (React remounts it).
+    // Try init immediately, then listen for load, and also poll briefly as fallback.
     tryInit();
     if (!cleanup) {
       iframe.addEventListener("load", onLoad, { once: true });
+      // Fallback: poll for iframe readiness (handles React key-based remount timing)
+      const poll = setInterval(() => {
+        const currentIframe = iframeRef.current;
+        if (!currentIframe) return;
+        try {
+          if (currentIframe.contentDocument?.readyState === "complete") {
+            clearInterval(poll);
+            if (!cleanup) cleanup = initEditing();
+          }
+        } catch { /* cross-origin */ }
+      }, 200);
+      const pollTimeout = setTimeout(() => clearInterval(poll), 3000);
+      return () => {
+        iframe.removeEventListener("load", onLoad);
+        clearInterval(poll);
+        clearTimeout(pollTimeout);
+        cleanup?.();
+      };
     }
 
     return () => {
@@ -1631,6 +1569,34 @@ export function SlidePanel() {
               {failedCount}枚再試行
             </button>
           )}
+          {/* Zoom controls */}
+          <div className="flex items-center gap-0.5 rounded-md border border-border/50 px-0.5">
+            <button
+              onClick={() => {
+                const s = Math.max(0.2, scaleRef.current - 0.1);
+                scaleRef.current = s;
+                setScale(s);
+              }}
+              className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              title="縮小"
+            >
+              <MinusIcon className="size-3" />
+            </button>
+            <span className="min-w-[3ch] text-center text-[10px] text-muted-foreground tabular-nums">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => {
+                const s = Math.min(1.5, scaleRef.current + 0.1);
+                scaleRef.current = s;
+                setScale(s);
+              }}
+              className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              title="拡大"
+            >
+              <PlusIcon className="size-3" />
+            </button>
+          </div>
           <button
             onClick={() => setFullscreen(true)}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
@@ -1677,7 +1643,7 @@ export function SlidePanel() {
           </button>
           <button
             onClick={handleExport}
-            disabled={exporting}
+            disabled={exporting || exportingPdf}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
             title="PPTX エクスポート"
           >
@@ -1689,11 +1655,15 @@ export function SlidePanel() {
           </button>
           <button
             onClick={handlePdfExport}
-            disabled={exporting}
+            disabled={exporting || exportingPdf}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
             title="PDF エクスポート"
           >
-            <FileDownIcon className="size-3.5" />
+            {exportingPdf ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : (
+              <FileDownIcon className="size-3.5" />
+            )}
           </button>
         </div>
       )}

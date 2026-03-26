@@ -829,17 +829,30 @@ export function buildRenderPrompt(
       styleSection = `\n【スタイル指定】\n${parts.join("\n")}\n`;
   }
 
+  // Build global context: all slide titles so LLM understands the full deck structure
+  const allSlidesContext = slideSection.includes("## スライド")
+    ? ""
+    : ""; // Plan sections are passed individually, add deck-level context below
+
   return `以下の設計指示に従い、プレゼンスライド1枚分のリッチなHTML+インラインCSSを出力してください。
 <div>タグ1つだけを出力。説明文・マークダウン不要。
 
 【基本情報】
 デッキ: ${deckTitle} | ページ: ${slideIndex + 1}/${totalSlides} | タイプ: ${slideType} | タイトル: ${slideTitle}
 
+【デッキ全体のデザイン統一ルール（最重要）】
+このスライドは ${totalSlides} 枚のデッキの ${slideIndex + 1} 枚目です。
+デッキ全体で以下を統一してください：
+- **配色**: ${design || (styleOptions?.colorStyle ? `メインカラー #${styleOptions.colorStyle}` : "白背景、アクセント#3B82F6")} — 全スライドで同じ配色を使用
+- **ヘッダー**: 全ページ同じ位置・同じスタイルのヘッダー帯を使用${styleOptions?.colorStyle ? `（背景色: #${styleOptions.colorStyle}）` : ""}
+- **フォント**: ${styleOptions?.font || "'Noto Sans JP', 'Inter', sans-serif"} — 全スライド共通
+- **レイアウト基盤**: ヘッダー帯（上部）+ コンテンツ領域（中央）+ ページ番号（右下 ${slideIndex + 1}/${totalSlides}）
+- **ステップ/番号表記**: 「Step3」のように途中の番号だけを使わないこと。このスライドで連番を使う場合は、このスライド内で完結する連番にする（例: 1, 2, 3）
+${styleSection}
 【ビジュアルデザイン指示】（CSS/HTMLに反映。テキストとして表示しないこと）
 レイアウト方式: ${layout}
-配色: ${design || "白背景、アクセント#3B82F6"}
 ${visualDirective}
-${styleSection}
+
 【表示テキスト】（以下のみをHTMLテキストノードとして表示）
 ${textList}
 
@@ -851,6 +864,7 @@ ${textList}
 5. SVGアイコン、CSSグラデーション、カード、テーブル等のビジュアル要素を積極的に使う
 6. 単にテキストを羅列するだけのスライドは絶対に作らない
 7. 全タグを閉じ、出力の最後は必ず </div> にする
+8. ページ番号を右下に小さく表示: ${slideIndex + 1} / ${totalSlides}
 ${exampleHtml}
 ━━━ 出力（<div>のみ） ━━━`;
 }

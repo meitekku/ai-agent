@@ -382,6 +382,17 @@ export function ChatPage({
     useProposalPanelStore.getState().close();
     if (initialConvId) {
       useSlidePanelStore.getState().restoreForConversation(initialConvId);
+      // If no in-memory state was restored, check DB for associated deck
+      const restored = useSlidePanelStore.getState();
+      if (!restored.conversationDeckId && !restored.deckId) {
+        import("@/lib/slide-api").then(({ fetchDeckIdForConversation }) =>
+          fetchDeckIdForConversation(initialConvId).then((deckId) => {
+            if (deckId) {
+              useSlidePanelStore.getState().setConversationDeckId(deckId);
+            }
+          }),
+        );
+      }
     } else {
       useSlidePanelStore.getState().resetPanel();
     }

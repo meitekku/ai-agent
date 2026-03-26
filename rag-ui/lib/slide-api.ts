@@ -21,6 +21,19 @@ export async function fetchSlideHistory(
   return data.items || [];
 }
 
+export async function fetchDeckIdForConversation(
+  conversationId: string,
+): Promise<number | null> {
+  try {
+    const res = await fetch(`/api/history/slides?conversation_id=${encodeURIComponent(conversationId)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.deckId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchSlideDeckDetail(
   id: number,
 ): Promise<SlideDeckDetail> {

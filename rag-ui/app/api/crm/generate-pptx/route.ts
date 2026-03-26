@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     // Support sessionKey-based lookup
     let payload = body;
     if (body.sessionKey && !body.data) {
-      const session = getSession(body.sessionKey);
+      const session = await getSession(body.sessionKey);
       if (!session) {
         return Response.json(
           { error: "Session not found or expired" },

@@ -235,7 +235,7 @@ function buildSystemPrompt(
 
   // generateSlides ツール説明
   prompt += `
-- **generateSlides**: ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で質問せず直接呼び出す。ユーザーが指定したテーマ・内容・追加要望を topic/content/instructions にまとめて渡す。
+- **generateSlides**: 商談・提案書・CRM に関係ない一般的なスライド作成依頼の場合のみ使用（例: 「機械学習の解説スライドを作って」「チーム紹介スライドを作って」）。CRM の商談データや提案書が関係する場合は必ず fetchAndAnalyze ワークフローを使うこと。
   ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。
 - **suggestSlides**: 回答がスライド化に適している場合（解説・分析・比較・手順など構造化された内容）に呼び出す。短い挨拶・雑談・簡単な回答では不要。テキスト回答と同じステップで呼び出すこと。`;
 
@@ -272,8 +272,8 @@ function buildSystemPrompt(
 
 **重要ルール**:
 - fetchAndAnalyze 完了後も、追加で searchKnowledgeBase / webSearch を呼んで情報を補強してよい。多くの情報源を活用するほど分析の質が上がる
-- fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は呼ばない**こと（ProposalPanel と機能が重複するため）。ただしユーザーが明示的に「スライドを作って」と依頼した場合は generateSlides を使ってよい
-- ユーザーが「提案書を作って」等と直接依頼した場合も、listDeals から始めてワークフロー全体を実行する
+- fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は絶対に呼ばない**こと（ProposalPanel と機能が重複するため）
+- ユーザーが「提案書を作って」「スライドを作って」「プレゼン資料を作って」等と依頼した場合も、**generateSlides ではなく fetchAndAnalyze ワークフロー**（listDeals → fetchAndAnalyze）を使う。提案書・スライド生成は常にこのワークフロー経由で行う
 
 **データソース分離（必須）**:
 - Salesforce の商談を分析する場合、Kintone のデータ（モックデータ含む）を混ぜてはいけない。逆も同様
@@ -307,9 +307,10 @@ KB の情報とウェブの情報が矛盾する場合は、両方の情報を�
   // 出典ルール
   prompt += `
 
-## 出典の記載
-- KB 出典: ナレッジベース名を明示して引用する（例:「XXXナレッジベースによると…」）。段落末尾に「（出典: ドキュメント名, p.X）」形式。複数は「（出典: Doc A, p.3; Doc B, p.7）」
-- ウェブ出典: [タイトル](URL) 形式のインラインリンク
+## 出典の記載（厳守）
+出典は必ず**該当する文の直後**にインラインで記載すること。段落末尾やまとめ箇所への一括記載は禁止。
+- KB 出典: 該当する文の直後に「（出典: ドキュメント名, p.X）」を付ける。例:「離職率は15%に達しています（出典: 人事レポート2025, p.12）。これは業界平均を上回る水準です（出典: 業界動向調査, p.5）。」
+- ウェブ出典: 該当する文の直後に [タイトル](URL) 形式で付ける。例:「売上は前年比20%増加した（[日経記事](https://...)）。」
 - 自身の知識: 出典タグ不要
 - 検索結果にない情報を「ドキュメントによると」と偽って引用しないこと。出典が不明な場合は推測・捏造せず省略する`;
 
@@ -777,8 +778,8 @@ export async function POST(req: Request) {
   // generateSlides: signal tool for conversational slide generation
   tools.generateSlides = tool({
     description:
-      "ユーザーの依頼に基づいてプレゼンテーションスライドを生成します。" +
-      "ユーザーがスライド/プレゼン/発表資料の作成を依頼した場合、会話で確認せず直接呼び出してください。",
+      "商談・提案書・CRM に関係ない一般的なプレゼンテーションスライドを生成します。" +
+      "提案書やCRM関連のスライドには使用しないでください（fetchAndAnalyze ワークフローを使うこと）。",
     inputSchema: z.object({
       topic: z.string().describe("スライドのテーマ/タイトル"),
       content: z
@@ -939,22 +940,24 @@ export async function POST(req: Request) {
           }
           console.log(`[chat] 📊 fetchAndAnalyze: data fetched (${Date.now() - t0}ms)`);
 
-          // 2. KB 全検索（並列）
-          const contextParts: string[] = [];
-          try {
-            const allKbs = await listKBs();
-            const kbsWithDocs = allKbs.filter((k) => k.doc_count > 0);
-            const account = sfData.account as Record<string, unknown> | undefined;
-            const opp = sfData.opportunity as Record<string, unknown> | undefined;
-            const searchQuery = [account?.Name, opp?.Name, account?.Industry]
-              .filter(Boolean)
-              .join(" ");
-            if (searchQuery && kbsWithDocs.length > 0) {
+          // 2+3. KB 全検索 + Web 検索を並列実行
+          const account = sfData.account as Record<string, unknown> | undefined;
+          const opp = sfData.opportunity as Record<string, unknown> | undefined;
+
+          const kbSearchPromise = (async (): Promise<string[]> => {
+            try {
+              const allKbs = await listKBs();
+              const kbsWithDocs = allKbs.filter((k) => k.doc_count > 0);
+              const searchQuery = [account?.Name, opp?.Name, account?.Industry]
+                .filter(Boolean)
+                .join(" ");
+              if (!searchQuery || kbsWithDocs.length === 0) return [];
               const kbResults = await Promise.allSettled(
                 kbsWithDocs.map((kb) =>
                   searchOnly(searchQuery, { topK: 5, kb: kb.slug }),
                 ),
               );
+              const parts: string[] = [];
               for (let i = 0; i < kbResults.length; i++) {
                 const r = kbResults[i];
                 if (r.status === "fulfilled" && r.value.results?.length > 0) {
@@ -963,58 +966,60 @@ export async function POST(req: Request) {
                     .map((doc: SearchResult) => doc.content)
                     .filter(Boolean)
                     .join("\n");
-                  if (texts) contextParts.push(`【${kbName}】\n${texts}`);
+                  if (texts) parts.push(`【${kbName}】\n${texts}`);
                 }
               }
               console.log(
-                `[chat] 📊 fetchAndAnalyze: KB search done, ${contextParts.length} KBs with results`,
+                `[chat] 📊 fetchAndAnalyze: KB search done, ${parts.length} KBs with results`,
               );
+              return parts;
+            } catch (e) {
+              console.error("[chat] KB search failed:", e);
+              return [];
             }
-          } catch (e) {
-            console.error("[chat] KB search failed:", e);
-          }
+          })();
 
-          // 3. Web 検索（Tavily あれば）
-          if (hasTavily) {
+          const webSearchPromise = (async (): Promise<string[]> => {
+            if (!hasTavily) return [];
             try {
-              const account = sfData.account as Record<string, unknown> | undefined;
               const webQuery = [account?.Name, account?.Industry]
                 .filter(Boolean)
                 .join(" ");
-              if (webQuery) {
-                const webRes = await fetch("https://api.tavily.com/search", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${TAVILY_API_KEY}`,
-                  },
-                  body: JSON.stringify({
-                    query: webQuery,
-                    max_results: 3,
-                    search_depth: "basic",
-                    topic: "general",
-                    include_answer: true,
-                  }),
-                });
-                if (webRes.ok) {
-                  const webData = await webRes.json();
-                  const webTexts = (webData.results ?? [])
-                    .map(
-                      (r: { title: string; url: string; content: string }) =>
-                        `${r.title}: ${r.content}`,
-                    )
-                    .join("\n");
-                  if (webTexts) contextParts.push(`【ウェブ検索】\n${webTexts}`);
-                  console.log("[chat] 📊 fetchAndAnalyze: Web search done");
-                }
-              }
+              if (!webQuery) return [];
+              const webRes = await fetch("https://api.tavily.com/search", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${TAVILY_API_KEY}`,
+                },
+                body: JSON.stringify({
+                  query: webQuery,
+                  max_results: 3,
+                  search_depth: "basic",
+                  topic: "general",
+                  include_answer: true,
+                }),
+              });
+              if (!webRes.ok) return [];
+              const webData = await webRes.json();
+              const webTexts = (webData.results ?? [])
+                .map(
+                  (r: { title: string; url: string; content: string }) =>
+                    `${r.title}: ${r.content}`,
+                )
+                .join("\n");
+              console.log("[chat] 📊 fetchAndAnalyze: Web search done");
+              return webTexts ? [`【ウェブ検索】\n${webTexts}`] : [];
             } catch (e) {
               console.error("[chat] Web search failed:", e);
+              return [];
             }
-          }
+          })();
+
+          const [kbParts, webParts] = await Promise.all([kbSearchPromise, webSearchPromise]);
 
           // 4. additionalContext 結合
-          const additionalContext = contextParts.join("\n\n");
+          const additionalContext = [...kbParts, ...webParts].join("\n\n");
 
           // 5. analyzeDeal
           const analyzeRes = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
@@ -1068,9 +1073,9 @@ export async function POST(req: Request) {
         );
         const t0 = Date.now();
         try {
-          const session = getSession(sessionKey);
+          const session = await getSession(sessionKey);
           if (!session) {
-            return { error: "セッションが見つかりません（期限切れの可能性）" };
+            return { error: "セッションが見つかりません" };
           }
           const res = await fetch(`${CRM_SERVICE_URL}/deals/revise-rationale`, {
             method: "POST",
@@ -1433,13 +1438,18 @@ ${op.instruction}
         execute: async ({ writer }) => {
           writer.write({ type: "start-step" });
 
-          if (result.text) {
+          // Strip markdown/HTML image refs from text — images are already sent as file parts
+          const cleanText = result.text
+            ?.replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+            .replace(/<img\s[^>]*\/?>/gi, "")
+            .trim();
+          if (cleanText) {
             const textId = nanoid();
             writer.write({ type: "text-start", id: textId });
             writer.write({
               type: "text-delta",
               id: textId,
-              delta: result.text,
+              delta: cleanText,
             });
             writer.write({ type: "text-end", id: textId });
           }

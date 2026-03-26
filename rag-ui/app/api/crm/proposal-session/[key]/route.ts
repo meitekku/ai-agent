@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ key: string }> },
 ) {
   const { key } = await params;
-  const session = getSession(key);
+  const session = await getSession(key);
   if (!session) {
     return Response.json({ error: "Session not found or expired" }, { status: 404 });
   }

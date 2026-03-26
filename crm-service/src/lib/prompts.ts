@@ -35,6 +35,12 @@ ${parts.join("\n")}
 2. **AI RAG Agent**: RAGベースのAI質問応答システム、社内ナレッジ検索、ドキュメント自動分類・検索、商談分析・提案書自動生成
 3. **書きあげクン**: AI音声文字起こし、会議録・議事録自動作成、多言語対応、要約・キーポイント抽出
 
+### サービス推薦ルール（重要）
+- **顧客の課題に本当に関連するサービスのみを推薦すること**。全サービスを無理に含める必要はない
+- 顧客の課題・ニーズに明確な関連がないサービスは推薦しない（例: 会議録のニーズがなければ書きあげクンは不要）
+- 推薦数は1〜3個。課題に直結するものだけを厳選する
+- relevance は正確に判定する: primary（核心課題の解決）、secondary（補完的価値）、optional（あれば便利だが必須ではない）
+
 ${templateSection}
 ${additionalContext ? `\n## 追加コンテキスト（ナレッジベース・ウェブ検索等の外部情報）\n以下の情報も分析に反映してください。顧客の業界動向、競合情報、技術トレンド等が含まれる場合は、課題分析やサービス推薦の根拠として活用してください。\n\n${additionalContext}` : ""}
 
@@ -215,28 +221,29 @@ export function buildPptxPrompt(data: SFData, analysis: AnalysisResult, template
     sections.push(`## メール履歴（${data.emails.length}件）\n  ${data.emails.slice(0, 8).map((e: R) => `[${e.Date || ""}] ${e.Subject || ""}`).join("\n  ")}`);
   }
 
-  sections.push(`## 分析結果
-- 受注確率: ${analysis.winProbability}%
-- ディールスコア: ${analysis.dealHealthScore}/100
-- エンゲージメント: ${analysis.engagementLevel}
-- キードライバー: ${analysis.keyDrivers.join("、")}
-- リスク要因: ${analysis.riskFactors.join("、")}
-- 推奨アクション: ${analysis.recommendedActions.join("、")}
-- シナリオ楽観: 確率${Math.round(analysis.scenarios.optimistic.probability * 100)}% 金額${fmtAmount(analysis.scenarios.optimistic.expectedRevenue)}
-- シナリオ標準: 確率${Math.round(analysis.scenarios.base.probability * 100)}% 金額${fmtAmount(analysis.scenarios.base.expectedRevenue)}
-- シナリオ悲観: 確率${Math.round(analysis.scenarios.pessimistic.probability * 100)}% 金額${fmtAmount(analysis.scenarios.pessimistic.expectedRevenue)}`);
+  // NOTE: 受注確率・ディールスコア・シナリオ等の内部分析データは
+  // 顧客向け提案書に含めてはいけない（社内報告用のみ）
 
   if (analysis.rationale) {
     const r = analysis.rationale;
-    const rationaleLines: string[] = ["## 分析根拠（提案書の核となる内容 — 必ず提案書に反映すること）"];
+    const rationaleLines: string[] = ["## 提案書の核となる内容（必ず提案書に反映すること）"];
     if (r.customerChallenges.length > 0) rationaleLines.push(`### 顧客の課題\n${r.customerChallenges.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-    if (r.serviceRecommendations.length > 0) rationaleLines.push(`### 推薦サービス\n${r.serviceRecommendations.map((s) => `- **${s.service}**（${s.relevance}）: ${s.reason}\n  活用機能: ${s.features.join("、")}`).join("\n")}`);
+    if (r.serviceRecommendations.length > 0) rationaleLines.push(`### 推薦サービス\n${r.serviceRecommendations.map((s) => `- **${s.service}**: ${s.reason}\n  活用機能: ${s.features.join("、")}`).join("\n")}`);
     if (r.combinedSolution) rationaleLines.push(`### 総合ソリューション\n${r.combinedSolution}`);
     if (r.existingProposalHints.length > 0) rationaleLines.push(`### 提案書に含めるべきポイント\n${r.existingProposalHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}`);
+    rationaleLines.push(`### 推奨アクション\n${analysis.recommendedActions.join("、")}`);
     sections.push(rationaleLines.join("\n\n"));
   }
 
-  return `あなたはプレゼンテーションデザイナーです。以下の顧客の全情報と分析結果・分析根拠に基づいて、提案書のスライド構成をJSON形式で設計してください。
+  return `あなたはプレゼンテーションデザイナーです。以下の顧客情報と分析根拠に基づいて、**顧客向け提案書**のスライド構成をJSON形式で設計してください。
+
+**重要**: これは顧客に直接提示する提案書です。以下の内部分析データは絶対にスライドに含めないでください：
+- 受注確率、ディールスコア、健全度などの内部スコア
+- シナリオ分析（楽観/標準/悲観）
+- リスク要因（社内用）
+- エンゲージメントレベル
+
+提案書に含めるべき内容：顧客の課題 → 解決策 → サービス詳細 → 導入効果 → 次のステップ
 
 ${sections.join("\n\n")}
 ${templateContent}
