@@ -20,6 +20,7 @@ import {
   MessageSquareIcon,
   FileTextIcon,
   SparklesIcon,
+  CalendarClockIcon,
   XIcon,
   Trash2Icon,
   PlusIcon,
@@ -50,6 +51,7 @@ const NAV_ITEMS = [
   { href: "/new", icon: PlusIcon, label: "新規チャット" },
   { href: "/documents", icon: FileTextIcon, label: "ナレッジベース" },
   { href: "/skills", icon: SparklesIcon, label: "スキル" },
+  { href: "/scheduler", icon: CalendarClockIcon, label: "スケジューラ" },
 ] as const;
 
 // ---------------------------------------------------------------------------

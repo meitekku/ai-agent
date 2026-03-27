@@ -23,6 +23,7 @@ import {
   Loader2Icon,
   AlertCircleIcon,
 } from "lucide-react";
+import { PageContainer } from "@/components/page-container";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,7 +99,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
     <div className="flex flex-1 flex-col min-h-0">
       {/* Header */}
       <div className="shrink-0 border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 py-5">
+        <PageContainer className="py-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
@@ -119,12 +120,12 @@ export const DocumentsPage = memo(function DocumentsPage() {
               新規ナレッジベース
             </Button>
           </div>
-        </div>
+        </PageContainer>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mx-auto max-w-3xl w-full px-6 pt-4">
+        <PageContainer className="pt-4">
           <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <AlertCircleIcon className="size-4 shrink-0" />
             <span>{error}</span>
@@ -137,12 +138,12 @@ export const DocumentsPage = memo(function DocumentsPage() {
               ×
             </Button>
           </div>
-        </div>
+        </PageContainer>
       )}
 
       {/* KB cards */}
-      <ScrollArea className="flex-1">
-        <div className="mx-auto max-w-3xl px-6 py-4">
+      <ScrollArea className="flex-1 min-h-0">
+        <PageContainer className="py-4">
           {isPending ? (
             <div className="flex items-center justify-center py-16">
               <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
@@ -193,7 +194,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
               ))}
             </div>
           )}
-        </div>
+        </PageContainer>
       </ScrollArea>
 
       {/* Create KB dialog */}

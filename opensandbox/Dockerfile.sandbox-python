@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+# System tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    imagemagick \
+    curl \
+    jq \
+    zip \
+    unzip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Remove ImageMagick default PDF policy restriction
+RUN sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
+
+# Python data/viz libraries
+RUN pip install --no-cache-dir \
+    pandas \
+    matplotlib \
+    seaborn \
+    openpyxl \
+    xlsxwriter \
+    requests \
+    beautifulsoup4 \
+    Pillow \
+    pydantic
+
+WORKDIR /workspace

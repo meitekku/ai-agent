@@ -1,5 +1,6 @@
-import { generateContent, type Content } from "./gemini";
-import { TOOL_DECLARATIONS, executeTool } from "./tools";
+import { generateText, stepCountIs } from "ai";
+import { getModel } from "./ai-provider";
+import { buildTools } from "./tools";
 import { updateExecution } from "./db";
 import { notifySuccess, notifyFailure, notifyTimeout } from "./notify";
 import { sendNotificationEmail } from "./email";
@@ -21,7 +22,7 @@ interface TaskPayload {
 
 interface ToolCallLog {
   tool: string;
-  args: Record<string, string>;
+  args: Record<string, unknown>;
   result_summary: string;
   duration_ms: number;
 }
@@ -35,18 +36,23 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     started_at: new Date(),
   });
 
-  // Filter tool declarations by allowed list
-  const toolDecls =
+  // Build tools with execution context
+  const allTools = buildTools(payload.executionId);
+  const tools =
     payload.allowedTools.length > 0
-      ? TOOL_DECLARATIONS.filter((t) =>
-          payload.allowedTools.includes(t.name),
+      ? Object.fromEntries(
+          Object.entries(allTools).filter(([k]) =>
+            payload.allowedTools.includes(k),
+          ),
         )
-      : TOOL_DECLARATIONS;
+      : allTools;
 
-  // Build system prompt
   const systemPrompt = [
     "You are an autonomous task executor. Complete the given task using the available tools.",
-    "Be concise and focused. Report results clearly.",
+    "",
+    "You have a createFile tool to save downloadable files (.csv, .md, .json, etc). Judge for yourself when results are better delivered as files vs inline text.",
+    "",
+    "Be concise and focused. Write in the same language as the user's instruction.",
     payload.kbSlug
       ? `You have access to knowledge base "${payload.kbSlug}".`
       : "",
@@ -54,112 +60,72 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     .filter(Boolean)
     .join("\n");
 
-  const contents: Content[] = [
-    { role: "user", parts: [{ text: payload.prompt }] },
-  ];
-
+  // Collect per-tool durations via onStepFinish
   const toolCallLog: ToolCallLog[] = [];
-  let finalResult = "";
-  let promptTokens = 0;
-  let outputTokens = 0;
 
   try {
-    const timeoutMs = payload.timeoutSeconds * 1000;
-
-    for (let i = 0; i < payload.maxToolCalls; i++) {
-      // Check timeout
-      if (Date.now() - startTime > timeoutMs) {
-        const executionMs = Date.now() - startTime;
-        await updateExecution(payload.executionId, {
-          status: "timeout",
-          completed_at: new Date(),
-          tool_calls: toolCallLog,
-          error: "Execution timed out",
-          execution_ms: executionMs,
-        });
-        await notifyTimeout(payload.taskId, payload.executionId, taskName);
-        await sendNotificationEmail({
-          taskName,
-          status: "timeout",
-          executionMs,
-          toolCalls: toolCallLog,
-          cronExpr: payload.cronExpr,
-          executionId: payload.executionId,
-        });
-        return;
-      }
-
-      const result = await generateContent({
-        contents,
-        systemPrompt,
-        tools: toolDecls,
-        maxOutputTokens: 4000,
-        modelOverride: payload.model || undefined,
-      });
-
-      promptTokens += result.promptTokens;
-      outputTokens += result.outputTokens;
-
-      // Check for function calls
-      if (result.functionCalls.length > 0) {
-        // Add model response to history (use _rawParts to preserve thought_signature)
-        contents.push({
-          role: "model",
-          parts: result._rawParts || result.functionCalls.map((fc) => ({
-            functionCall: { name: fc.name, args: fc.args },
-          })),
-        });
-
-        // Execute each function call
-        const functionResponses: Array<{
-          functionResponse: { name: string; response: { result: string } };
-        }> = [];
-
-        for (const fc of result.functionCalls) {
-          const toolStart = Date.now();
-
-          console.log(
-            `[executor] Task ${payload.taskId}: calling ${fc.name}(${JSON.stringify(fc.args).slice(0, 100)})`,
-          );
-
-          const toolResult = await executeTool(fc.name, fc.args);
-          const toolDuration = Date.now() - toolStart;
-
+    const result = await generateText({
+      model: getModel(payload.model || undefined),
+      system: systemPrompt,
+      prompt: payload.prompt,
+      tools,
+      stopWhen: stepCountIs(payload.maxToolCalls),
+      maxTokens: 8192,
+      abortSignal: AbortSignal.timeout(payload.timeoutSeconds * 1000),
+      onStepFinish(event) {
+        const calls = event.toolCalls || [];
+        const results = event.toolResults || [];
+        for (let i = 0; i < calls.length; i++) {
+          const tc = calls[i];
+          const tr = results[i] as any;
+          // AI SDK ToolResult: { type, toolCallId, toolName, output }
+          const output = tr?.output !== undefined ? tr.output : tr?.result !== undefined ? tr.result : tr;
+          const resultStr =
+            typeof output === "string" ? output : JSON.stringify(output ?? "");
           toolCallLog.push({
-            tool: fc.name,
-            args: fc.args,
-            result_summary: toolResult.slice(0, 200),
-            duration_ms: toolDuration,
-          });
-
-          functionResponses.push({
-            functionResponse: {
-              name: fc.name,
-              response: { result: toolResult },
-            },
+            tool: tc.toolName,
+            args: tc.args as Record<string, unknown>,
+            result_summary: resultStr.slice(0, 200),
+            duration_ms: 0,
           });
         }
-
-        // Add function responses to history
-        contents.push({
-          role: "function",
-          parts: functionResponses as any,
-        });
-
-        continue;
-      }
-
-      // No function calls — extract text response
-      finalResult = result.text || "No response generated.";
-      break;
-    }
+      },
+    });
 
     const executionMs = Date.now() - startTime;
+
+    // Debug: log result structure
+    console.log(`[executor] result.text: "${(result.text || "").slice(0, 100)}"`);
+    console.log(`[executor] result.finishReason: ${result.finishReason}`);
+    console.log(`[executor] steps: ${result.steps.length}, maxSteps: ${payload.maxToolCalls}`);
+    for (const [i, step] of result.steps.entries()) {
+      console.log(`[executor]   step[${i}]: finishReason=${step.finishReason} text="${(step.text || "").slice(0, 50)}" toolCalls=${step.toolCalls?.length ?? 0} toolResults=${step.toolResults?.length ?? 0}`);
+    }
+
+    // Use result.usage — Vertex AI uses inputTokens/outputTokens
+    const usage = result.usage as Record<string, number> | undefined;
+    const totalUsage = {
+      prompt: usage?.promptTokens || usage?.inputTokens || 0,
+      output: usage?.completionTokens || usage?.outputTokens || 0,
+    };
+
+    // result.text may be empty if last step was tool-only.
+    // Fall back to last step with text content.
+    let finalResult = result.text || "";
+    if (!finalResult) {
+      for (const step of result.steps) {
+        if (step.text) {
+          finalResult = step.text;
+        }
+      }
+    }
+    if (!finalResult) finalResult = "No response generated.";
+
     await updateExecution(payload.executionId, {
       status: "completed",
       completed_at: new Date(),
-      prompt_tokens: promptTokens,
-      output_tokens: outputTokens,
+      prompt_tokens: totalUsage.prompt,
+      output_tokens: totalUsage.output,
       tool_calls: toolCallLog,
       result: finalResult,
       execution_ms: executionMs,
@@ -188,27 +154,41 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     );
   } catch (err) {
     const executionMs = Date.now() - startTime;
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : "";
-    console.error(`[executor] Full error:`, stack || errorMsg);
+    const isTimeout =
+      err instanceof Error && err.name === "AbortError";
+    const errorMsg = isTimeout
+      ? "Execution timed out"
+      : err instanceof Error
+        ? err.message
+        : String(err);
+
+    if (!isTimeout) {
+      const stack = err instanceof Error ? err.stack : "";
+      console.error(`[executor] Full error:`, stack || errorMsg);
+    }
 
     await updateExecution(payload.executionId, {
-      status: "failed",
+      status: isTimeout ? "timeout" : "failed",
       completed_at: new Date(),
       tool_calls: toolCallLog,
       error: errorMsg,
       execution_ms: executionMs,
     });
 
-    await notifyFailure(
-      payload.taskId,
-      payload.executionId,
-      taskName,
-      errorMsg,
-    );
+    if (isTimeout) {
+      await notifyTimeout(payload.taskId, payload.executionId, taskName);
+    } else {
+      await notifyFailure(
+        payload.taskId,
+        payload.executionId,
+        taskName,
+        errorMsg,
+      );
+    }
+
     await sendNotificationEmail({
       taskName,
-      status: "failure",
+      status: isTimeout ? "timeout" : "failure",
       error: errorMsg,
       executionMs,
       toolCalls: toolCallLog,
@@ -219,8 +199,7 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     });
 
     console.error(
-      `[executor] Task ${payload.taskId} failed after ${executionMs}ms:`,
-      errorMsg,
+      `[executor] Task ${payload.taskId} ${isTimeout ? "timed out" : "failed"} after ${executionMs}ms: ${errorMsg}`,
     );
   }
 }

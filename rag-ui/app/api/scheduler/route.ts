@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
       max_tool_calls: body.max_tool_calls,
       timeout_sec: body.timeout_sec,
       retry_max: body.retry_max,
+      model: body.model,
+      notify_to: body.notify_to,
+      notify_from: body.notify_from,
       enabled: body.enabled,
     });
     return NextResponse.json({ id });

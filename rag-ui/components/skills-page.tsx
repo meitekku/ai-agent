@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PageContainer } from "@/components/page-container";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -339,8 +340,8 @@ export const SkillsPage = memo(function SkillsPage() {
       className="flex flex-1 flex-col min-h-0"
     >
       {/* Page header */}
-      <div className="shrink-0 border-b border-border px-6 py-5">
-        <div className="mx-auto max-w-3xl">
+      <div className="shrink-0 border-b border-border">
+        <PageContainer className="py-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">スキル</h2>
@@ -391,7 +392,7 @@ export const SkillsPage = memo(function SkillsPage() {
               skills.sh
             </TabsTrigger>
           </TabsList>
-        </div>
+        </PageContainer>
       </div>
 
       {/* Local skills tab */}
@@ -399,8 +400,8 @@ export const SkillsPage = memo(function SkillsPage() {
         value="local"
         className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col"
       >
-        <ScrollArea className="flex-1">
-          <div className="mx-auto max-w-3xl px-6 py-4">
+        <ScrollArea className="flex-1 min-h-0">
+          <PageContainer className="py-4">
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
@@ -489,7 +490,7 @@ export const SkillsPage = memo(function SkillsPage() {
                 ))}
               </div>
             )}
-          </div>
+          </PageContainer>
         </ScrollArea>
       </TabsContent>
 
@@ -498,7 +499,7 @@ export const SkillsPage = memo(function SkillsPage() {
         value="registry"
         className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col"
       >
-        <div className="mx-auto w-full max-w-3xl px-6 pt-4 pb-2 shrink-0">
+        <PageContainer className="pt-4 pb-2 shrink-0">
           <div className="flex gap-2">
             <Input
               placeholder="スキルを検索（例: sales, proposal, negotiation）"
@@ -520,10 +521,10 @@ export const SkillsPage = memo(function SkillsPage() {
               検索
             </Button>
           </div>
-        </div>
+        </PageContainer>
 
         <ScrollArea className="flex-1 min-h-0">
-          <div className="mx-auto max-w-3xl px-6 py-2">
+          <PageContainer className="py-2">
             {!registryQuery ? (
               <RegistryEmptyState
                 onSearch={(q) => {
@@ -622,7 +623,7 @@ export const SkillsPage = memo(function SkillsPage() {
               </div>
             )}
 
-          </div>
+          </PageContainer>
         </ScrollArea>
       </TabsContent>
 

@@ -32,8 +32,8 @@ export async function ensureSchedulerTables(): Promise<void> {
         prompt        TEXT NOT NULL,
         kb_slug       TEXT,
         allowed_tools TEXT[] DEFAULT '{}',
-        max_tool_calls INTEGER DEFAULT 10,
-        timeout_sec   INTEGER DEFAULT 300,
+        max_tool_calls INTEGER DEFAULT 25,
+        timeout_sec   INTEGER DEFAULT 600,
         retry_max     INTEGER DEFAULT 1,
         model         VARCHAR(100),
         notify_to     TEXT,
@@ -86,6 +86,20 @@ export async function ensureSchedulerTables(): Promise<void> {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_task_notif_read ON task_notifications(read) WHERE NOT read
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_execution_files (
+        id            SERIAL PRIMARY KEY,
+        execution_id  INTEGER NOT NULL REFERENCES task_executions(id) ON DELETE CASCADE,
+        file_id       TEXT NOT NULL,
+        filename      TEXT NOT NULL,
+        media_type    TEXT NOT NULL,
+        size_bytes    BIGINT,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_exec_files_exec ON task_execution_files(execution_id)
     `);
     tablesReady = true;
   } finally {
@@ -219,8 +233,8 @@ export async function createTask(data: {
       data.prompt,
       data.kb_slug || null,
       data.allowed_tools || [],
-      data.max_tool_calls ?? 10,
-      data.timeout_sec ?? 300,
+      data.max_tool_calls ?? 25,
+      data.timeout_sec ?? 600,
       data.retry_max ?? 1,
       data.model || null,
       data.notify_to || null,
@@ -453,4 +467,79 @@ export async function markAllNotificationsRead(): Promise<void> {
   await getPool().query(
     `UPDATE task_notifications SET read = true WHERE read = false`,
   );
+}
+
+// ============================================================
+// CRUD — task_execution_files
+// ============================================================
+
+export interface ExecutionFile {
+  id: number;
+  execution_id: number;
+  file_id: string;
+  filename: string;
+  media_type: string;
+  size_bytes: number | null;
+  created_at: string;
+}
+
+export async function insertExecutionFile(data: {
+  executionId: number;
+  fileId: string;
+  filename: string;
+  mediaType: string;
+  sizeBytes: number;
+}): Promise<number> {
+  await ensureSchedulerTables();
+  const res = await getPool().query(
+    `INSERT INTO task_execution_files (execution_id, file_id, filename, media_type, size_bytes)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [data.executionId, data.fileId, data.filename, data.mediaType, data.sizeBytes],
+  );
+  return res.rows[0].id as number;
+}
+
+export async function listExecutionFiles(
+  executionId: number,
+): Promise<ExecutionFile[]> {
+  await ensureSchedulerTables();
+  const res = await getPool().query(
+    `SELECT * FROM task_execution_files WHERE execution_id = $1 ORDER BY created_at`,
+    [executionId],
+  );
+  return res.rows.map((r) => ({
+    ...r,
+    created_at: String(r.created_at),
+  })) as ExecutionFile[];
+}
+
+export async function listExecutionFilesForTask(
+  taskId: number,
+  limit = 50,
+): Promise<ExecutionFile[]> {
+  await ensureSchedulerTables();
+  const res = await getPool().query(
+    `SELECT f.* FROM task_execution_files f
+     JOIN task_executions e ON e.id = f.execution_id
+     WHERE e.task_id = $1
+     ORDER BY f.created_at DESC LIMIT $2`,
+    [taskId, limit],
+  );
+  return res.rows.map((r) => ({
+    ...r,
+    created_at: String(r.created_at),
+  })) as ExecutionFile[];
+}
+
+export async function getExecutionFile(
+  fileId: string,
+): Promise<ExecutionFile | null> {
+  await ensureSchedulerTables();
+  const res = await getPool().query(
+    `SELECT * FROM task_execution_files WHERE file_id = $1`,
+    [fileId],
+  );
+  return res.rows.length > 0
+    ? ({ ...res.rows[0], created_at: String(res.rows[0].created_at) } as ExecutionFile)
+    : null;
 }

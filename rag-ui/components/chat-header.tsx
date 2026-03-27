@@ -10,6 +10,7 @@ import {
   SparklesIcon,
   MessageSquareIcon,
   NetworkIcon,
+  CalendarClockIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useChatSettingsStore } from "@/lib/store";
@@ -42,6 +43,11 @@ const VIEW_CONFIG: Record<
     icon: NetworkIcon,
     title: "ナレッジグラフ",
     subtitle: "エンティティ関係の3D可視化",
+  },
+  "/scheduler": {
+    icon: CalendarClockIcon,
+    title: "スケジューラ",
+    subtitle: "定時タスクの管理",
   },
 };
 

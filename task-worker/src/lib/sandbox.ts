@@ -12,7 +12,10 @@ export async function executeCode(
   code: string,
   timeoutSeconds = 60,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const image = language === "python" ? "python:3.12-slim" : "node:22-slim";
+  const image =
+    language === "python"
+      ? (process.env.SANDBOX_PYTHON_IMAGE || "python:3.12-slim")
+      : (process.env.SANDBOX_NODE_IMAGE || "node:22-slim");
   const sandbox = await Sandbox.create({
     connectionConfig: config,
     image,
