@@ -39,15 +39,15 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
                     └──────────────────────────────────┘
 ```
 
-| サービス | イメージ | 役割 |
-|---------|---------|------|
-| **rag-ui** | `oven/bun:1` | Next.js 16 フロントエンド + API Routes |
-| **crm-service** | `oven/bun:1` | CRM 連携 + 商機分析 + 提案書 PPTX 生成 |
-| **task-worker** | `oven/bun:1` | 定時タスク実行ワーカー（Gemini tool-loop + OpenSandbox） |
-| **opensandbox** | `python:3.12-slim` | Alibaba OpenSandbox コード実行サンドボックス |
-| **lightrag** | `python:3.12-slim` | FastAPI バックエンド、PDF 入庫、知識グラフ検索 |
-| **postgres** | `pgvector/pgvector:pg18` | ベクトル DB + メタデータ保存 |
-| **valkey** | `valkey/valkey:8` | クエリキャッシュ + タスクキュー |
+| サービス        | イメージ                 | 役割                                                     |
+| --------------- | ------------------------ | -------------------------------------------------------- |
+| **rag-ui**      | `oven/bun:1`             | Next.js 16 フロントエンド + API Routes                   |
+| **crm-service** | `oven/bun:1`             | CRM 連携 + 商機分析 + 提案書 PPTX 生成                   |
+| **task-worker** | `oven/bun:1`             | 定時タスク実行ワーカー（Gemini tool-loop + OpenSandbox） |
+| **opensandbox** | `python:3.12-slim`       | Alibaba OpenSandbox コード実行サンドボックス             |
+| **lightrag**    | `python:3.12-slim`       | FastAPI バックエンド、PDF 入庫、知識グラフ検索           |
+| **postgres**    | `pgvector/pgvector:pg18` | ベクトル DB + メタデータ保存                             |
+| **valkey**      | `valkey/valkey:8`        | クエリキャッシュ + タスクキュー                          |
 
 ## クイックスタート
 
@@ -67,11 +67,13 @@ cp .env.example .env
 `.env` を編集（2 つの方式から選択）：
 
 **方式 A: AI Studio（簡単、API Key のみ）**
+
 ```
 GEMINI_API_KEY=AIzaSy...your-key-here
 ```
 
 **方式 B: Vertex AI（GCP Free Trial credit ¥46,955 使用可）**
+
 ```
 USE_VERTEX_AI=true
 GCP_PROJECT_ID=your-project-id
@@ -84,8 +86,7 @@ GCP_SA_KEY_FILE=./your-service-account.json
 ### 2. ビルドと起動
 
 ```bash
-docker compose --profile prod build
-docker compose --profile prod up -d
+docker compose --profile prod up -d --build
 ```
 
 初回ビルドは数分かかります。2 回目以降はキャッシュが効きます。
@@ -104,27 +105,27 @@ docker compose --profile prod up -d
 
 ### Gemini API 認証（どちらか一方）
 
-| 変数 | 説明 |
-|------|------|
-| `GEMINI_API_KEY` | AI Studio 方式: API Key（[こちらで取得](https://aistudio.google.com/apikey)） |
-| `USE_VERTEX_AI` | Vertex AI 方式: `true` で有効化（GCP credit 使用可） |
-| `GCP_PROJECT_ID` | Vertex AI 用 GCP プロジェクト ID |
-| `GCP_LOCATION` | Vertex AI 用リージョン（デフォルト `global`、Gemini 3.x は `global` のみ） |
-| `GCP_SA_KEY_FILE` | Service Account JSON ファイルパス |
+| 変数              | 説明                                                                          |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`  | AI Studio 方式: API Key（[こちらで取得](https://aistudio.google.com/apikey)） |
+| `USE_VERTEX_AI`   | Vertex AI 方式: `true` で有効化（GCP credit 使用可）                          |
+| `GCP_PROJECT_ID`  | Vertex AI 用 GCP プロジェクト ID                                              |
+| `GCP_LOCATION`    | Vertex AI 用リージョン（デフォルト `global`、Gemini 3.x は `global` のみ）    |
+| `GCP_SA_KEY_FILE` | Service Account JSON ファイルパス                                             |
 
 ### オプション
 
-| 変数 | 説明 |
-|------|------|
-| `TAVILY_API_KEY` | [Tavily](https://tavily.com/) API Key（設定するとウェブ検索 Tool Calling が有効化。Vertex AI 使用時は必須） |
-| `SALESFORCE_INSTANCE_URL` | Salesforce インスタンス URL（CRM 連携用） |
-| `SALESFORCE_CLIENT_ID` | Salesforce OAuth2 クライアント ID |
-| `SALESFORCE_CLIENT_SECRET` | Salesforce OAuth2 クライアントシークレット |
-| `KINTONE_SUBDOMAIN` | Kintone サブドメイン（CRM 連携用） |
-| `KINTONE_API_TOKEN` | Kintone API トークン |
-| `KINTONE_APP_ID` | Kintone アプリ ID |
-| `APP_URL` | アプリの公開 URL（メールロゴ・リンク用、デフォルト `https://ai.wgzhao.me`） |
-| `RESEND_API_KEY` | [Resend](https://resend.com/) API Key（定時タスクの Email 通知用） |
+| 変数                       | 説明                                                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `TAVILY_API_KEY`           | [Tavily](https://tavily.com/) API Key（設定するとウェブ検索 Tool Calling が有効化。Vertex AI 使用時は必須） |
+| `SALESFORCE_INSTANCE_URL`  | Salesforce インスタンス URL（CRM 連携用）                                                                   |
+| `SALESFORCE_CLIENT_ID`     | Salesforce OAuth2 クライアント ID                                                                           |
+| `SALESFORCE_CLIENT_SECRET` | Salesforce OAuth2 クライアントシークレット                                                                  |
+| `KINTONE_SUBDOMAIN`        | Kintone サブドメイン（CRM 連携用）                                                                          |
+| `KINTONE_API_TOKEN`        | Kintone API トークン                                                                                        |
+| `KINTONE_APP_ID`           | Kintone アプリ ID                                                                                           |
+| `APP_URL`                  | アプリの公開 URL（メールロゴ・リンク用、デフォルト `https://ai.wgzhao.me`）                                 |
+| `RESEND_API_KEY`           | [Resend](https://resend.com/) API Key（定時タスクの Email 通知用）                                          |
 
 > **CRM 連携について**: Salesforce / Kintone の環境変数は全てオプションです。未設定でも Kintone モックデータで動作確認が可能です。チャットで「Kintoneの商談一覧を見せて」と入力するか、手動で会社情報を入力して商談分析・提案書生成ができます。
 
@@ -132,18 +133,18 @@ docker compose --profile prod up -d
 
 ## Gemini API 使用量
 
-| 機能 | モデル | タイミング |
-|------|--------|----------|
-| チャット回答 | gemini-3-flash-preview（ユーザー選択可） | クエリごと（キャッシュミス時） |
-| PDF OCR | gemini-2.5-flash (Vision) | アップロード時（ページ数分） |
-| 実体抽出 | gemini-2.5-flash | アップロード時（チャンク数分） |
-| Embedding | gemini-embedding-001 | アップロード時 + クエリ時 |
-| スライド生成 | gemini-3-flash-preview（チャットモデルに連動） | スライド作成時 |
-| 商機分析根拠 | gemini-3-flash-preview（チャットモデルに連動） | 商談分析時 |
+| 機能           | モデル                                         | タイミング                                           |
+| -------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| チャット回答   | gemini-3-flash-preview（ユーザー選択可）       | クエリごと（キャッシュミス時）                       |
+| PDF OCR        | gemini-2.5-flash (Vision)                      | アップロード時（ページ数分）                         |
+| 実体抽出       | gemini-2.5-flash                               | アップロード時（チャンク数分）                       |
+| Embedding      | gemini-embedding-001                           | アップロード時 + クエリ時                            |
+| スライド生成   | gemini-3-flash-preview（チャットモデルに連動） | スライド作成時                                       |
+| 商機分析根拠   | gemini-3-flash-preview（チャットモデルに連動） | 商談分析時                                           |
 | 提案書スライド | gemini-3-flash-preview（チャットモデルに連動） | 提案書生成時（plan 生成 + 各ページ並行レンダリング） |
-| Widget 生成 | gemini-3-flash-preview（チャットモデルに連動） | show-widget コードフェンス出力時 |
-| 画像生成 | gemini-2.0-flash-exp | ユーザー依頼時 |
-| 定時タスク実行 | gemini-3-flash-preview | スケジュール実行時（tool-loop） |
+| Widget 生成    | gemini-3-flash-preview（チャットモデルに連動） | show-widget コードフェンス出力時                     |
+| 画像生成       | gemini-2.0-flash-exp                           | ユーザー依頼時                                       |
+| 定時タスク実行 | gemini-3-flash-preview                         | スケジュール実行時（tool-loop）                      |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
 
@@ -181,39 +182,44 @@ docker compose --profile prod up -d
 
 3 つの Docker Volume にデータが保存され、`docker compose down` / `up` でも保持されます：
 
-| Volume | 内容 |
-|--------|------|
-| `pgdata` | PostgreSQL — ベクトル、知識グラフ KV ストア、ドキュメントメタ、チャット履歴、スライド、CRM キャッシュ |
-| `valkeydata` | クエリキャッシュ |
-| `lightrag-data` | NetworkX グラフファイル |
-| `chat-files` | チャット添付ファイル（画像・PDF 等） |
+| Volume          | 内容                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| `pgdata`        | PostgreSQL — ベクトル、知識グラフ KV ストア、ドキュメントメタ、チャット履歴、スライド、CRM キャッシュ |
+| `valkeydata`    | クエリキャッシュ                                                                                      |
+| `lightrag-data` | NetworkX グラフファイル                                                                               |
+| `chat-files`    | チャット添付ファイル（画像・PDF 等）                                                                  |
 
 完全にリセットするには `docker compose down -v` を実行してください。
 
 ## 技術スタック
 
 **フロントエンド (rag-ui)**
+
 - Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
 - shadcn/ui, Vercel AI SDK v6, Streamdown
 
 **バックエンド (lightrag-service)**
+
 - FastAPI, Python 3.12, uv
 - [LightRAG](https://github.com/HKUDS/LightRAG)（知識グラフ RAG）
 - pgvector, PyMuPDF（PDF → Gemini Vision OCR）
 
 **CRM サービス (crm-service)**
+
 - Bun + Hono
 - jsforce（Salesforce 連携）、xlsx（Excel パース）
 - pptxgenjs（PPTX 提案書生成）
 - Gemini API（商機分析根拠 + スライド計画 + スライド修正、maxTokens 16000 + 切断 JSON 自動修復）
 
 **タスクワーカー (task-worker)**
+
 - Bun + Hono
 - Gemini API tool-loop（KB 検索、Web 検索、CRM API、コード実行）
 - Alibaba OpenSandbox（コンテナ隔離コード実行）
 - Resend + React Email（メール通知、オプション）
 
 **インフラ**
+
 - PostgreSQL 17 + pgvector
 - Valkey 8（Redis 互換キャッシュ + タスクキュー）
 - Alibaba OpenSandbox（Docker ベースサンドボックス）
@@ -222,24 +228,24 @@ docker compose --profile prod up -d
 
 7 コンテナ合計 約 550 MB（アイドル時）：
 
-| コンテナ | メモリ |
-|---------|-------|
-| lightrag | ~254 MB |
-| rag-ui | ~109 MB |
-| crm-service | ~40 MB |
-| task-worker | ~40 MB |
-| opensandbox | ~50 MB |
-| postgres | ~37 MB |
-| valkey | ~10 MB |
+| コンテナ    | メモリ  |
+| ----------- | ------- |
+| lightrag    | ~254 MB |
+| rag-ui      | ~109 MB |
+| crm-service | ~40 MB  |
+| task-worker | ~40 MB  |
+| opensandbox | ~50 MB  |
+| postgres    | ~37 MB  |
+| valkey      | ~10 MB  |
 
 ## トラブルシューティング
 
-| 問題 | 原因 | 対処 |
-|------|------|------|
-| `lightrag` が unhealthy のまま | Gemini API Key が無効 | `.env` の `GEMINI_API_KEY` を確認 |
-| PDF アップロード後 `failed` | Gemini API レート制限 | `docker compose logs lightrag` で確認、しばらく待って再試行 |
-| 検索結果が空 | ドキュメントがまだ処理中 | ドキュメントページでステータスを確認 |
-| PDF 入庫が遅い | 無料枠の Embedding レート制限 | 有料版にアップグレード、または速率制限の緩和を待つ |
+| 問題                           | 原因                          | 対処                                                        |
+| ------------------------------ | ----------------------------- | ----------------------------------------------------------- |
+| `lightrag` が unhealthy のまま | Gemini API Key が無効         | `.env` の `GEMINI_API_KEY` を確認                           |
+| PDF アップロード後 `failed`    | Gemini API レート制限         | `docker compose logs lightrag` で確認、しばらく待って再試行 |
+| 検索結果が空                   | ドキュメントがまだ処理中      | ドキュメントページでステータスを確認                        |
+| PDF 入庫が遅い                 | 無料枠の Embedding レート制限 | 有料版にアップグレード、または速率制限の緩和を待つ          |
 
 ## ライセンス
 

@@ -202,60 +202,6 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
 
-### 同期コマンド
-
-```bash
-# rag-ui の変更を rag-deploy に反映
-# ページ・レイアウト
-cp ~/Desktop/uiForAI/rag-ui/app/layout.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/layout.tsx
-cp ~/Desktop/uiForAI/rag-ui/app/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/page.tsx
-cp ~/Desktop/uiForAI/rag-ui/app/new/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/new/page.tsx
-cp ~/Desktop/uiForAI/rag-ui/app/chat/\[id\]/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/chat/\[id\]/page.tsx
-cp ~/Desktop/uiForAI/rag-ui/app/documents/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/documents/page.tsx
-cp ~/Desktop/uiForAI/rag-ui/app/skills/page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/app/skills/page.tsx
-# API
-cp ~/Desktop/uiForAI/rag-ui/app/api/chat/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/chat/route.ts
-cp -r ~/Desktop/uiForAI/rag-ui/app/api/kb-config ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/kb-config
-# ⚠️ skills API は個別コピー（registry/ はコピーしない、rag-deploy のみ）
-cp ~/Desktop/uiForAI/rag-ui/app/api/skills/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/route.ts
-cp ~/Desktop/uiForAI/rag-ui/app/api/skills/\[id\]/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/\[id\]/route.ts
-cp ~/Desktop/uiForAI/rag-ui/app/api/skills/upload/route.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/skills/upload/route.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/skill-zip-parser.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/skill-zip-parser.ts
-cp -r ~/Desktop/uiForAI/rag-ui/app/api/history/chats ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/history/chats
-# コンポーネント
-cp ~/Desktop/uiForAI/rag-ui/components/app-shell.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-shell.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/app-sidebar.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/app-sidebar.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/chat-header.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-header.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/chat-input.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-input.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/chat-message.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-message.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/chat-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/chat-page.tsx
-cp ~/Desktop/uiForAI/rag-ui/components/documents-page.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/documents-page.tsx
-# ⚠️ skills-page.tsx はコピーしない（rag-deploy のみ skills.sh レジストリ + sonner 追加）
-cp ~/Desktop/uiForAI/rag-ui/components/image-lightbox.tsx ~/Desktop/uiForAI/rag-deploy/rag-ui/components/image-lightbox.tsx
-# フック
-cp -r ~/Desktop/uiForAI/rag-ui/hooks ~/Desktop/uiForAI/rag-deploy/rag-ui/hooks
-# ライブラリ
-cp ~/Desktop/uiForAI/rag-ui/lib/store.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/store.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/chat-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-db.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/chat-tree.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-tree.ts
-# ⚠️ skills-db.ts はコピーしない（rag-deploy のみ updateSkillByRegistryId 追加）
-cp ~/Desktop/uiForAI/rag-ui/lib/kb-config-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/kb-config-db.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/semantic-cache.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/semantic-cache.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/constants.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/constants.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/file-storage.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/file-storage.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/chat-files-db.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/chat-files-db.ts
-cp ~/Desktop/uiForAI/rag-ui/lib/file-cleanup.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/lib/file-cleanup.ts
-# ファイル API
-cp -r ~/Desktop/uiForAI/rag-ui/app/api/files ~/Desktop/uiForAI/rag-deploy/rag-ui/app/api/files
-# instrumentation
-cp ~/Desktop/uiForAI/rag-ui/instrumentation.ts ~/Desktop/uiForAI/rag-deploy/rag-ui/instrumentation.ts
-
-# lightrag-service の変更を rag-deploy に反映（config.py は除外）
-cp ~/Desktop/ai/rag-system/lightrag-service/app/rag.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/rag.py
-cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiForAI/rag-deploy/lightrag-service/app/routers/ingest.py
-# ⚠️ config.py はコピーしない（PG 認証情報が異なるため）
-```
-
 ## 環境変数
 
 ユーザー設定: `.env` の `GEMINI_API_KEY`（AI Studio 使用時必須）+ `TAVILY_API_KEY`（オプション）+ Vertex AI 設定（オプション）
