@@ -388,6 +388,7 @@ GCP_SA_KEY_FILE=./your-sa-key.json
 | セッション期限切れで提案書パネル無限 loading | `proposal-session.ts` がインメモリ Map + TTL 1h | PostgreSQL 永続化に変更。メモリキャッシュ + DB fallback |
 | スライドのデザインがページごとにバラバラ | 各スライド独立並列生成、全体コンテキストなし | render prompt に「デッキ全体のデザイン統一ルール」追加 |
 | styleOptions がスライド生成に反映されない | `renderSlides()` が styleOptions を受け取らず API に未送信 | `renderSlides()` に styleOptions パラメータ追加、render API body に含める |
+| fetchAndAnalyze が crm-service 障害で全失敗 → ProposalPanel 開かず | `generateRationale()` が Gemini API エラーを catch せず throw → analyze endpoint が 500 返却 → fetchAndAnalyze が `{ error }` 返却 → detection effect が sessionKey を検出できず | 2 箇所修正: (1) `generateRationale()` に外側 try-catch 追加（Gemini 失敗時 fallback rationale 返却）(2) `fetchAndAnalyze` の analyze 呼出に try-catch 追加（失敗時もスコアリング結果なしで sessionKey 生成 → ProposalPanel は必ず開く） |
 
 ## トラブルシューティング
 

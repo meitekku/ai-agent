@@ -1022,21 +1022,54 @@ export async function POST(req: Request) {
           // 4. additionalContext 結合
           const additionalContext = [...kbParts, ...webParts].join("\n\n");
 
-          // 5. analyzeDeal
-          const analyzeRes = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              data: sfData,
-              additionalContext: additionalContext || undefined,
-              model: modelOverride || undefined,
-            }),
-          });
-          const analyzeRaw = await analyzeRes.json();
-          if (analyzeRaw.error)
-            return { error: `分析失敗: ${analyzeRaw.error}` };
-          // crm-service returns { analysis: { ...scores, rationale } } — unwrap
-          const analysisData = (analyzeRaw.analysis ?? analyzeRaw) as Record<string, unknown>;
+          // 5. analyzeDeal (with fallback — never block proposal panel)
+          let analysisData: Record<string, unknown>;
+          try {
+            const analyzeRes = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                data: sfData,
+                additionalContext: additionalContext || undefined,
+                model: modelOverride || undefined,
+              }),
+            });
+            const analyzeRaw = await analyzeRes.json();
+            if (analyzeRaw.error) {
+              console.error(`[chat] ⚠️ fetchAndAnalyze: analyze returned error, using fallback:`, analyzeRaw.error);
+              analysisData = {
+                winProbability: 50,
+                dealHealthScore: 50,
+                proposalReadiness: 50,
+                keyDrivers: ["分析サービスに一時的な問題が発生しました"],
+                riskFactors: [],
+                rationale: {
+                  customerChallenges: [],
+                  serviceRecommendations: [],
+                  combinedSolution: "",
+                  existingProposalHints: [],
+                },
+              };
+            } else {
+              // crm-service returns { analysis: { ...scores, rationale } } — unwrap
+              analysisData = (analyzeRaw.analysis ?? analyzeRaw) as Record<string, unknown>;
+            }
+          } catch (analyzeErr) {
+            console.error(`[chat] ⚠️ fetchAndAnalyze: analyze call failed, using fallback:`, analyzeErr);
+            analysisData = {
+              winProbability: 50,
+              dealHealthScore: 50,
+              proposalReadiness: 50,
+              keyDrivers: ["分析サービスに接続できませんでした"],
+              riskFactors: [],
+              rationale: {
+                customerChallenges: [],
+                serviceRecommendations: [],
+                combinedSolution: "",
+                existingProposalHints: [],
+              },
+            };
+          }
           console.log(
             `[chat] 📊 fetchAndAnalyze: analysis done (total ${Date.now() - t0}ms)`,
           );
