@@ -6,24 +6,47 @@ Gemini-only の自己完結型 Docker Compose プロジェクト。rag-ui（Next
 
 ```
 docker-compose.yml
-├── rag-ui       (Next.js standalone, Bun)     → port 4002:3000
-├── crm-service  (Bun + Hono, NEW)             → port 8009 (internal)
-├── lightrag     (Python FastAPI, uv)          → port 8007 (internal)
-├── postgres     (pgvector/pgvector:pg18)      → port 5432 (internal)
-└── valkey       (valkey/valkey:8)             → port 6379 (internal)
+├── rag-ui        (Next.js standalone, Bun)     → port 4002:3000
+├── crm-service   (Bun + Hono)                  → port 8009 (internal)
+├── task-worker   (Bun + Hono, NEW)             → port 8010 (internal)
+├── opensandbox   (Python FastAPI, NEW)         → port 8080 (internal)
+├── lightrag      (Python FastAPI, uv)          → port 8007 (internal)
+├── postgres      (pgvector/pgvector:pg18)      → port 5432 (internal)
+└── valkey        (valkey/valkey:8)             → port 6379 (internal)
 ```
 
-外部公開ポートは **4002 のみ**。内部サービス（postgres/valkey/lightrag/crm-service）はホストに公開しない。
+外部公開ポートは **4002 のみ**。内部サービス（postgres/valkey/lightrag/crm-service/task-worker/opensandbox）はホストに公開しない。
 
 ## プロジェクト構造
 
 ```
 rag-deploy/
-├── docker-compose.yml              # 5サービス定義
+├── docker-compose.yml              # 7サービス定義
 ├── .env.example                    # GEMINI_API_KEY テンプレート
 ├── .env                            # 実際の API Key（git 管理外）
 ├── init.sql                        # CREATE EXTENSION vector
 ├── .gitignore                      # .env, node_modules, .venv 等
+├── task-worker/                     # 定時タスク実行ワーカー (Bun + Hono)
+│   ├── Dockerfile                  # oven/bun:1
+│   ├── .dockerignore
+│   ├── package.json                # hono, pg, redis, @google/generative-ai, @alibaba-group/opensandbox, croner, resend
+│   ├── tsconfig.json
+│   └── src/
+│       ├── index.ts                # Hono app (port 8010) + worker loop start
+│       ├── routes/
+│       │   └── health.ts           # GET /health
+│       └── lib/
+│           ├── db.ts               # pg Pool + ensureTables()
+│           ├── gemini.ts           # Gemini wrapper (AI Studio / Vertex AI)
+│           ├── worker.ts           # BRPOP 消費ループ + stale recovery
+│           ├── executor.ts         # AI tool-loop 実行エンジン
+│           ├── tools.ts            # ツール実装 (KB search, web search, CRM API, code exec)
+│           ├── sandbox.ts          # OpenSandbox SDK wrapper
+│           ├── notify.ts           # task_notifications テーブル書込
+│           └── email.ts            # Resend + React Email（オプション）
+├── opensandbox/                     # OpenSandbox サーバー (Alibaba, Apache 2.0)
+│   ├── Dockerfile                  # python:3.12-slim + opensandbox-server
+│   └── config.toml                 # server/docker/security 設定
 ├── crm-service/                    # CRM + 提案書マイクロサービス (Bun + Hono)
 │   ├── Dockerfile                  # oven/bun:1
 │   ├── .dockerignore
@@ -123,7 +146,14 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/chat-input.tsx` | 同上 | 一致 | ファイル添付（画像・テキスト・PDF）+ プレビュー + D&D |
 | `rag-ui/components/chat-page.tsx` | 同上 | **rag-deploy のみ** | fetchAndAnalyze 検出で ProposalPanel 自動開放 + ProposalPanel→SlidePanel 遷移 + 画像スケルトン + beforeunload ガード + reviseSlides 検出 + deckId/slidesSummary 送信 |
 | `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合 + session 管理、generateProposal 廃止）+ 画像モデルパス + generateImage ツール + reviseSlides ツール（スライド精准編集）+ slide context injection |
-| `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL 追加 |
+| `rag-ui/lib/constants.ts` | 同上 | **rag-deploy のみ** | CRM_SERVICE_URL + TASK_WORKER_URL 追加 |
+| `rag-ui/lib/scheduler-db.ts` | **rag-deploy のみ** | — | scheduled_tasks + task_executions + task_notifications テーブル CRUD |
+| `rag-ui/lib/scheduler-queue.ts` | **rag-deploy のみ** | — | Valkey LPUSH ヘルパー（task-worker キュー投入） |
+| `rag-ui/app/api/scheduler/route.ts` | **rag-deploy のみ** | — | GET/POST 定時タスク一覧・作成 |
+| `rag-ui/app/api/scheduler/[id]/route.ts` | **rag-deploy のみ** | — | GET/PATCH/DELETE 定時タスク詳細・更新・削除 |
+| `rag-ui/app/api/scheduler/[id]/run/route.ts` | **rag-deploy のみ** | — | POST 手動トリガー |
+| `rag-ui/app/api/scheduler/[id]/executions/route.ts` | **rag-deploy のみ** | — | GET 実行履歴一覧 |
+| `rag-ui/app/api/notifications/route.ts` | **rag-deploy のみ** | — | GET 未読通知 / PATCH 既読マーク |
 | `rag-ui/lib/proposal-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（sessionKey + phase + styleOptions 状態管理） |
 | `rag-ui/lib/proposal-session.ts` | **rag-deploy のみ** | — | 提案セッション store（PostgreSQL 永続化 + インメモリキャッシュ） |
 | `rag-ui/lib/slide-panel-store.ts` | **rag-deploy のみ** | — | Zustand store（cachedSlides + conversationDeckId + refreshToken でスライド持久化・リフレッシュ管理） |
@@ -253,6 +283,15 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | crm-service | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | DB 接続 |
 | crm-service | `SALESFORCE_*` | ${SALESFORCE_*:-} | Salesforce 認証（オプション） |
 | crm-service | `KINTONE_*` | ${KINTONE_*:-} | Kintone 認証（オプション） |
+| rag-ui | `TASK_WORKER_URL` | http://task-worker:8010 | タスクワーカー URL（設定時→スケジューラツール有効） |
+| task-worker | `GEMINI_API_KEY` | ${GEMINI_API_KEY} | Gemini API（.env から共有） |
+| task-worker | `GEMINI_MODEL` | gemini-3-flash-preview | Gemini モデル |
+| task-worker | `DATABASE_URL` | postgresql://raguser:ragpass@postgres:5432/lightrag | DB 接続 |
+| task-worker | `REDIS_URL` | redis://valkey:6379 | Valkey キュー接続 |
+| task-worker | `LIGHTRAG_URL` | http://lightrag:8007 | KB 検索用 |
+| task-worker | `CRM_SERVICE_URL` | http://crm-service:8009 | CRM API 用 |
+| task-worker | `OPENSANDBOX_URL` | opensandbox:8080 | コード実行サンドボックス |
+| task-worker | `RESEND_API_KEY` | ${RESEND_API_KEY:-} | メール通知（オプション） |
 
 ### .env（ユーザー設定）
 
@@ -270,6 +309,7 @@ cp ~/Desktop/ai/rag-system/lightrag-service/app/routers/ingest.py ~/Desktop/uiFo
 | `KINTONE_SUBDOMAIN` | Kintone サブドメイン（オプション） |
 | `KINTONE_API_TOKEN` | Kintone API トークン（オプション） |
 | `KINTONE_APP_ID` | Kintone アプリ ID（オプション） |
+| `RESEND_API_KEY` | Resend API Key（オプション、定時タスクのメール通知用） |
 
 ## コマンド
 
@@ -309,7 +349,7 @@ docker compose --profile prod build --no-cache
 
 ## リソース使用量
 
-5 コンテナ合計約 **450 MB**（アイドル時）:
+7 コンテナ合計約 **550 MB**（アイドル時）:
 
 | コンテナ | メモリ |
 |---------|-------|
@@ -317,12 +357,14 @@ docker compose --profile prod build --no-cache
 | rag-ui | ~109 MB |
 | crm-service | ~40 MB |
 | postgres | ~37 MB |
+| task-worker | ~40 MB |
+| opensandbox | ~50 MB |
 | valkey | ~10 MB |
 
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history, proposal_sessions）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history, proposal_sessions, scheduled_tasks, task_executions, task_notifications）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
 ## Vertex AI / AI Studio デュアルモード

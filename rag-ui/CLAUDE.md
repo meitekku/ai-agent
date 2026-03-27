@@ -25,6 +25,7 @@ Browser useChat → /api/chat Route Handler → isImageModel?
                                               → searchKnowledgeBase（LightRAG search-only）
                                               → webSearch / readPage（Tavily）or google_search（Gemini grounding）
                                               → generateImage（Gemini 画像生成ツール）
+                                              → createScheduledTask / listScheduledTasks / updateScheduledTask / deleteScheduledTask（定時タスク管理）
 ```
 
 - マルチモーダル対応：画像・テキスト・PDF を添付可能（サーバーアップロード → URL 参照 → DB 軽量化）
@@ -319,6 +320,12 @@ rag-ui/
 | POST                 | /api/crm/proposal-revise-slide   | crm-service 1 スライド修正プロキシ                                              |
 | GET                  | /api/crm/proposal-session/[key]  | 提案セッションデータ取得                                                        |
 | GET/POST             | /api/crm/templates               | crm-service テンプレート一覧 / アップロードプロキシ                             |
+| GET/POST             | /api/scheduler                   | 定時タスク一覧 / 新規作成                                                       |
+| GET/PATCH/DELETE     | /api/scheduler/[id]              | 定時タスク詳細 / 更新 / 削除                                                    |
+| POST                 | /api/scheduler/[id]/run          | 定時タスク手動トリガー                                                          |
+| GET                  | /api/scheduler/[id]/executions   | 定時タスク実行履歴                                                              |
+| GET                  | /api/notifications               | 未読通知一覧                                                                    |
+| PATCH                | /api/notifications               | 通知既読マーク                                                                  |
 
 ## 开发命令
 
@@ -451,9 +458,12 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 | `skills`               | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
 | `ui_config`            | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
 | `proposal_sessions`    | 提案セッション（key TEXT PK, data JSONB, analysis JSONB, additional_context TEXT）— 永続化、会話再開時も利用可 |
+| `scheduled_tasks`      | 定時タスク（cron_expr, prompt, kb_slug, allowed_tools, notify_to/from）— task-worker と共有 |
+| `task_executions`      | タスク実行履歴（status, tool_calls JSONB, result, error, execution_ms） |
+| `task_notifications`   | タスク通知（type: success/failure/timeout, read フラグ） |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()` / `ensureTable()`(proposal_sessions)）
+- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()` / `ensureTable()`(proposal_sessions) / `ensureSchedulerTables()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
 ### PPTX/PDF エクスポート

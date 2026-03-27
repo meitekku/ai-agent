@@ -30,7 +30,7 @@ import {
   type KnowledgeBase,
 } from "@/lib/rag-client";
 
-import { TAVILY_API_KEY, CRM_SERVICE_URL, GEMINI_MODEL } from "@/lib/constants";
+import { TAVILY_API_KEY, CRM_SERVICE_URL, TASK_WORKER_URL, GEMINI_MODEL } from "@/lib/constants";
 import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
@@ -53,6 +53,7 @@ export const maxDuration = 300;
 const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 const hasCrm = !!CRM_SERVICE_URL;
+const hasScheduler = !!TASK_WORKER_URL;
 
 // ---------------------------------------------------------------------------
 // Skills — progressive disclosure (official AI SDK pattern)
@@ -1226,6 +1227,108 @@ export async function POST(req: Request) {
             success: false,
             error: err instanceof Error ? err.message : String(err),
           };
+        }
+      },
+    });
+  }
+
+  // Scheduler tools (only when TASK_WORKER_URL is configured)
+  if (hasScheduler) {
+    const { createTask, listTasks, updateTask, deleteTask } = await import("@/lib/scheduler-db");
+
+    tools.createScheduledTask = tool({
+      description:
+        "定時タスク（スケジュールジョブ）を新規作成する。ユーザーが「毎日○時に△△して」「定期的に××を監視」「自動で□□レポートを作成」等、繰り返し実行したいタスクを依頼した時に使用する。" +
+        "使わない場面: 今すぐ1回だけ実行してほしい依頼（直接回答する）、既存タスクの変更（updateScheduledTaskを使う）、タスク確認（listScheduledTasksを使う）。",
+      inputSchema: z.object({
+        name: z.string().describe("タスクの短い名前（一覧表示用）"),
+        prompt: z.string().describe("タスク実行時にAIに渡すプロンプト。具体的で明確に書く。タスク実行AIはKB検索・Web検索・CRM API・コード実行ツールを使える"),
+        cron_expr: z
+          .string()
+          .describe(
+            "5フィールドCron式。分 時 日 月 曜日。例: '0 9 * * *'=毎日9時, '0 9 * * 1'=毎週月曜9時, '0 */6 * * *'=6時間毎, '30 8 * * 1-5'=平日8:30",
+          ),
+        kb_slug: z.string().optional().describe("タスクが参照するナレッジベースのslug。KB検索が不要なら省略"),
+        model: z.string().optional().describe("使用するGeminiモデル名。省略時はデフォルト(gemini-3-flash-preview)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'"),
+        description: z.string().optional().describe("タスクの目的や背景の説明（管理画面表示用）"),
+      }),
+      execute: async (args) => {
+        console.log(`[chat] 📅 createScheduledTask: ${args.name}`);
+        try {
+          const id = await createTask({
+            name: args.name,
+            prompt: args.prompt,
+            cron_expr: args.cron_expr,
+            kb_slug: args.kb_slug,
+            model: args.model,
+            description: args.description,
+          });
+          return { success: true, id, name: args.name, cron_expr: args.cron_expr };
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.listScheduledTasks = tool({
+      description:
+        "登録済みの定時タスク一覧を取得する。ユーザーが「今どんなタスクがある？」「スケジュール確認」「定時タスクの状態を教えて」と聞いた時に使用。" +
+        "使わない場面: 新規タスク作成（createScheduledTask）、タスク変更・削除（update/deleteScheduledTask）。",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const tasks = await listTasks();
+          return tasks.map((t) => ({
+            id: t.id,
+            name: t.name,
+            cron_expr: t.cron_expr,
+            enabled: t.enabled,
+            next_run_at: t.next_run_at,
+            last_run_at: t.last_run_at,
+          }));
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.updateScheduledTask = tool({
+      description:
+        "既存の定時タスクを更新する。「タスクを無効にして」「実行時間を変えて」「プロンプトを修正して」等の変更依頼時に使用。enabled:falseで一時停止、trueで再開。" +
+        "使わない場面: 新規作成（createScheduledTask）、完全削除（deleteScheduledTask）。必ず先にlistScheduledTasksでIDを確認してから呼ぶ。",
+      inputSchema: z.object({
+        id: z.number().describe("更新対象のタスクID（listScheduledTasksで事前確認）"),
+        name: z.string().optional().describe("新しいタスク名"),
+        prompt: z.string().optional().describe("新しいプロンプト"),
+        cron_expr: z.string().optional().describe("新しいCron式"),
+        enabled: z.boolean().optional().describe("true=有効, false=一時停止"),
+      }),
+      execute: async (args) => {
+        console.log(`[chat] 📅 updateScheduledTask: id=${args.id}`);
+        try {
+          const { id, ...data } = args;
+          await updateTask(id, data);
+          return { success: true, id };
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.deleteScheduledTask = tool({
+      description:
+        "定時タスクを完全に削除する（実行履歴も消える）。ユーザーが明確に「タスクを削除して」「もう不要」と言った時のみ使用。" +
+        "使わない場面: 一時停止したいだけ（updateScheduledTaskでenabled:falseにする）。削除は取り消せないので、ユーザーの意図を確認してから実行する。",
+      inputSchema: z.object({
+        id: z.number().describe("削除対象のタスクID（listScheduledTasksで事前確認）"),
+      }),
+      execute: async ({ id }) => {
+        console.log(`[chat] 📅 deleteScheduledTask: id=${id}`);
+        try {
+          await deleteTask(id);
+          return { success: true, id };
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : String(err) };
         }
       },
     });

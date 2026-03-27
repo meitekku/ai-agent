@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="128 89 256 256" fill="none">
+  <!-- 连接线 -->
+  <path
+    d="M176 220 L256 160 L336 220 M256 160 L256 280"
+    stroke="#1e293b"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.35"
+  />
+  <!-- 知识节点 -->
+  <circle cx="176" cy="220" r="24" fill="#1e293b" />
+  <circle cx="336" cy="220" r="24" fill="#1e293b" />
+  <circle cx="256" cy="280" r="24" fill="#1e293b" />
+  <!-- AI 核心节点 -->
+  <circle cx="256" cy="160" r="36" fill="#0078c9" />
+</svg>

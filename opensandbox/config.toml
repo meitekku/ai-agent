@@ -1,0 +1,14 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+log_level = "INFO"
+
+[runtime]
+type = "docker"
+execd_image = "ghcr.io/alibaba/opensandbox-execd:latest"
+
+[docker]
+# bridge mode so sandbox containers can join the compose network
+network_mode = "bridge"
+# allows sandbox containers to reach compose services
+host_ip = "host.docker.internal"

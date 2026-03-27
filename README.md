@@ -14,6 +14,8 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 - **語義キャッシュ** — 同一クエリは Valkey キャッシュから ~14ms で応答
 - **チャット履歴・ブランチ** — 会話の永続化、メッセージ編集、ブランチ分岐・切替
 - **スキルシステム** — ドメイン知識をシステムプロンプトに注入（CRUD + ZIP アップロード）
+- **定時タスク** — AI が自律的に定期実行（KB 要約、CRM 分析、コード実行等）。チャットから自然言語で作成・管理可能
+- **コード実行サンドボックス** — Alibaba OpenSandbox によるコンテナ隔離実行（Python / JavaScript）
 
 ## アーキテクチャ
 
@@ -29,6 +31,9 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
                     │    ├──▶ crm-service (Hono)        │
                     │    │      └──▶ postgres           │
                     │    │      └──▶ Gemini API         │
+                    │    ├──▶ task-worker (Hono)        │
+                    │    │      └──▶ Gemini API         │
+                    │    │      └──▶ opensandbox        │
                     │    └──▶ valkey (cache)            │
                     │                                   │
                     └──────────────────────────────────┘
@@ -38,9 +43,11 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 |---------|---------|------|
 | **rag-ui** | `oven/bun:1` | Next.js 16 フロントエンド + API Routes |
 | **crm-service** | `oven/bun:1` | CRM 連携 + 商機分析 + 提案書 PPTX 生成 |
+| **task-worker** | `oven/bun:1` | 定時タスク実行ワーカー（Gemini tool-loop + OpenSandbox） |
+| **opensandbox** | `python:3.12-slim` | Alibaba OpenSandbox コード実行サンドボックス |
 | **lightrag** | `python:3.12-slim` | FastAPI バックエンド、PDF 入庫、知識グラフ検索 |
 | **postgres** | `pgvector/pgvector:pg18` | ベクトル DB + メタデータ保存 |
-| **valkey** | `valkey/valkey:8` | クエリキャッシュ |
+| **valkey** | `valkey/valkey:8` | クエリキャッシュ + タスクキュー |
 
 ## クイックスタート
 
@@ -116,6 +123,8 @@ docker compose --profile prod up -d
 | `KINTONE_SUBDOMAIN` | Kintone サブドメイン（CRM 連携用） |
 | `KINTONE_API_TOKEN` | Kintone API トークン |
 | `KINTONE_APP_ID` | Kintone アプリ ID |
+| `APP_URL` | アプリの公開 URL（メールロゴ・リンク用、デフォルト `https://ai.wgzhao.me`） |
+| `RESEND_API_KEY` | [Resend](https://resend.com/) API Key（定時タスクの Email 通知用） |
 
 > **CRM 連携について**: Salesforce / Kintone の環境変数は全てオプションです。未設定でも Kintone モックデータで動作確認が可能です。チャットで「Kintoneの商談一覧を見せて」と入力するか、手動で会社情報を入力して商談分析・提案書生成ができます。
 
@@ -134,6 +143,7 @@ docker compose --profile prod up -d
 | 提案書スライド | gemini-3-flash-preview（チャットモデルに連動） | 提案書生成時（plan 生成 + 各ページ並行レンダリング） |
 | Widget 生成 | gemini-3-flash-preview（チャットモデルに連動） | show-widget コードフェンス出力時 |
 | 画像生成 | gemini-2.0-flash-exp | ユーザー依頼時 |
+| 定時タスク実行 | gemini-3-flash-preview | スケジュール実行時（tool-loop） |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
 
@@ -176,6 +186,7 @@ docker compose --profile prod up -d
 | `pgdata` | PostgreSQL — ベクトル、知識グラフ KV ストア、ドキュメントメタ、チャット履歴、スライド、CRM キャッシュ |
 | `valkeydata` | クエリキャッシュ |
 | `lightrag-data` | NetworkX グラフファイル |
+| `chat-files` | チャット添付ファイル（画像・PDF 等） |
 
 完全にリセットするには `docker compose down -v` を実行してください。
 
@@ -196,19 +207,28 @@ docker compose --profile prod up -d
 - pptxgenjs（PPTX 提案書生成）
 - Gemini API（商機分析根拠 + スライド計画 + スライド修正、maxTokens 16000 + 切断 JSON 自動修復）
 
+**タスクワーカー (task-worker)**
+- Bun + Hono
+- Gemini API tool-loop（KB 検索、Web 検索、CRM API、コード実行）
+- Alibaba OpenSandbox（コンテナ隔離コード実行）
+- Resend + React Email（メール通知、オプション）
+
 **インフラ**
 - PostgreSQL 17 + pgvector
-- Valkey 8（Redis 互換キャッシュ）
+- Valkey 8（Redis 互換キャッシュ + タスクキュー）
+- Alibaba OpenSandbox（Docker ベースサンドボックス）
 
 ## リソース使用量
 
-5 コンテナ合計 約 450 MB（アイドル時）：
+7 コンテナ合計 約 550 MB（アイドル時）：
 
 | コンテナ | メモリ |
 |---------|-------|
 | lightrag | ~254 MB |
 | rag-ui | ~109 MB |
 | crm-service | ~40 MB |
+| task-worker | ~40 MB |
+| opensandbox | ~50 MB |
 | postgres | ~37 MB |
 | valkey | ~10 MB |
 

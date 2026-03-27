@@ -98,6 +98,55 @@ services:
       retries: 5
     restart: unless-stopped
 
+  opensandbox:
+    image: rag-deploy-opensandbox:latest
+    build: ./opensandbox
+    profiles: ["prod"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  task-worker:
+    image: rag-deploy-task-worker:latest
+    build: ./task-worker
+    profiles: ["prod"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: gemini-3-flash-preview
+      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      REDIS_URL: redis://valkey:6379
+      LIGHTRAG_URL: http://lightrag:8007
+      CRM_SERVICE_URL: http://crm-service:8009
+      OPENSANDBOX_URL: opensandbox:8080
+      APP_URL: ${APP_URL:-https://ai.wgzhao.me}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Vertex AI
+      USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_LOCATION: ${GCP_LOCATION:-global}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
+    volumes:
+      - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      lightrag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   rag-ui:
     image: rag-deploy-ui:latest
     build: ./rag-ui
@@ -115,6 +164,7 @@ services:
       CHAT_FILES_DIR: /app/data/chat-files
       KB_FILES_DIR: /app/data/kb-files
       CRM_SERVICE_URL: http://crm-service:8009
+      TASK_WORKER_URL: http://task-worker:8010
       # Vertex AI
       USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}

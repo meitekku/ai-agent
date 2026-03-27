@@ -8,7 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v5
@@ -17,7 +17,7 @@ jobs:
         run: docker compose --profile prod build
 
       - name: Save images
-        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest rag-deploy-crm:latest
+        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest rag-deploy-crm:latest rag-deploy-task-worker:latest rag-deploy-opensandbox:latest
 
       - name: Sync files to Orange Pi
         env:
@@ -59,6 +59,8 @@ jobs:
           KINTONE_SUBDOMAIN=${{ secrets.KINTONE_SUBDOMAIN }}
           KINTONE_API_TOKEN=${{ secrets.KINTONE_API_TOKEN }}
           KINTONE_APP_ID=${{ secrets.KINTONE_APP_ID }}
+          APP_URL=https://ai.wgzhao.me
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
           USE_VERTEX_AI=true
           GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
           GCP_LOCATION=global
