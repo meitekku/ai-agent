@@ -28,10 +28,10 @@ export async function executeCode(
   executionId: number,
   timeoutSeconds = 120,
 ): Promise<CodeResult> {
-  const image =
-    language === "python"
-      ? (process.env.SANDBOX_PYTHON_IMAGE || "sandbox-python:latest")
-      : (process.env.SANDBOX_NODE_IMAGE || "node:22-slim");
+  const usePythonImage = language === "python" || language === "bash" || language === "shell";
+  const image = usePythonImage
+    ? (process.env.SANDBOX_PYTHON_IMAGE || "sandbox-python:latest")
+    : (process.env.SANDBOX_NODE_IMAGE || "node:22-slim");
   const sandbox = await Sandbox.create({
     connectionConfig: config,
     image,
@@ -42,9 +42,18 @@ export async function executeCode(
     // Ensure /output directory exists
     await sandbox.commands.run("mkdir -p /output");
 
-    const filename = language === "python" ? "script.py" : "script.js";
-    const cmd =
-      language === "python" ? `python ${filename}` : `node ${filename}`;
+    let filename: string;
+    let cmd: string;
+    if (language === "bash" || language === "shell") {
+      filename = "script.sh";
+      cmd = `bash ${filename}`;
+    } else if (language === "python") {
+      filename = "script.py";
+      cmd = `python ${filename}`;
+    } else {
+      filename = "script.js";
+      cmd = `node ${filename}`;
+    }
 
     await sandbox.files.write(filename, code);
     const result = await sandbox.commands.run(cmd);
