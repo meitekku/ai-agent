@@ -1,11 +1,15 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { Resend } from "resend";
 import { executeCode } from "./sandbox";
+import { AiEmail } from "./emails/ai-email";
 
 const LIGHTRAG_URL = process.env.LIGHTRAG_URL || "http://lightrag:8007";
 const CRM_SERVICE_URL = process.env.CRM_SERVICE_URL || "http://crm-service:8009";
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 const RAG_UI_URL = process.env.RAG_UI_URL || "http://rag-ui:3000";
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const EMAIL_FROM = process.env.EMAIL_FROM || "FG ZhaoWenguang <noreply@wgzhao.me>";
 
 // ============================================================
 // Tool definitions (AI SDK + Zod, using inputSchema)
@@ -15,16 +19,22 @@ export function buildTools(executionId: number) {
   return {
     searchKnowledgeBase: tool({
       description:
-        "Search the knowledge base for relevant information. Returns excerpts from indexed documents.",
+        "Search the internal knowledge base (RAG) for relevant information. Returns excerpts from indexed documents. Use when: the task requires domain-specific or internal information (company docs, manuals, policies, past reports). Do not use when: the question is about general/public knowledge — use webSearch instead. If kb is omitted, searches all knowledge bases.",
       inputSchema: z.object({
         query: z.string().describe("The search query"),
-        kb: z.string().optional().describe("Knowledge base slug"),
+        kb: z
+          .string()
+          .optional()
+          .describe(
+            "Knowledge base slug to search within. Omit to search all KBs.",
+          ),
       }),
       execute: async ({ query, kb }) => searchKnowledgeBase(query, kb),
     }),
 
     webSearch: tool({
-      description: "Search the web for current information on a topic.",
+      description:
+        "Search the web for current, real-time information. Returns top results with snippets and URLs. Use when: the task needs up-to-date information (news, stock prices, weather, recent events) or public knowledge not in the knowledge base. Do not use when: the information is likely in the internal knowledge base — use searchKnowledgeBase first. Prefer this over readUrl when you don't have a specific URL yet.",
       inputSchema: z.object({
         query: z.string().describe("The search query"),
       }),
@@ -32,7 +42,8 @@ export function buildTools(executionId: number) {
     }),
 
     readUrl: tool({
-      description: "Read the content of a web page.",
+      description:
+        "Fetch and extract the text content of a specific web page. Use when: you already have a URL (from webSearch results, user input, or a known source) and need its full content. Do not use when: you need to discover pages — use webSearch first to find relevant URLs, then readUrl to get details.",
       inputSchema: z.object({
         url: z.string().describe("The URL to read"),
       }),
@@ -41,22 +52,24 @@ export function buildTools(executionId: number) {
 
     crmApi: tool({
       description:
-        "Call the CRM service API to fetch or analyze deal data.",
+        "Call the CRM service API. Available endpoints: Salesforce — POST /sf/check (connection test), /sf/list (list opportunities), /sf/fetch (fetch deal details); Kintone — POST /kintone/list, /kintone/fetch; Analysis — POST /deals/analyze (AI scoring), /deals/parse-file (parse uploaded deal files), /deals/revise-rationale, /deals/solution-qa; Templates — GET /templates, POST /templates, POST /templates/detect; Proposals — POST /proposal/generate-plan, /proposal/render-pptx, /proposal/revise-slide. Use when: the task involves CRM data, deal analysis, or proposal generation. Do not use when: the task has nothing to do with sales/CRM data. Important: Salesforce and Kintone are separate CRM systems — only call the one the user specified. Do not mix them unless the user explicitly asks to reference both.",
       inputSchema: z.object({
         endpoint: z
           .string()
-          .describe("CRM endpoint path, e.g. /sf/list, /deals/analyze"),
+          .describe(
+            "CRM endpoint path, e.g. /sf/list, /deals/analyze, /kintone/fetch",
+          ),
         body: z
           .string()
           .optional()
-          .describe("JSON body for the POST request"),
+          .describe("JSON body string for the POST request"),
       }),
       execute: async ({ endpoint, body }) => crmApi(endpoint, body),
     }),
 
     executeCode: tool({
       description:
-        "Execute code in a secure sandbox. Supports Python and JavaScript. Python has pandas, matplotlib, openpyxl, Pillow, requests, beautifulsoup4 pre-installed.",
+        "Execute Python or JavaScript code in an isolated sandbox container. Python has pre-installed: pandas, matplotlib, seaborn, openpyxl, xlsxwriter, requests, beautifulsoup4, Pillow, pydantic. System tools: ffmpeg, imagemagick, curl, jq, git. Use when: the task requires computation, data processing, chart generation, web scraping, file format conversion, or any logic too complex for the LLM alone. Do not use when: the answer can be derived from reasoning alone without running code.",
       inputSchema: z.object({
         language: z
           .string()
@@ -68,19 +81,41 @@ export function buildTools(executionId: number) {
 
     createFile: tool({
       description:
-        "Save a file artifact that the user can download. Use for reports, CSV data, JSON exports, etc. You can call this multiple times to create multiple files.",
+        "Save a file artifact that the user can download later. Use when: the task produces structured output (CSV, JSON, Markdown report, Excel, etc.) or any content the user will want to keep. You can call this multiple times to create multiple files. Do not use when: the user asked to send results by email — use sendEmail instead.",
       inputSchema: z.object({
         filename: z
           .string()
-          .describe("File name with extension, e.g. report.csv, summary.json"),
+          .describe(
+            "File name with extension, e.g. report.md, data.csv, summary.json",
+          ),
         content: z.string().describe("File content as text"),
         mediaType: z
           .string()
           .optional()
-          .describe("MIME type, e.g. text/csv, application/json, text/plain"),
+          .describe(
+            "MIME type, e.g. text/csv, application/json. Auto-detected from extension if omitted.",
+          ),
       }),
       execute: async ({ filename, content, mediaType }) =>
         createFile(filename, content, mediaType, executionId),
+    }),
+
+    sendEmail: tool({
+      description:
+        "Send an email to the specified recipient. Body supports Markdown (headings, lists, bold, code blocks, blockquotes, etc.) and will be rendered as a styled HTML email. Use when: the user explicitly asks to send/email results to someone, or the task prompt specifies an email recipient. Do not use when: the user only asks for a report or summary without mentioning email — use createFile instead.",
+      inputSchema: z.object({
+        to: z
+          .string()
+          .describe("Recipient email address, e.g. user@example.com"),
+        subject: z.string().describe("Email subject line"),
+        body: z
+          .string()
+          .describe(
+            "Email body in Markdown format. Use headings, lists, bold, code blocks, etc. for rich formatting.",
+          ),
+      }),
+      execute: async ({ to, subject, body }) =>
+        sendEmail(to, subject, body),
     }),
   };
 }
@@ -227,6 +262,35 @@ async function createFile(
   } catch (err) {
     return JSON.stringify({
       error: `createFile failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
+async function sendEmail(
+  to: string,
+  subject: string,
+  body: string,
+): Promise<string> {
+  if (!RESEND_API_KEY) {
+    return JSON.stringify({
+      error: "Email unavailable: RESEND_API_KEY not configured",
+    });
+  }
+  try {
+    const resend = new Resend(RESEND_API_KEY);
+    const { data, error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to,
+      subject,
+      react: AiEmail({ subject, body }),
+    });
+    if (error) {
+      return JSON.stringify({ error: `Resend API error: ${error.message}` });
+    }
+    return JSON.stringify({ success: true, emailId: data?.id, to, subject });
+  } catch (err) {
+    return JSON.stringify({
+      error: `sendEmail failed: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
