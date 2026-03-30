@@ -958,35 +958,34 @@ export const SchedulerDetailPage = memo(function SchedulerDetailPage() {
               <div className="grid gap-2">
                 {executions.map((exec) => {
                   const hasDetail = exec.result || exec.error;
-                  // Truncate first line as preview
-                  const preview = (exec.result || exec.error || "")
-                    .split("\n")[0]
-                    .slice(0, 80);
+                  const preview = (exec.result || exec.error || "").slice(0, 300);
                   return (
                     <button
                       key={exec.id}
                       type="button"
                       onClick={() => hasDetail && setViewingExec(exec)}
-                      className={`w-full flex items-center gap-3 rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-colors ${
+                      className={`w-full rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-colors ${
                         hasDetail ? "hover:bg-muted/30 cursor-pointer" : "cursor-default"
                       }`}
                     >
-                      {statusBadge(exec.status)}
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatDate(exec.started_at || exec.created_at)}
-                      </span>
-                      {exec.execution_ms != null && (
+                      <div className="flex items-center gap-3">
+                        {statusBadge(exec.status)}
                         <span className="text-xs text-muted-foreground shrink-0">
-                          {formatDuration(exec.execution_ms)}
+                          {formatDate(exec.started_at || exec.created_at)}
                         </span>
-                      )}
+                        {exec.execution_ms != null && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {formatDuration(exec.execution_ms)}
+                          </span>
+                        )}
+                        {hasDetail && (
+                          <ChevronRightIcon className="size-4 text-muted-foreground ml-auto shrink-0" />
+                        )}
+                      </div>
                       {preview && (
-                        <span className="text-xs text-muted-foreground truncate min-w-0">
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 break-words">
                           {preview}
-                        </span>
-                      )}
-                      {hasDetail && (
-                        <ChevronRightIcon className="size-4 text-muted-foreground ml-auto shrink-0" />
+                        </p>
                       )}
                     </button>
                   );
