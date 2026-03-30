@@ -114,17 +114,21 @@ async function extractOutputFiles(
 
     for (const name of names) {
       try {
-        const bytes = await sandbox.files.readBytes(`/output/${name}`);
-
-        const form = new FormData();
-        form.append("file", new Blob([bytes], { type: guessMimeType(name) }), name);
-        form.append("filename", name);
-        form.append("mediaType", guessMimeType(name));
-        form.append("executionId", String(executionId));
+        const mediaType = guessMimeType(name);
+        const stream = sandbox.files.readBytesStream(`/output/${name}`);
+        const readable = ReadableStream.from(stream);
 
         const res = await fetch(`${RAG_UI_URL}/api/task-files`, {
           method: "POST",
-          body: form,
+          headers: {
+            "x-filename": encodeURIComponent(name),
+            "x-media-type": mediaType,
+            "x-execution-id": String(executionId),
+            "content-type": mediaType,
+          },
+          body: readable,
+          // @ts-ignore — duplex required for streaming request body in Node.js/Bun
+          duplex: "half",
         });
 
         if (res.ok) {
@@ -132,10 +136,12 @@ async function extractOutputFiles(
           uploaded.push({
             filename: data.filename || name,
             fileId: data.fileId,
-            size: bytes.byteLength,
+            size: data.size,
             url: data.url,
           });
-          console.log(`[sandbox] Uploaded /output/${name} (${bytes.byteLength} bytes)`);
+          console.log(`[sandbox] Streamed /output/${name} → fileId=${data.fileId} (${data.size} bytes)`);
+        } else {
+          console.error(`[sandbox] Upload failed for /output/${name}: ${res.status}`);
         }
       } catch (err) {
         console.error(`[sandbox] Failed to extract /output/${name}:`, err);

@@ -6,24 +6,43 @@ import { insertExecutionFile } from "@/lib/scheduler-db";
 /**
  * POST /api/task-files
  * Called by task-worker to save file artifacts.
- * Accepts multipart/form-data: file + filename + mediaType + executionId
+ * Accepts two modes:
+ *   - Streaming: raw binary body + x-filename / x-media-type / x-execution-id headers
+ *   - Legacy: multipart/form-data with file + filename + mediaType + executionId fields
  */
 export async function POST(req: NextRequest) {
   try {
-    const form = await req.formData();
-    const file = form.get("file") as File | null;
-    const filename = (form.get("filename") as string) || file?.name || "untitled";
-    const mediaType = (form.get("mediaType") as string) || file?.type || "application/octet-stream";
-    const executionId = parseInt(form.get("executionId") as string, 10);
+    let filename: string;
+    let mediaType: string;
+    let executionId: number;
+    let buffer: Buffer;
 
-    if (!file || !executionId) {
-      return NextResponse.json(
-        { error: "file and executionId are required" },
-        { status: 400 },
-      );
+    const contentType = req.headers.get("content-type") || "";
+
+    if (!contentType.startsWith("multipart/form-data")) {
+      // Streaming mode: body is raw binary, metadata in headers
+      filename = decodeURIComponent(req.headers.get("x-filename") || "untitled");
+      mediaType = req.headers.get("x-media-type") || "application/octet-stream";
+      executionId = parseInt(req.headers.get("x-execution-id") || "0", 10);
+      if (!executionId) {
+        return NextResponse.json({ error: "x-execution-id header is required" }, { status: 400 });
+      }
+      buffer = Buffer.from(await req.arrayBuffer());
+    } else {
+      // Legacy multipart mode
+      const form = await req.formData();
+      const file = form.get("file") as File | null;
+      filename = (form.get("filename") as string) || file?.name || "untitled";
+      mediaType = (form.get("mediaType") as string) || file?.type || "application/octet-stream";
+      executionId = parseInt(form.get("executionId") as string, 10);
+      if (!file || !executionId) {
+        return NextResponse.json(
+          { error: "file and executionId are required" },
+          { status: 400 },
+        );
+      }
+      buffer = Buffer.from(await file.arrayBuffer());
     }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
 
     // Save to disk
     const { id: fileId, storedPath } = await saveFile(buffer, filename);

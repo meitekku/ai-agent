@@ -53,7 +53,6 @@ RUN sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain=
 
 # Python CLI tools
 RUN uv pip install --system \
-    yt-dlp \
     gallery-dl \
     weasyprint
 
