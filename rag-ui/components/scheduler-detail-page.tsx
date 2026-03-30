@@ -536,9 +536,9 @@ function ExecutionResultContent({
 
         {/* Result — Markdown rendered */}
         {hasResult && (
-          <div className="prose-sm">
+          <div className="prose-sm max-w-none overflow-x-auto break-words [overflow-wrap:anywhere]">
             <Streamdown
-              className="sd text-xs leading-relaxed [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-xs [&_pre]:text-[11px] [&_code]:text-[11px] [&_p]:text-xs [&_li]:text-xs [&_table]:text-xs"
+              className="sd text-xs leading-relaxed [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-xs [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:text-[11px] [&_code]:break-all [&_p]:text-xs [&_li]:text-xs [&_table]:text-xs"
               plugins={mdPlugins}
             >
               {exec.result!}
