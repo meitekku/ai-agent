@@ -343,7 +343,7 @@ docker compose --profile prod build --no-cache
 
 `opensandbox/Dockerfile.sandbox-python` で構築。executeCode から利用。
 
-**CLI ツール**: ffmpeg, imagemagick, graphviz, gnuplot, pandoc, wkhtmltopdf, curl, wget, httpie, jq, xmlstarlet, csvkit, miller, ripgrep, sqlite3, yt-dlp, gallery-dl, git, zip, bc, tree
+**CLI ツール**: ffmpeg, imagemagick, graphviz, gnuplot, pandoc, weasyprint, curl, wget, httpie, jq, xmlstarlet, csvkit, miller, ripgrep, sqlite3, yt-dlp, gallery-dl, git, zip, bc, tree
 
 **Python パッケージ**: numpy, scipy, pandas, matplotlib, seaborn, plotly, scikit-learn, openpyxl, xlsxwriter, requests, beautifulsoup4, lxml, feedparser, yfinance, tabulate, Pillow, pydantic, python-docx, reportlab, sympy
 
