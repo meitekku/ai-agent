@@ -40,6 +40,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install RTK (Rust Token Killer) — compresses CLI output for AI token efficiency
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then RTK_ARCH="aarch64-unknown-linux-gnu"; \
+    else RTK_ARCH="x86_64-unknown-linux-gnu"; fi && \
+    curl -fsSL "https://github.com/rtk-ai/rtk/releases/latest/download/rtk-${RTK_ARCH}.tar.gz" \
+    | tar -xz -C /usr/local/bin/ rtk && \
+    chmod +x /usr/local/bin/rtk
+
 # Remove ImageMagick default PDF policy restriction
 RUN sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
 

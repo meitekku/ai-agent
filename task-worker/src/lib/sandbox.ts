@@ -45,6 +45,7 @@ export async function executeCode(
     let filename: string;
     let cmd: string;
     if (language === "bash" || language === "shell") {
+      // Wrap each line with rtk for token-efficient output
       filename = "script.sh";
       cmd = `bash ${filename}`;
     } else if (language === "python") {
@@ -58,11 +59,26 @@ export async function executeCode(
       cmd = `node ${filename}`;
     }
 
+    // For bash scripts on sandbox-python image, add rtk to PATH aliases
+    // so common commands (ls, find, grep, git, curl, etc.) auto-compress output
+    if ((language === "bash" || language === "shell") && usePythonImage) {
+      const rtkInit = [
+        "# RTK wrappers for token-efficient output",
+        "if command -v rtk &>/dev/null; then",
+        "  for _c in ls find grep cat head tail wc du df ps tree curl wget git pip uv; do",
+        '    eval "$_c() { rtk $_c \\"\\$@\\"; }"',
+        "  done",
+        "  unset _c",
+        "fi",
+      ].join("\n");
+      code = rtkInit + "\n\n" + code;
+    }
+
     await sandbox.files.write(filename, code);
     const result = await sandbox.commands.run(cmd);
 
-    const stdout = (result.logs?.stdout?.map((l: any) => l.text).join("") || "").slice(0, 10000);
-    const stderr = (result.logs?.stderr?.map((l: any) => l.text).join("") || "").slice(0, 5000);
+    const stdout = (result.logs?.stdout?.map((l: any) => l.text).join("") || "");
+    const stderr = (result.logs?.stderr?.map((l: any) => l.text).join("") || "");
 
     // Collect files from /output/
     const uploadedFiles = await extractOutputFiles(sandbox, executionId);
