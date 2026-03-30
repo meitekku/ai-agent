@@ -31,7 +31,7 @@ export async function executeCode(
   const usePythonImage = language === "python" || language === "bash" || language === "shell";
   const image = usePythonImage
     ? (process.env.SANDBOX_PYTHON_IMAGE || "sandbox-python:latest")
-    : (process.env.SANDBOX_NODE_IMAGE || "node:22-slim");
+    : (process.env.SANDBOX_NODE_IMAGE || "node:26-slim");
   const sandbox = await Sandbox.create({
     connectionConfig: config,
     image,
@@ -50,6 +50,9 @@ export async function executeCode(
     } else if (language === "python") {
       filename = "script.py";
       cmd = `python ${filename}`;
+    } else if (language === "typescript") {
+      filename = "script.ts";
+      cmd = `node ${filename}`;
     } else {
       filename = "script.js";
       cmd = `node ${filename}`;

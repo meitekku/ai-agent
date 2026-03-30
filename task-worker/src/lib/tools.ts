@@ -73,7 +73,7 @@ export function buildTools(executionId: number) {
       inputSchema: z.object({
         language: z
           .string()
-          .describe("Language: 'bash' for shell commands & CLI tools, 'python' for data/ML/scripting, 'javascript' for Node.js"),
+          .describe("Language: 'bash' for shell commands & CLI tools, 'python' for data/ML/scripting, 'javascript' for Node.js, 'typescript' for Node.js with native TS support"),
         code: z.string().describe("The code to execute"),
       }),
       execute: async ({ language, code }) => runCode(language, code, executionId),
