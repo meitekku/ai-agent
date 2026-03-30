@@ -8,6 +8,16 @@ const QUEUE_KEY = "scheduler:task-queue";
 export async function startWorker(): Promise<void> {
   console.log("[worker] Starting task worker...");
 
+  let isShuttingDown = false;
+  process.on("SIGTERM", () => {
+    console.log("[worker] SIGTERM received, will stop after current task...");
+    isShuttingDown = true;
+  });
+  process.on("SIGINT", () => {
+    console.log("[worker] SIGINT received, will stop after current task...");
+    isShuttingDown = true;
+  });
+
   // Recover stale executions from previous crashes
   await recoverStaleExecutions();
 
@@ -19,7 +29,7 @@ export async function startWorker(): Promise<void> {
   console.log("[worker] Connected to Valkey, waiting for tasks...");
 
   // Main BRPOP loop
-  while (true) {
+  while (!isShuttingDown) {
     try {
       // BRPOP blocks for 5 seconds, then loops (allows graceful shutdown checks)
       const result = await redis.brPop(QUEUE_KEY, 5);
@@ -30,18 +40,47 @@ export async function startWorker(): Promise<void> {
         `[worker] Received task ${payload.taskId} (execution ${payload.executionId})`,
       );
 
-      // Fetch task name for notifications
+      // Fetch task name and retry config
       const task = await getTaskById(payload.taskId);
       if (task) {
-        payload.taskName = payload.taskName || `Task #${payload.taskId}`;
+        payload.taskName = task.name;
       }
 
-      await executeTask(payload);
+      const execStatus = await executeTask(payload);
+
+      // Retry on failure if retries remain
+      if (execStatus === "failed") {
+        const retryMax = task?.retry_max ?? 0;
+        const retryCount = payload.retryCount ?? 0;
+        if (retryCount < retryMax) {
+          const nextCount = retryCount + 1;
+          console.log(
+            `[worker] Task ${payload.taskId} failed, retry ${nextCount}/${retryMax}...`,
+          );
+          await updateExecution(payload.executionId, {
+            status: "pending",
+            retry_count: nextCount,
+            error: null,
+            result: null,
+            started_at: null,
+            completed_at: null,
+          });
+          await redis.lPush(
+            QUEUE_KEY,
+            JSON.stringify({ ...payload, retryCount: nextCount }),
+          );
+        }
+      }
     } catch (err) {
+      if (isShuttingDown) break;
       console.error("[worker] Error processing task:", err);
       // Continue loop — don't crash the worker
     }
   }
+
+  await redis.disconnect();
+  console.log("[worker] Graceful shutdown complete.");
+  process.exit(0);
 }
 
 async function recoverStaleExecutions(): Promise<void> {
@@ -74,19 +113,22 @@ async function recoverStaleExecutions(): Promise<void> {
         if (task) {
           const redis = createClient({ url: REDIS_URL });
           await redis.connect();
-          await redis.lPush(
-            QUEUE_KEY,
-            JSON.stringify({
-              taskId: exec.task_id,
-              executionId: exec.id,
-              prompt: task.prompt,
-              kbSlug: task.kb_slug,
-              allowedTools: task.allowed_tools,
-              maxToolCalls: task.max_tool_calls,
-              timeoutSeconds: task.timeout_sec,
-            }),
-          );
-          await redis.disconnect();
+          try {
+            await redis.lPush(
+              QUEUE_KEY,
+              JSON.stringify({
+                taskId: exec.task_id,
+                executionId: exec.id,
+                prompt: task.prompt,
+                kbSlug: task.kb_slug,
+                allowedTools: task.allowed_tools,
+                maxToolCalls: task.max_tool_calls,
+                timeoutSeconds: task.timeout_sec,
+              }),
+            );
+          } finally {
+            await redis.disconnect();
+          }
           console.log(
             `[worker] Re-enqueued stale execution ${exec.id}`,
           );

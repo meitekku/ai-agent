@@ -1332,6 +1332,42 @@ export async function POST(req: Request) {
         }
       },
     });
+
+    tools.runScheduledTask = tool({
+      description:
+        "定時タスクを今すぐ手動実行する（テスト実行）。ユーザーが「今すぐ実行」「テストしたい」「試しに動かして」と言った時に使用。" +
+        "使わない場面: スケジュール変更（updateScheduledTask）、タスク確認（listScheduledTasks）。" +
+        "実行はキューに投入され非同期で処理される。結果は通知またはスケジューラ詳細画面で確認できる。",
+      inputSchema: z.object({
+        id: z.number().describe("実行対象のタスクID（listScheduledTasksで事前確認）"),
+      }),
+      execute: async ({ id }) => {
+        console.log(`[chat] 📅 runScheduledTask: id=${id}`);
+        try {
+          const { getTask, createExecution, updateExecution } = await import("@/lib/scheduler-db");
+          const { enqueueTask } = await import("@/lib/scheduler-queue");
+          const task = await getTask(id);
+          if (!task) return { success: false, error: `タスクID ${id} が見つかりません` };
+          const executionId = await createExecution(id);
+          await updateExecution(executionId, { status: "queued" });
+          await enqueueTask({
+            taskId: id,
+            executionId,
+            prompt: task.prompt,
+            kbSlug: task.kb_slug,
+            allowedTools: task.allowed_tools ?? [],
+            maxToolCalls: task.max_tool_calls ?? 25,
+            timeoutSeconds: task.timeout_sec ?? 600,
+            model: task.model,
+            notifyTo: task.notify_to,
+            notifyFrom: task.notify_from,
+          });
+          return { success: true, taskId: id, executionId, taskName: task.name };
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
   }
 
   // reviseSlides tool: precise slide editing from chat

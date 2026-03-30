@@ -74,7 +74,7 @@ export async function executeCode(
       code = rtkInit + "\n\n" + code;
     }
 
-    await sandbox.files.write(filename, code);
+    await sandbox.files.writeFiles([{ path: filename, data: code }]);
     const result = await sandbox.commands.run(cmd);
 
     const stdout = (result.logs?.stdout?.map((l: any) => l.text).join("") || "");
@@ -115,8 +115,11 @@ async function extractOutputFiles(
     for (const name of names) {
       try {
         const mediaType = guessMimeType(name);
+        // readBytesStream returns AsyncIterable<Uint8Array>.
+        // Bun's ReadableStream.from() accepts AsyncIterable but TS types omit the static method.
         const stream = sandbox.files.readBytesStream(`/output/${name}`);
-        const readable = ReadableStream.from(stream);
+        const fromStream = (ReadableStream as unknown as { from(i: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> }).from;
+        const readable = fromStream(stream);
 
         const res = await fetch(`${RAG_UI_URL}/api/task-files`, {
           method: "POST",

@@ -116,9 +116,9 @@ export async function getStaleExecutions(): Promise<
 
 export async function getTaskById(
   id: number,
-): Promise<{ prompt: string; kb_slug: string | null; allowed_tools: string[]; max_tool_calls: number; timeout_sec: number; retry_max: number } | null> {
+): Promise<{ name: string; prompt: string; kb_slug: string | null; allowed_tools: string[]; max_tool_calls: number; timeout_sec: number; retry_max: number } | null> {
   const res = await getPool().query(
-    `SELECT prompt, kb_slug, allowed_tools, max_tool_calls, timeout_sec, retry_max FROM scheduled_tasks WHERE id = $1`,
+    `SELECT name, prompt, kb_slug, allowed_tools, max_tool_calls, timeout_sec, retry_max FROM scheduled_tasks WHERE id = $1`,
     [id],
   );
   return res.rows.length > 0 ? res.rows[0] : null;

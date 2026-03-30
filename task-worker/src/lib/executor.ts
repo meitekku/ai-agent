@@ -1,9 +1,10 @@
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "./ai-provider";
-import { buildTools } from "./tools";
+import { getModel, googleSearchTool } from "./ai-provider";
+import { buildTools, listKBs, TAVILY_API_KEY } from "./tools";
 import { updateExecution } from "./db";
 import { notifySuccess, notifyFailure, notifyTimeout } from "./notify";
 import { sendNotificationEmail } from "./email";
+import { getEnabledSkillSummaries, type SkillSummary } from "./skills-db";
 
 interface TaskPayload {
   taskId: number;
@@ -18,6 +19,7 @@ interface TaskPayload {
   cronExpr?: string;
   notifyTo?: string | null;
   notifyFrom?: string | null;
+  retryCount?: number;
 }
 
 interface ToolCallLog {
@@ -27,7 +29,27 @@ interface ToolCallLog {
   duration_ms: number;
 }
 
-export async function executeTask(payload: TaskPayload): Promise<void> {
+// Tools that are user-filterable via allowedTools
+const FILTERABLE_TOOLS = [
+  "searchKnowledgeBase",
+  "webSearch",
+  "readUrl",
+  "crmApi",
+  "executeCode",
+  "createFile",
+  "sendEmail",
+  "generateImage",
+];
+
+function buildSkillsPrompt(skills: SkillSummary[]): string {
+  if (skills.length === 0) return "";
+  const list = skills
+    .map((s) => `- ${s.name}: ${s.description}`)
+    .join("\n");
+  return `\n\n## Available Skills (use proactively)\n\nThe following skills are enabled. If the user's task is related to any of them, call \`loadSkill\` immediately to load the full instructions — do NOT ask the user first. Using a skill costs little; missing one degrades quality.\n\n${list}`;
+}
+
+export async function executeTask(payload: TaskPayload): Promise<'completed' | 'failed' | 'timeout'> {
   const startTime = Date.now();
   const taskName = payload.taskName || `Task #${payload.taskId}`;
 
@@ -36,16 +58,61 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     started_at: new Date(),
   });
 
-  // Build tools with execution context
-  const allTools = buildTools(payload.executionId);
-  const tools =
-    payload.allowedTools.length > 0
-      ? Object.fromEntries(
-          Object.entries(allTools).filter(([k]) =>
-            payload.allowedTools.includes(k),
-          ),
-        )
-      : allTools;
+  // Fetch skills and KB list in parallel before execution
+  const [skills, kbList] = await Promise.all([
+    getEnabledSkillSummaries(),
+    payload.kbSlug ? Promise.resolve([]) : listKBs(),
+  ]);
+
+  if (skills.length > 0) {
+    console.log(`[executor] 📚 ${skills.length} skills available: ${skills.map((s) => s.name).join(", ")}`);
+  }
+  if (kbList.length > 0) {
+    console.log(`[executor] 🗂️ KB auto-discovery: ${kbList.length} KBs: ${kbList.map((k) => k.slug).join(", ")}`);
+  }
+
+  // Build full tools map
+  const allTools = buildTools({
+    executionId: payload.executionId,
+    skills,
+    kbList,
+    kbSlug: payload.kbSlug,
+  });
+
+  // Apply allowedTools filter only to filterable tools;
+  // loadSkill and generateImage (when skills/image model exist) follow the filter,
+  // but loadSkill is always kept since it's meta-tooling.
+  let tools: Record<string, unknown>;
+  if (payload.allowedTools.length > 0) {
+    tools = Object.fromEntries(
+      Object.entries(allTools).filter(
+        ([k]) =>
+          !FILTERABLE_TOOLS.includes(k) || payload.allowedTools.includes(k),
+      ),
+    );
+  } else {
+    tools = { ...allTools };
+  }
+
+  // Add Google Search grounding as implicit fallback when Tavily is not set.
+  // Not user-filterable — it's a transparent capability upgrade.
+  const hasGoogleSearch = !TAVILY_API_KEY && !!googleSearchTool;
+  if (hasGoogleSearch) {
+    (tools as Record<string, unknown>).google_search = googleSearchTool;
+  }
+
+  // Build system prompt
+  const webSearchNote = TAVILY_API_KEY
+    ? "- Use webSearch for current/public information, then readUrl to get full page content."
+    : hasGoogleSearch
+      ? "- Use google_search for current/public information (built-in Gemini search, no extra API key needed)."
+      : "- Web search is not configured. Use searchKnowledgeBase for internal information.";
+
+  const kbNote = payload.kbSlug
+    ? `You have access to knowledge base "${payload.kbSlug}".`
+    : kbList.length > 0
+      ? `You have access to ${kbList.length} knowledge base(s). Use searchKnowledgeBase and select the most relevant KB.`
+      : "";
 
   const systemPrompt = [
     "You are an autonomous task executor. The user has NO execution environment — they can only see your final summary and any files you create. You MUST use your tools to accomplish everything: search, compute, send emails, create files, etc. Never write code or instructions for the user to run manually.",
@@ -58,12 +125,14 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     "- Prefer language='bash' for CLI tasks. Use 'python' for data analysis, ML, and complex scripting.",
     "- If a task requires multiple executeCode calls that depend on each other's output, do everything in a single call.",
     "",
+    "## Tool usage",
+    webSearchNote,
+    kbNote,
+    "",
     "After completing all tool calls, write a brief summary of what you did and key findings. Never end with empty or control characters.",
     "",
     "Be concise and focused. Write in the same language as the user's instruction.",
-    payload.kbSlug
-      ? `You have access to knowledge base "${payload.kbSlug}".`
-      : "",
+    buildSkillsPrompt(skills),
   ]
     .filter(Boolean)
     .join("\n");
@@ -76,18 +145,24 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
       model: getModel(payload.model || undefined),
       system: systemPrompt,
       prompt: payload.prompt,
-      tools,
+      tools: tools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(payload.maxToolCalls),
-      maxTokens: 8192,
+      maxOutputTokens: 32768,
       abortSignal: AbortSignal.timeout(payload.timeoutSeconds * 1000),
       onStepFinish(event) {
         const calls = event.toolCalls || [];
         const results = event.toolResults || [];
         for (let i = 0; i < calls.length; i++) {
-          const tc = calls[i];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tc = calls[i] as any;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const tr = results[i] as any;
-          // AI SDK ToolResult: { type, toolCallId, toolName, output }
-          const output = tr?.output !== undefined ? tr.output : tr?.result !== undefined ? tr.result : tr;
+          const output =
+            tr?.output !== undefined
+              ? tr.output
+              : tr?.result !== undefined
+                ? tr.result
+                : tr;
           const resultStr =
             typeof output === "string" ? output : JSON.stringify(output ?? "");
           toolCallLog.push({
@@ -102,16 +177,9 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
 
     const executionMs = Date.now() - startTime;
 
-    // Debug: log result structure
-    console.log(`[executor] result.text: "${(result.text || "").slice(0, 100)}"`);
-    console.log(`[executor] result.finishReason: ${result.finishReason}`);
-    console.log(`[executor] steps: ${result.steps.length}, maxSteps: ${payload.maxToolCalls}`);
-    for (const [i, step] of result.steps.entries()) {
-      console.log(`[executor]   step[${i}]: finishReason=${step.finishReason} text="${(step.text || "").slice(0, 50)}" toolCalls=${step.toolCalls?.length ?? 0} toolResults=${step.toolResults?.length ?? 0}`);
-    }
-
     // Use result.usage — Vertex AI uses inputTokens/outputTokens
-    const usage = result.usage as Record<string, number> | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const usage = result.usage as any;
     const totalUsage = {
       prompt: usage?.promptTokens || usage?.inputTokens || 0,
       output: usage?.completionTokens || usage?.outputTokens || 0,
@@ -134,7 +202,7 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
       completed_at: new Date(),
       prompt_tokens: totalUsage.prompt,
       output_tokens: totalUsage.output,
-      tool_calls: toolCallLog,
+      tool_calls: toolCallLog as unknown[],
       result: finalResult,
       execution_ms: executionMs,
     });
@@ -160,6 +228,7 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     console.log(
       `[executor] Task ${payload.taskId} completed in ${executionMs}ms (${toolCallLog.length} tool calls)`,
     );
+    return 'completed';
   } catch (err) {
     const executionMs = Date.now() - startTime;
     const isTimeout =
@@ -178,7 +247,7 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     await updateExecution(payload.executionId, {
       status: isTimeout ? "timeout" : "failed",
       completed_at: new Date(),
-      tool_calls: toolCallLog,
+      tool_calls: toolCallLog as unknown[],
       error: errorMsg,
       execution_ms: executionMs,
     });
@@ -209,5 +278,6 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     console.error(
       `[executor] Task ${payload.taskId} ${isTimeout ? "timed out" : "failed"} after ${executionMs}ms: ${errorMsg}`,
     );
+    return isTimeout ? 'timeout' : 'failed';
   }
 }

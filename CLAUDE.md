@@ -29,7 +29,7 @@ rag-deploy/
 ├── task-worker/                     # 定時タスク実行ワーカー (Bun + Hono)
 │   ├── Dockerfile                  # oven/bun:1
 │   ├── .dockerignore
-│   ├── package.json                # hono, pg, redis, @google/generative-ai, @alibaba-group/opensandbox, croner, resend
+│   ├── package.json                # hono, pg, redis, ai, @ai-sdk/google, @ai-sdk/google-vertex, @alibaba-group/opensandbox, croner, resend
 │   ├── tsconfig.json
 │   └── src/
 │       ├── index.ts                # Hono app (port 8010) + worker loop start
@@ -37,11 +37,12 @@ rag-deploy/
 │       │   └── health.ts           # GET /health
 │       └── lib/
 │           ├── db.ts               # pg Pool + ensureTables()
-│           ├── gemini.ts           # Gemini wrapper (AI Studio / Vertex AI)
+│           ├── ai-provider.ts      # Gemini/Vertex AI プロバイダー切替 + getModel() + getImageModel() + googleSearchTool
+│           ├── skills-db.ts        # PostgreSQL スキル読取（getEnabledSkillSummaries / getSkillByName）
 │           ├── worker.ts           # BRPOP 消費ループ + stale recovery
-│           ├── executor.ts         # AI tool-loop 実行エンジン
-│           ├── tools.ts            # ツール実装 (KB search, web search, CRM API, code exec, email, file)
-│           ├── sandbox.ts          # OpenSandbox SDK wrapper + /output/ 自動抽出アップロード
+│           ├── executor.ts         # AI tool-loop 実行エンジン（skills注入 + KB auto-discovery + google_search追加）
+│           ├── tools.ts            # ツール実装（loadSkill / generateImage / KB auto-discovery 対応）
+│           ├── sandbox.ts          # OpenSandbox SDK wrapper + /output/ 自動抽出ストリーミングアップロード
 │           ├── notify.ts           # task_notifications テーブル書込
 │           ├── email.ts            # Resend + React Email（タスク完了通知）
 │           └── emails/
@@ -331,13 +332,16 @@ docker compose --profile prod build --no-cache
 
 | ツール | 説明 | 使用条件 |
 |--------|------|----------|
-| `searchKnowledgeBase` | 内部ナレッジベース（RAG）検索 | 社内文書・マニュアル等の内部情報が必要な時 |
-| `webSearch` | Tavily ウェブ検索 | 最新ニュース・株価・公開情報が必要な時 |
+| `searchKnowledgeBase` | 内部ナレッジベース（RAG）検索。`kbSlug` 未指定時は KB 一覧を自動取得して AI が選択（auto-discovery） | 社内文書・マニュアル等の内部情報が必要な時 |
+| `webSearch` | Tavily ウェブ検索 | 最新ニュース・株価・公開情報が必要な時（`TAVILY_API_KEY` 必須） |
 | `readUrl` | URL のテキスト抽出 | webSearch で見つけた URL の詳細を読む時 |
+| `google_search` | Gemini 組み込み Google Search grounding | `TAVILY_API_KEY` 未設定 かつ AI Studio 使用時に自動追加（implicit、フィルター不可） |
 | `crmApi` | CRM サービス API 呼出（Salesforce/Kintone/分析/提案書） | 商談データ・CRM 操作が必要な時。SF と Kintone は混ぜない |
 | `executeCode` | Python/JS コード実行（OpenSandbox） | 計算・データ処理・可視化・ファイル変換・ML 等 |
 | `createFile` | テキストファイル保存（CSV, JSON, MD 等） | レポート・データエクスポート等、ユーザーがダウンロードする成果物 |
+| `generateImage` | Gemini 画像生成（`gemini-3.1-flash-image-preview`、Vertex AI / AI Studio 両対応） | 画像・イラスト・図の生成が必要な時 |
 | `sendEmail` | メール送信（Resend + Markdown テンプレート） | ユーザーが明示的にメール送信を指示した時のみ |
+| `loadSkill` | DB のスキル一覧から指定スキルの全文を読み込む | スキルが有効化されている時に implicit 追加（フィルター不可）。タスクに関連するスキルがあれば自動で呼出す |
 
 ### sandbox-python イメージ
 
@@ -410,6 +414,10 @@ GCP_SA_KEY_FILE=./your-sa-key.json
 | task-worker の tool description が粗雑で AI が誤判断 | 各ツールに Use when/Do not use when がなく、AI がツール選択を間違える | 全 7 ツールの description を統一フォーマットで詳細化。executeCode に全 CLI/Python パッケージ列挙、crmApi に全エンドポイント列挙、SF/Kintone 混同禁止ルール追加 |
 | task 完了後 `result.text` が `<ctrl46>` | Gemini が tool 完了後に正常テキストを返さず制御文字を出力 | executor.ts の system prompt に「最終サマリーを必ず出力せよ」を追加 |
 | task-files アップロードが base64 JSON で非効率 | sandbox バイナリ → base64 → JSON → decode で 33% 膨胀＋メモリ圧迫 | multipart/form-data に変更。sandbox.ts, tools.ts, route.ts 全て FormData + Blob で直送 |
+| `sandbox.files.write()` が TypeScript エラー | `@alibaba-group/opensandbox` SDK が `write()` → `writeFiles([{path, data}])` に API 変更 | `sandbox.files.writeFiles([{ path: filename, data: code }])` に変更 |
+| `ReadableStream.from()` が TypeScript エラー | `readBytesStream()` は `AsyncIterable<Uint8Array>` を返すが TS の `ReadableStream` 型定義に `from()` 静的メソッドがない | `(ReadableStream as unknown as { from(i: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> }).from(stream)` でキャスト。Bun ランタイムでは動作する |
+| `@react-email/markdown` の `markdownCustomStyles` でキー名エラー | `strong`/`code`/`blockquote` は無効。正しいキーは `bold`/`codeInline`/`blockQuote` | `StylesType` の定義に合わせてキー名を修正 |
+| task-worker の `getImageModel()` が Vertex AI で無効化されていた | Vertex AI は `imageModel()` メソッド、AI Studio は `image()` メソッドと異なる点を誤解していた | 両プロバイダーとも `image("gemini-3.1-flash-image-preview")` で統一（`@ai-sdk/google-vertex@4.0.95` の `GoogleVertexImageModelId` にも gemini 系モデルが含まれる）|
 | /scheduler/1 詳細画面が重い | 887 行の単一コンポーネントに全 state。dialog 開閉・15s ポーリングで全体再レンダリング | Zustand store で dialog 状態分離 + 5 つの memo'd サブコンポーネントに分割 + executions の useQuery を ExecutionList 内に移動 |
 | 実行結果の詳細 Dialog を閉じる時に白い帯が一瞬表示 | `setViewingExec(null)` で内容が先に消え、Dialog の閉じアニメーションだけ残る | `resultOpen` と `viewingExec` を分離。閉じる時は `resultOpen=false` のみ、データは保持して内容ごとアニメーション |
 | 実行履歴リストで長文テキストがコンテナからはみ出す | flex 一行レイアウト + truncate で収まらない長文 | 二行レイアウトに変更（上: メタ情報、下: preview `line-clamp-3 break-words`） |

@@ -14,7 +14,7 @@ function getResend(): Resend | null {
 
 interface ToolCall {
   tool: string;
-  args: Record<string, string>;
+  args: Record<string, unknown>;
   result_summary: string;
   duration_ms: number;
 }

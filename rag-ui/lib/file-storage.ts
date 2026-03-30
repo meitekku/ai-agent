@@ -2,11 +2,13 @@ import { mkdir, writeFile, readFile, unlink } from "fs/promises";
 import { join, extname } from "path";
 import { nanoid } from "nanoid";
 
-const CHAT_FILES_DIR =
-  process.env.CHAT_FILES_DIR || join(process.cwd(), "data", "chat-files");
+function getChatFilesDir(): string {
+  return process.env.CHAT_FILES_DIR || join(process.cwd(), "data", "chat-files");
+}
 
-const KB_FILES_DIR =
-  process.env.KB_FILES_DIR || join(process.cwd(), "data", "kb-files");
+function getKbFilesDir(): string {
+  return process.env.KB_FILES_DIR || join(process.cwd(), "data", "kb-files");
+}
 
 /**
  * Get a year-month subdirectory path (e.g. "2026-03")
@@ -58,15 +60,15 @@ export async function saveFile(
   buffer: Buffer,
   originalName: string,
 ): Promise<{ id: string; storedPath: string }> {
-  return _saveFile(buffer, originalName, CHAT_FILES_DIR);
+  return _saveFile(buffer, originalName, getChatFilesDir());
 }
 
 export async function readStoredFile(storedPath: string): Promise<Buffer> {
-  return _readFile(storedPath, CHAT_FILES_DIR);
+  return _readFile(storedPath, getChatFilesDir());
 }
 
 export async function deleteStoredFile(storedPath: string): Promise<void> {
-  return _deleteFile(storedPath, CHAT_FILES_DIR);
+  return _deleteFile(storedPath, getChatFilesDir());
 }
 
 // ---------------------------------------------------------------------------
@@ -77,13 +79,13 @@ export async function saveKbFile(
   buffer: Buffer,
   originalName: string,
 ): Promise<{ id: string; storedPath: string }> {
-  return _saveFile(buffer, originalName, KB_FILES_DIR);
+  return _saveFile(buffer, originalName, getKbFilesDir());
 }
 
 export async function readKbStoredFile(storedPath: string): Promise<Buffer> {
-  return _readFile(storedPath, KB_FILES_DIR);
+  return _readFile(storedPath, getKbFilesDir());
 }
 
 export async function deleteKbStoredFile(storedPath: string): Promise<void> {
-  return _deleteFile(storedPath, KB_FILES_DIR);
+  return _deleteFile(storedPath, getKbFilesDir());
 }

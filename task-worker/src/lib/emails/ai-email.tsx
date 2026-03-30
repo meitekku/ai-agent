@@ -62,13 +62,13 @@ export function AiEmail({
               <Markdown
                 markdownCustomStyles={{
                   p: { fontSize: "14px", color: "#1e293b", lineHeight: "1.7", margin: "0 0 8px" },
-                  strong: { fontWeight: "700" },
+                  bold: { fontWeight: "700" },
                   li: { fontSize: "14px", color: "#1e293b", lineHeight: "1.7" },
                   h1: { fontSize: "18px", fontWeight: "700", margin: "16px 0 8px" },
                   h2: { fontSize: "16px", fontWeight: "700", margin: "14px 0 8px" },
                   h3: { fontSize: "15px", fontWeight: "600", margin: "12px 0 6px" },
-                  code: { fontSize: "13px", backgroundColor: "#f1f5f9", padding: "1px 4px", borderRadius: "3px" },
-                  blockquote: { borderLeft: "3px solid #e2e8f0", paddingLeft: "12px", margin: "8px 0", color: "#64748b" },
+                  codeInline: { fontSize: "13px", backgroundColor: "#f1f5f9", padding: "1px 4px", borderRadius: "3px" },
+                  blockQuote: { borderLeft: "3px solid #e2e8f0", paddingLeft: "12px", margin: "8px 0", color: "#64748b" },
                 }}
               >
                 {body}
