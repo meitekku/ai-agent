@@ -631,6 +631,7 @@ export const SchedulerPage = memo(function SchedulerPage() {
               <Label htmlFor="task-prompt">タスク指示</Label>
               <Textarea
                 id="task-prompt"
+                className="max-h-[40vh] overflow-y-auto"
                 placeholder={"AI に実行させたい内容を自然言語で記述してください...\n\n例: 直近1週間のナレッジベースの更新内容をまとめて、重要な変更点をレポートにしてください。"}
                 rows={5}
                 value={form.prompt}

@@ -1135,8 +1135,8 @@ export const SchedulerDetailPage = memo(function SchedulerDetailPage() {
         <DialogContent
           className={
             resultFullscreen
-              ? "sm:max-w-[calc(100vw-2rem)] h-[calc(100vh-2rem)]"
-              : "sm:max-w-4xl max-h-[85vh]"
+              ? "sm:max-w-[calc(100vw-2rem)] h-[calc(100vh-2rem)] flex flex-col overflow-hidden"
+              : "sm:max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
           }
           showCloseButton={false}
         >
