@@ -32,8 +32,11 @@ export const MANUAL_CRON = "0 0 30 2 *";
 export const ALL_TOOLS = [
   "searchKnowledgeBase",
   "webSearch",
-  "readPage",
-  "codeExec",
+  "readUrl",
+  "executeCode",
+  "crmApi",
+  "createFile",
+  "sendEmail",
 ];
 
 export const MODEL_OPTIONS = [

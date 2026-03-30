@@ -3,7 +3,8 @@ import { SchedulerPage } from "@/components/scheduler-page";
 
 export const metadata: Metadata = {
   title: "スケジューラ",
-  description: "定時タスクの作成・管理と実行履歴の確認。",
+  description:
+    "定時タスクの作成・管理と実行履歴の確認。Cron スケジュールで AI エージェントを自動実行し、ナレッジベース検索やウェブ検索の結果をメール通知。",
 };
 
 export default function SchedulerRoute() {

@@ -40,12 +40,16 @@ rag-deploy/
 │           ├── gemini.ts           # Gemini wrapper (AI Studio / Vertex AI)
 │           ├── worker.ts           # BRPOP 消費ループ + stale recovery
 │           ├── executor.ts         # AI tool-loop 実行エンジン
-│           ├── tools.ts            # ツール実装 (KB search, web search, CRM API, code exec)
-│           ├── sandbox.ts          # OpenSandbox SDK wrapper
+│           ├── tools.ts            # ツール実装 (KB search, web search, CRM API, code exec, email, file)
+│           ├── sandbox.ts          # OpenSandbox SDK wrapper + /output/ 自動抽出アップロード
 │           ├── notify.ts           # task_notifications テーブル書込
-│           └── email.ts            # Resend + React Email（オプション）
+│           ├── email.ts            # Resend + React Email（タスク完了通知）
+│           └── emails/
+│               ├── task-result.tsx  # タスク完了通知メールテンプレート
+│               └── ai-email.tsx    # AI sendEmail ツール用メールテンプレート（Markdown 対応）
 ├── opensandbox/                     # OpenSandbox サーバー (Alibaba, Apache 2.0)
 │   ├── Dockerfile                  # python:3.12-slim + opensandbox-server
+│   ├── Dockerfile.sandbox-python   # sandbox Python イメージ（CLI + Python ライブラリ多数）
 │   └── config.toml                 # server/docker/security 設定
 ├── crm-service/                    # CRM + 提案書マイクロサービス (Bun + Hono)
 │   ├── Dockerfile                  # oven/bun:1
@@ -94,8 +98,18 @@ rag-deploy/
     ├── app/                        # ページ + API Routes
     ├── components/                 # UI コンポーネント
     │   ├── widget-renderer.tsx     # Generative UI: sandbox iframe + morphdom DOM diff
-    │   └── widget-shimmer.tsx      # Widget ローディングシマー
+    │   ├── widget-shimmer.tsx      # Widget ローディングシマー
+    │   ├── scheduler-shared.tsx    # スケジューラ共通（型定義, cron helpers, SchedulePicker, TaskFormFields）
+    │   ├── scheduler-page.tsx      # スケジューラ一覧ページ
+    │   ├── scheduler-detail-page.tsx # スケジューラ詳細ページ（データ取得+レイアウトのみ）
+    │   └── scheduler/              # スケジューラ詳細サブコンポーネント（各 memo'd + Zustand 分離）
+    │       ├── task-info-card.tsx   # タスク情報カード
+    │       ├── execution-list.tsx   # 実行履歴リスト（自身で useQuery + 15s ポーリング）
+    │       ├── execution-result-dialog.tsx # 実行結果ダイアログ
+    │       ├── edit-dialog.tsx      # 編集ダイアログ
+    │       └── delete-dialog.tsx    # 削除確認ダイアログ
     └── lib/                        # ユーティリティ + プロバイダー
+        ├── scheduler-detail-store.ts # Zustand store（ダイアログ状態管理、型定義）
         ├── widget-parser.ts        # show-widget フェンス解析
         ├── widget-sanitizer.ts     # HTML 消毒 + iframe srcdoc + morphdom インライン + 逐語アニメーション
         ├── widget-css-bridge.ts    # CSS 変数ブリッジ
@@ -313,6 +327,30 @@ docker compose --profile prod build --no-cache
 - **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest_jobs, lightrag_*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history, proposal_sessions, scheduled_tasks, task_executions, task_notifications）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 
+## task-worker AI ツール一覧
+
+| ツール | 説明 | 使用条件 |
+|--------|------|----------|
+| `searchKnowledgeBase` | 内部ナレッジベース（RAG）検索 | 社内文書・マニュアル等の内部情報が必要な時 |
+| `webSearch` | Tavily ウェブ検索 | 最新ニュース・株価・公開情報が必要な時 |
+| `readUrl` | URL のテキスト抽出 | webSearch で見つけた URL の詳細を読む時 |
+| `crmApi` | CRM サービス API 呼出（Salesforce/Kintone/分析/提案書） | 商談データ・CRM 操作が必要な時。SF と Kintone は混ぜない |
+| `executeCode` | Python/JS コード実行（OpenSandbox） | 計算・データ処理・可視化・ファイル変換・ML 等 |
+| `createFile` | テキストファイル保存（CSV, JSON, MD 等） | レポート・データエクスポート等、ユーザーがダウンロードする成果物 |
+| `sendEmail` | メール送信（Resend + Markdown テンプレート） | ユーザーが明示的にメール送信を指示した時のみ |
+
+### sandbox-python イメージ
+
+`opensandbox/Dockerfile.sandbox-python` で構築。executeCode から利用。
+
+**CLI ツール**: ffmpeg, imagemagick, graphviz, gnuplot, pandoc, wkhtmltopdf, curl, wget, httpie, jq, xmlstarlet, csvkit, miller, ripgrep, sqlite3, yt-dlp, gallery-dl, git, zip, bc, tree
+
+**Python パッケージ**: numpy, scipy, pandas, matplotlib, seaborn, plotly, scikit-learn, openpyxl, xlsxwriter, requests, beautifulsoup4, lxml, feedparser, yfinance, tabulate, Pillow, pydantic, python-docx, reportlab, sympy
+
+### /output/ 自動アップロード
+
+sandbox 内で `/output/` ディレクトリに保存されたファイルは、コード実行完了後に自動的に `sandbox.files.readBytes()` → multipart/form-data で `POST /api/task-files` にアップロードされる。base64 変換なし、バイナリ直送。動画・画像・PDF 等の大容量バイナリファイルに対応。アップロードされたファイルは実行結果詳細画面でダウンロード可能。
+
 ## Vertex AI / AI Studio デュアルモード
 
 同じ Gemini モデルに対して 2 つの課金経路がある:
@@ -368,6 +406,13 @@ GCP_SA_KEY_FILE=./your-sa-key.json
 | crm-service PPTX 計画 JSON が切れる | Gemini の maxOutputTokens 不足 + 長い JSON が途中で途切れる | maxTokens 8000→16000 に増量 + 切断 JSON 自動修復（未閉じ括弧を自動補完） |
 | `reviseRationale` がセッション分析を上書き | セッションの analysis 全体を revise 結果で置換、元のスコアが消える | マージ方式に変更: `result.rationale` + `result.analysisUpdates` を既存 analysis にマージ |
 | `kbs.find()` でクラッシュ | API レスポンスが `{ knowledge_bases: [...] }` なのに配列として参照 | `data.knowledge_bases ?? data ?? []` でアンラップ |
+| task-worker が「メール送信機能がない」と回答 | email.ts は存在するが通知用のみ、AI ツールとして未公開 | `sendEmail` ツール追加（Resend API + AiEmail Markdown テンプレート）。description に Use when/Do not use when 明記 |
+| task-worker の tool description が粗雑で AI が誤判断 | 各ツールに Use when/Do not use when がなく、AI がツール選択を間違える | 全 7 ツールの description を統一フォーマットで詳細化。executeCode に全 CLI/Python パッケージ列挙、crmApi に全エンドポイント列挙、SF/Kintone 混同禁止ルール追加 |
+| task 完了後 `result.text` が `<ctrl46>` | Gemini が tool 完了後に正常テキストを返さず制御文字を出力 | executor.ts の system prompt に「最終サマリーを必ず出力せよ」を追加 |
+| task-files アップロードが base64 JSON で非効率 | sandbox バイナリ → base64 → JSON → decode で 33% 膨胀＋メモリ圧迫 | multipart/form-data に変更。sandbox.ts, tools.ts, route.ts 全て FormData + Blob で直送 |
+| /scheduler/1 詳細画面が重い | 887 行の単一コンポーネントに全 state。dialog 開閉・15s ポーリングで全体再レンダリング | Zustand store で dialog 状態分離 + 5 つの memo'd サブコンポーネントに分割 + executions の useQuery を ExecutionList 内に移動 |
+| 実行結果の詳細 Dialog を閉じる時に白い帯が一瞬表示 | `setViewingExec(null)` で内容が先に消え、Dialog の閉じアニメーションだけ残る | `resultOpen` と `viewingExec` を分離。閉じる時は `resultOpen=false` のみ、データは保持して内容ごとアニメーション |
+| 実行履歴リストで長文テキストがコンテナからはみ出す | flex 一行レイアウト + truncate で収まらない長文 | 二行レイアウトに変更（上: メタ情報、下: preview `line-clamp-3 break-words`） |
 | PDF エクスポートでテキスト消失 | PDF export が innerHTML コピー時に computed styles を未コピー | `captureSlideAsPng()` で iframe 内直接キャプチャに変更（PPTX/PDF 共通） |
 | PPTX がプレビューと異なる | innerHTML を外部 wrapper にコピー → Tailwind CSS が外部 DOM に不在 | iframe 内の body に直接 html2canvas 実行（same-origin srcdoc） |
 | PDF 保存時に PPTX ボタンが回る | PDF/PPTX が `exporting` state を共有 | `exportingPdf` 独立 state 追加、各ボタンに専用 spinner |

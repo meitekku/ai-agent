@@ -6,22 +6,24 @@ import { insertExecutionFile } from "@/lib/scheduler-db";
 /**
  * POST /api/task-files
  * Called by task-worker to save file artifacts.
- * Body: { content: string (base64), filename: string, mediaType: string, executionId: number }
+ * Accepts multipart/form-data: file + filename + mediaType + executionId
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { content, filename, mediaType, executionId } = body;
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
+    const filename = (form.get("filename") as string) || file?.name || "untitled";
+    const mediaType = (form.get("mediaType") as string) || file?.type || "application/octet-stream";
+    const executionId = parseInt(form.get("executionId") as string, 10);
 
-    if (!content || !filename || !executionId) {
+    if (!file || !executionId) {
       return NextResponse.json(
-        { error: "content, filename, and executionId are required" },
+        { error: "file and executionId are required" },
         { status: 400 },
       );
     }
 
-    const buffer = Buffer.from(content, "base64");
-    const mimeType = mediaType || "application/octet-stream";
+    const buffer = Buffer.from(await file.arrayBuffer());
 
     // Save to disk
     const { id: fileId, storedPath } = await saveFile(buffer, filename);
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
       id: fileId,
       originalName: filename,
       storedPath,
-      mediaType: mimeType,
+      mediaType,
       sizeBytes: buffer.length,
     });
 
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
       executionId,
       fileId,
       filename,
-      mediaType: mimeType,
+      mediaType,
       sizeBytes: buffer.length,
     });
 

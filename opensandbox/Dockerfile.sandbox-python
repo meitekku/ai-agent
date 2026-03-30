@@ -1,29 +1,71 @@
 FROM python:3.12-slim
 
-# System tools
+# System tools & CLI utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Media
     ffmpeg \
     imagemagick \
+    graphviz \
+    gnuplot \
+    # Network & data
     curl \
+    wget \
+    httpie \
     jq \
+    xmlstarlet \
+    # Archive
     zip \
     unzip \
+    # Text processing
+    csvkit \
+    miller \
+    ripgrep \
+    sed \
+    gawk \
+    # Document conversion
+    pandoc \
+    wkhtmltopdf \
+    # VCS
     git \
+    # System
+    bc \
+    file \
+    tree \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Remove ImageMagick default PDF policy restriction
 RUN sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
 
-# Python data/viz libraries
+# Python CLI tools
 RUN pip install --no-cache-dir \
+    yt-dlp \
+    gallery-dl \
+    httpx-cli \
+    csvtool \
+    json2csv
+
+# Python data/viz/ML libraries
+RUN pip install --no-cache-dir \
+    numpy \
+    scipy \
     pandas \
     matplotlib \
     seaborn \
+    plotly \
+    scikit-learn \
     openpyxl \
     xlsxwriter \
     requests \
     beautifulsoup4 \
+    lxml \
+    feedparser \
+    yfinance \
+    tabulate \
     Pillow \
-    pydantic
+    pydantic \
+    python-docx \
+    reportlab \
+    sympy
 
 WORKDIR /workspace

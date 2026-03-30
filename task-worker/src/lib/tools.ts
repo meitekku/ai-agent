@@ -69,14 +69,14 @@ export function buildTools(executionId: number) {
 
     executeCode: tool({
       description:
-        "Execute Python or JavaScript code in an isolated sandbox container. Python has pre-installed: pandas, matplotlib, seaborn, openpyxl, xlsxwriter, requests, beautifulsoup4, Pillow, pydantic. System tools: ffmpeg, imagemagick, curl, jq, git. Use when: the task requires computation, data processing, chart generation, web scraping, file format conversion, or any logic too complex for the LLM alone. Do not use when: the answer can be derived from reasoning alone without running code.",
+        "Execute Python or JavaScript code in an isolated sandbox container. IMPORTANT: Any files saved to /output/ will be automatically uploaded and made available for download by the user. Use this for binary files (videos, images, PDFs, archives, etc.) that cannot be passed as text. CLI tools: ffmpeg (video/audio), imagemagick/convert (image processing), graphviz/dot (graph diagrams), gnuplot (plots), pandoc (document conversion: md→docx/pdf/html), wkhtmltopdf (HTML→PDF), curl, wget, httpie (HTTP), jq (JSON), xmlstarlet (XML), csvkit/csvlook/csvsql (CSV querying), miller/mlr (CSV/JSON transform), ripgrep/rg (fast search), sqlite3 (SQL), yt-dlp (video download), gallery-dl (image download), git, zip, bc, tree. Python packages: numpy, scipy, pandas, matplotlib, seaborn, plotly (interactive charts), scikit-learn (ML), openpyxl, xlsxwriter, requests, beautifulsoup4, lxml, feedparser (RSS), yfinance (stock data), tabulate, Pillow, pydantic, python-docx (Word), reportlab (PDF), sympy (math). Use when: the task requires computation, data processing, file conversion, media processing, web scraping, ML, chart generation, or any logic too complex for the LLM alone. Do not use when: the answer can be derived from reasoning alone without running code.",
       inputSchema: z.object({
         language: z
           .string()
           .describe("Programming language: python or javascript"),
         code: z.string().describe("The code to execute"),
       }),
-      execute: async ({ language, code }) => runCode(language, code),
+      execute: async ({ language, code }) => runCode(language, code, executionId),
     }),
 
     createFile: tool({
@@ -213,9 +213,9 @@ async function crmApi(endpoint: string, body?: string): Promise<string> {
   return JSON.stringify(data).slice(0, 8000);
 }
 
-async function runCode(language: string, code: string): Promise<string> {
+async function runCode(language: string, code: string, executionId: number): Promise<string> {
   try {
-    const result = await executeCode(language, code);
+    const result = await executeCode(language, code, executionId);
     return JSON.stringify(result);
   } catch (err) {
     return JSON.stringify({
@@ -231,17 +231,16 @@ async function createFile(
   executionId: number,
 ): Promise<string> {
   try {
-    const base64Content = Buffer.from(content, "utf-8").toString("base64");
+    const mime = mediaType || guessMimeType(filename);
+    const form = new FormData();
+    form.append("file", new Blob([content], { type: mime }), filename);
+    form.append("filename", filename);
+    form.append("mediaType", mime);
+    form.append("executionId", String(executionId));
 
     const res = await fetch(`${RAG_UI_URL}/api/task-files`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: base64Content,
-        filename,
-        mediaType: mediaType || guessMimeType(filename),
-        executionId,
-      }),
+      body: form,
     });
 
     if (!res.ok) {
