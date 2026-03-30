@@ -933,8 +933,13 @@ export const SchedulerDetailPage = memo(function SchedulerDetailPage() {
                 <BrainIcon className="size-3.5" />
                 タスク指示
               </div>
-              <div className="rounded-lg bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words leading-relaxed">
-                {task.prompt}
+              <div className="rounded-lg bg-muted/30 p-3 prose-sm max-w-none break-words">
+                <Streamdown
+                  className="sd text-xs leading-relaxed [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_pre]:text-[11px] [&_code]:text-[11px] [&_p]:text-xs [&_li]:text-xs [&_table]:text-xs"
+                  plugins={mdPlugins}
+                >
+                  {task.prompt}
+                </Streamdown>
               </div>
             </div>
           </div>
