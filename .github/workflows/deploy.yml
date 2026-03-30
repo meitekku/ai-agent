@@ -14,10 +14,12 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Build images
-        run: docker compose --profile prod build
+        run: |
+          docker compose --profile prod build
+          docker build -f opensandbox/Dockerfile.sandbox-python -t sandbox-python:latest opensandbox/
 
       - name: Save images
-        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest rag-deploy-crm:latest rag-deploy-task-worker:latest rag-deploy-opensandbox:latest
+        run: docker save -o /tmp/rag-images.tar rag-deploy-lightrag:latest rag-deploy-ui:latest rag-deploy-crm:latest rag-deploy-task-worker:latest rag-deploy-opensandbox:latest sandbox-python:latest
 
       - name: Sync files to Orange Pi
         env:

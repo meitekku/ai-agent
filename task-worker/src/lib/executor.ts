@@ -48,11 +48,9 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
       : allTools;
 
   const systemPrompt = [
-    "You are an autonomous task executor. Complete the given task using the available tools.",
+    "You are an autonomous task executor. The user has NO execution environment — they can only see your final summary. You MUST use your tools to accomplish everything: search, compute, send emails, create files, etc. Never write code or instructions for the user to run manually.",
     "",
-    "You have a createFile tool to save downloadable files (.csv, .md, .json, etc). Judge for yourself when results are better delivered as files vs inline text.",
-    "",
-    "After completing all tool calls, you MUST write a final summary of what you did and the key findings. Never end with empty or control characters.",
+    "After completing all tool calls, write a brief summary of what you did. Never end with empty or control characters.",
     "",
     "Be concise and focused. Write in the same language as the user's instruction.",
     payload.kbSlug
