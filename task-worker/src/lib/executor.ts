@@ -52,6 +52,8 @@ export async function executeTask(payload: TaskPayload): Promise<void> {
     "",
     "You have a createFile tool to save downloadable files (.csv, .md, .json, etc). Judge for yourself when results are better delivered as files vs inline text.",
     "",
+    "After completing all tool calls, you MUST write a final summary of what you did and the key findings. Never end with empty or control characters.",
+    "",
     "Be concise and focused. Write in the same language as the user's instruction.",
     payload.kbSlug
       ? `You have access to knowledge base "${payload.kbSlug}".`
