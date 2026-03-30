@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { MailIcon } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -213,6 +214,51 @@ export function SchedulePicker({
       </p>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Display helpers
+// ---------------------------------------------------------------------------
+
+export function formatDate(iso: string | null, includeYear = false): string {
+  if (!iso) return "—";
+  const opts: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  };
+  if (includeYear) opts.year = "numeric";
+  return new Date(iso).toLocaleString("ja-JP", opts);
+}
+
+export function formatDuration(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
+export function statusBadge(status: string) {
+  switch (status) {
+    case "completed":
+      return <Badge className="bg-emerald-500/10 text-emerald-600 border-transparent">完了</Badge>;
+    case "failed":
+      return <Badge variant="destructive">失敗</Badge>;
+    case "timeout":
+      return <Badge className="bg-amber-500/10 text-amber-600 border-transparent">タイムアウト</Badge>;
+    case "running":
+      return <Badge className="bg-blue-500/10 text-blue-600 border-transparent animate-pulse">実行中</Badge>;
+    case "queued":
+      return <Badge variant="outline">キュー中</Badge>;
+    default:
+      return <Badge variant="outline">待機中</Badge>;
+  }
+}
+
+export function modelLabel(model: string | null): string {
+  if (!model) return "Gemini 3 Flash（デフォルト）";
+  return MODEL_OPTIONS.find((o) => o.value === model)?.label || model;
 }
 
 // ---------------------------------------------------------------------------
