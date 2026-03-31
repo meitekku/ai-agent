@@ -3,6 +3,16 @@
 import { memo, useEffect, useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { RotateCcwIcon, ChevronRightIcon, SquareIcon } from "lucide-react";
 import { formatDate, formatDuration, statusBadge } from "@/components/scheduler-shared";
 import { useSchedulerDetailStore, type TaskExecution } from "@/lib/scheduler-detail-store";
@@ -15,9 +25,9 @@ export const ExecutionList = memo(function ExecutionList({
   const openResult = useSchedulerDetailStore((s) => s.openResult);
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null);
 
-  const cancelExecution = useCallback(async (execId: number) => {
-    if (!confirm("この実行を停止しますか？")) return;
+  const doCancel = useCallback(async (execId: number) => {
     setCancellingId(execId);
     try {
       await fetch(`/api/scheduler/${taskId}/executions/${execId}/cancel`, { method: "POST" });
@@ -47,7 +57,7 @@ export const ExecutionList = memo(function ExecutionList({
     if (!hash.startsWith("#execution-") || isPending) return;
     const el = document.getElementById(hash.slice(1));
     if (!el) return;
-    // Clear hash so 15s polling refetch won't re-trigger
+    // Clear hash so polling refetch won't re-trigger
     history.replaceState(null, "", window.location.pathname + window.location.search);
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.classList.add("ring-2", "ring-primary/50");
@@ -81,53 +91,78 @@ export const ExecutionList = memo(function ExecutionList({
   }
 
   return (
-    <div className="grid gap-2">
-      {executions.map((exec) => {
-        const hasDetail = exec.result || exec.error;
-        const preview = (exec.result || exec.error || "").slice(0, 300);
-        return (
-          <button
-            key={exec.id}
-            id={`execution-${exec.id}`}
-            type="button"
-            onClick={() => hasDetail && openResult(exec)}
-            className={`w-full rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-all ${
-              hasDetail ? "hover:bg-muted/30 cursor-pointer" : "cursor-default"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              {statusBadge(exec.status)}
-              <span className="text-xs text-muted-foreground shrink-0">
-                {formatDate(exec.started_at || exec.created_at, true)}
-              </span>
-              {exec.execution_ms != null && (
+    <>
+      <div className="grid gap-2">
+        {executions.map((exec) => {
+          const hasDetail = exec.result || exec.error;
+          const preview = (exec.result || exec.error || "").slice(0, 300);
+          return (
+            <button
+              key={exec.id}
+              id={`execution-${exec.id}`}
+              type="button"
+              onClick={() => hasDetail && openResult(exec)}
+              className={`w-full rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-all ${
+                hasDetail ? "hover:bg-muted/30 cursor-pointer" : "cursor-default"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {statusBadge(exec.status)}
                 <span className="text-xs text-muted-foreground shrink-0">
-                  {formatDuration(exec.execution_ms)}
+                  {formatDate(exec.started_at || exec.created_at, true)}
                 </span>
+                {exec.execution_ms != null && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {formatDuration(exec.execution_ms)}
+                  </span>
+                )}
+                {(exec.status === "running" || exec.status === "queued") && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setConfirmCancelId(exec.id); }}
+                    disabled={cancellingId === exec.id}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                  >
+                    <SquareIcon className="size-3" />
+                    {cancellingId === exec.id ? "..." : "停止"}
+                  </button>
+                )}
+                {hasDetail && exec.status !== "running" && exec.status !== "queued" && (
+                  <ChevronRightIcon className="size-4 text-muted-foreground ml-auto shrink-0" />
+                )}
+              </div>
+              {preview && (
+                <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 break-words">
+                  {preview}
+                </p>
               )}
-              {(exec.status === "running" || exec.status === "queued") && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); cancelExecution(exec.id); }}
-                  disabled={cancellingId === exec.id}
-                  className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                >
-                  <SquareIcon className="size-3" />
-                  {cancellingId === exec.id ? "..." : "停止"}
-                </button>
-              )}
-              {hasDetail && exec.status !== "running" && exec.status !== "queued" && (
-                <ChevronRightIcon className="size-4 text-muted-foreground ml-auto shrink-0" />
-              )}
-            </div>
-            {preview && (
-              <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 break-words">
-                {preview}
-              </p>
-            )}
-          </button>
-        );
-      })}
-    </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <AlertDialog open={confirmCancelId !== null} onOpenChange={(open) => !open && setConfirmCancelId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>実行を停止しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は取り消せません。実行中のタスクを中断します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmCancelId !== null) doCancel(confirmCancelId);
+                setConfirmCancelId(null);
+              }}
+            >
+              停止する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 });
