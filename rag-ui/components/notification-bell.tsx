@@ -45,13 +45,13 @@ export function NotificationBell() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           className="relative text-muted-foreground hover:text-foreground transition-colors"
           aria-label={`通知${unreadCount > 0 ? ` (${unreadCount}件の未読)` : ""}`}
         >
-          <BellIcon className="size-4" />
+          <BellIcon className="size-[18px]" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-white">
+            <span className="absolute top-0.5 right-0.5 flex min-w-[14px] h-[14px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-medium text-white">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
