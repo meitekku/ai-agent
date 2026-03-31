@@ -13,6 +13,7 @@ import {
   CalendarClockIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 import { useChatSettingsStore } from "@/lib/store";
 
 const VIEW_CONFIG: Record<
@@ -107,7 +108,8 @@ export function ChatHeader() {
           {displaySubtitle}
         </span>
       )}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        <NotificationBell />
         <ThemeToggle />
       </div>
     </header>

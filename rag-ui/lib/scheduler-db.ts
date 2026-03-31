@@ -164,6 +164,7 @@ export interface TaskNotification {
   summary: string | null;
   read: boolean;
   created_at: string;
+  task_name?: string;
 }
 
 // ============================================================
