@@ -164,7 +164,6 @@ export const SchedulerDetailPage = memo(function SchedulerDetailPage() {
     if (!task) return;
     openEdit({
       name: task.name,
-      description: task.description,
       prompt: task.prompt,
       model: task.model || "default",
       schedule: cronToConfig(task.cron_expr),

@@ -61,8 +61,9 @@ jobs:
           KINTONE_SUBDOMAIN=${{ secrets.KINTONE_SUBDOMAIN }}
           KINTONE_API_TOKEN=${{ secrets.KINTONE_API_TOKEN }}
           KINTONE_APP_ID=${{ secrets.KINTONE_APP_ID }}
-          APP_URL=https://ai.wgzhao.me
+          APP_URL=${{ secrets.APP_URL }}
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
           USE_VERTEX_AI=true
           GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
           GCP_LOCATION=global

@@ -46,7 +46,6 @@ export const EditDialog = memo(function EditDialog({
               const isManualNew = editForm.schedule.frequency === "manual";
               onSave({
                 name: editForm.name.trim(),
-                description: editForm.description.trim(),
                 cron_expr: configToCron(editForm.schedule),
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 prompt: editForm.prompt.trim(),
@@ -57,7 +56,6 @@ export const EditDialog = memo(function EditDialog({
             }}
             disabled={
               !editForm?.name.trim() ||
-              !editForm?.description.trim() ||
               !editForm?.prompt.trim() ||
               saving
             }

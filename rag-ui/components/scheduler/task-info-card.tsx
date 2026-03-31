@@ -34,10 +34,6 @@ export const TaskInfoCard = memo(function TaskInfoCard({
 
   return (
     <div className="rounded-xl border border-border/50 p-5 space-y-4">
-      {task.description && (
-        <p className="text-sm text-muted-foreground">{task.description}</p>
-      )}
-
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="flex items-center gap-2.5 text-muted-foreground">
           {isManual ? <HandIcon className="size-4 shrink-0" /> : <ClockIcon className="size-4 shrink-0" />}

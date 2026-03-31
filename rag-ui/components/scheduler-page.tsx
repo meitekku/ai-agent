@@ -86,12 +86,11 @@ async function fetchTasks(): Promise<ScheduledTask[]> {
 
 const INITIAL_FORM: TaskFormValues = {
   name: "",
-  description: "",
   prompt: "",
   model: "default",
   schedule: {
     frequency: "daily",
-    dayOfWeek: 1,
+    daysOfWeek: [1],
     dayOfMonth: 1,
     hour: 9,
     minute: 0,
@@ -123,7 +122,6 @@ export const SchedulerPage = memo(function SchedulerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
-          description: form.description.trim(),
           cron_expr: configToCron(form.schedule),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           prompt: form.prompt.trim(),
@@ -173,8 +171,7 @@ export const SchedulerPage = memo(function SchedulerPage() {
     onError: () => toast.error("更新に失敗しました"),
   });
 
-  const canCreate =
-    form.name.trim() && form.description.trim() && form.prompt.trim();
+  const canCreate = form.name.trim() && form.prompt.trim();
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -296,12 +293,7 @@ export const SchedulerPage = memo(function SchedulerPage() {
                           </Badge>
                         )}
                       </div>
-                      {task.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                           <ClockIcon className="size-3" />
                           {describeSchedule(task.cron_expr)}

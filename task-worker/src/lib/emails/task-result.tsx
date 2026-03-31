@@ -67,7 +67,7 @@ export function TaskResultEmail({
             <Row>
               <Column style={{ textAlign: "center" as const }}>
                 <Img
-                  src={`${appUrl || "https://ai.wgzhao.me"}/icon.png`}
+                  src={`${appUrl}/icon.png`}
                   width="32"
                   height="32"
                   alt="Stella"
@@ -155,7 +155,7 @@ export function TaskResultEmail({
           <Section style={footer}>
             <Text style={footerText}>
               FG タスクワーカー &middot;{" "}
-              {(appUrl || "https://ai.wgzhao.me").replace(/^https?:\/\//, "")}
+              {appUrl.replace(/^https?:\/\//, "")}
             </Text>
           </Section>
         </Container>

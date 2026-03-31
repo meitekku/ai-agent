@@ -13,7 +13,8 @@ const CRM_SERVICE_URL = process.env.CRM_SERVICE_URL || "http://crm-service:8009"
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 const RAG_UI_URL = process.env.RAG_UI_URL || "http://rag-ui:3000";
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const EMAIL_FROM = process.env.EMAIL_FROM || "FG ZhaoWenguang <noreply@wgzhao.me>";
+const EMAIL_FROM = process.env.EMAIL_FROM;
+if (!EMAIL_FROM) throw new Error("EMAIL_FROM environment variable is required");
 const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
 
 // Lazy read-only pool for queryDatabase
@@ -429,6 +430,8 @@ async function webSearch(query: string): Promise<string> {
       error: "Web search unavailable: TAVILY_API_KEY not set",
     });
   }
+  // Detect if the query is about recent/current information
+  const isNewsy = /最新|今日|今週|速報|ニュース|stock|price|market|news|today|recent|current|latest/i.test(query);
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -437,6 +440,7 @@ async function webSearch(query: string): Promise<string> {
       query,
       max_results: 5,
       include_answer: true,
+      ...(isNewsy ? { topic: "news", days: 7 } : {}),
     }),
   });
   if (!res.ok)

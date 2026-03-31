@@ -21,7 +21,7 @@ export type Frequency = "daily" | "weekly" | "monthly" | "manual";
 
 export interface ScheduleConfig {
   frequency: Frequency;
-  dayOfWeek: number;
+  daysOfWeek: number[];
   dayOfMonth: number;
   hour: number;
   minute: number;
@@ -73,23 +73,28 @@ export function configToCron(c: ScheduleConfig): string {
   const m = String(c.minute);
   const h = String(c.hour);
   if (c.frequency === "daily") return `${m} ${h} * * *`;
-  if (c.frequency === "weekly") return `${m} ${h} * * ${c.dayOfWeek}`;
+  if (c.frequency === "weekly") {
+    const days = c.daysOfWeek.length > 0 ? c.daysOfWeek.join(",") : "1";
+    return `${m} ${h} * * ${days}`;
+  }
   return `${m} ${h} ${c.dayOfMonth} * *`;
 }
 
 export function cronToConfig(cron: string): ScheduleConfig {
   if (cron === MANUAL_CRON)
-    return { frequency: "manual", dayOfWeek: 1, dayOfMonth: 1, hour: 9, minute: 0 };
+    return { frequency: "manual", daysOfWeek: [1], dayOfMonth: 1, hour: 9, minute: 0 };
   const p = cron.trim().split(/\s+/);
   if (p.length !== 5)
-    return { frequency: "daily", dayOfWeek: 1, dayOfMonth: 1, hour: 9, minute: 0 };
+    return { frequency: "daily", daysOfWeek: [1], dayOfMonth: 1, hour: 9, minute: 0 };
   const min = parseInt(p[0]) || 0;
   const hour = parseInt(p[1]) || 0;
-  if (p[4] !== "*" && p[2] === "*")
-    return { frequency: "weekly", dayOfWeek: parseInt(p[4]) || 1, dayOfMonth: 1, hour, minute: min };
+  if (p[4] !== "*" && p[2] === "*") {
+    const days = p[4].split(",").map((s) => parseInt(s)).filter((n) => !isNaN(n));
+    return { frequency: "weekly", daysOfWeek: days.length > 0 ? days : [1], dayOfMonth: 1, hour, minute: min };
+  }
   if (p[2] !== "*" && p[4] === "*")
-    return { frequency: "monthly", dayOfWeek: 1, dayOfMonth: parseInt(p[2]) || 1, hour, minute: min };
-  return { frequency: "daily", dayOfWeek: 1, dayOfMonth: 1, hour, minute: min };
+    return { frequency: "monthly", daysOfWeek: [1], dayOfMonth: parseInt(p[2]) || 1, hour, minute: min };
+  return { frequency: "daily", daysOfWeek: [1], dayOfMonth: 1, hour, minute: min };
 }
 
 export function describeSchedule(cron: string): string {
@@ -98,8 +103,10 @@ export function describeSchedule(cron: string): string {
   const time = `${String(c.hour).padStart(2, "0")}:${String(c.minute).padStart(2, "0")}`;
   if (c.frequency === "daily") return `毎日 ${time}`;
   if (c.frequency === "weekly") {
-    const d = DAYS_OF_WEEK.find((d) => d.value === c.dayOfWeek);
-    return `毎週${d?.label || ""}曜日 ${time}`;
+    const labels = DAYS_OF_WEEK
+      .filter((d) => c.daysOfWeek.includes(d.value))
+      .map((d) => d.label);
+    return `毎週${labels.join("・")}曜日 ${time}`;
   }
   return `毎月${c.dayOfMonth}日 ${time}`;
 }
@@ -148,20 +155,28 @@ export function SchedulePicker({
         <div className="flex items-center gap-3 flex-wrap">
           {value.frequency === "weekly" && (
             <div className="flex gap-1">
-              {DAYS_OF_WEEK.map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => set({ dayOfWeek: d.value })}
-                  className={`flex size-7 items-center justify-center rounded-md text-xs font-medium transition-colors ${
-                    value.dayOfWeek === d.value
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {d.label}
-                </button>
-              ))}
+              {DAYS_OF_WEEK.map((d) => {
+                const selected = value.daysOfWeek.includes(d.value);
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => {
+                      const next = selected
+                        ? value.daysOfWeek.filter((v) => v !== d.value)
+                        : [...value.daysOfWeek, d.value];
+                      set({ daysOfWeek: next.length > 0 ? next : [d.value] });
+                    }}
+                    className={`flex size-7 items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
             </div>
           )}
           {value.frequency === "monthly" && (
@@ -277,7 +292,6 @@ export function modelLabel(model: string | null): string {
 
 export interface TaskFormValues {
   name: string;
-  description: string;
   prompt: string;
   model: string;
   schedule: ScheduleConfig;
@@ -328,16 +342,6 @@ export function TaskFormFields({
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="task-desc">説明</Label>
-        <Input
-          id="task-desc"
-          placeholder="このタスクが何をするか、結果をどう使うか"
-          value={values.description}
-          onChange={(e) => set("description", e.target.value)}
-        />
       </div>
 
       <div className="space-y-2">

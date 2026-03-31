@@ -2,7 +2,8 @@ import { Resend } from "resend";
 import { TaskResultEmail } from "./emails/task-result";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const APP_URL = process.env.APP_URL || "https://ai.wgzhao.me";
+const APP_URL = process.env.APP_URL;
+if (!APP_URL) throw new Error("APP_URL environment variable is required");
 
 let resend: Resend | null = null;
 
@@ -44,7 +45,7 @@ export async function sendNotificationEmail(params: EmailParams): Promise<void> 
       timeout: "Timed Out",
     };
 
-    const from = params.notifyFrom || "FG ZhaoWenguang <noreply@wgzhao.me>";
+    const from = params.notifyFrom || process.env.EMAIL_FROM!;
 
     const { error } = await client.emails.send({
       from,
