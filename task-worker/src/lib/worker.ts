@@ -143,36 +143,34 @@ async function recoverStaleExecutions(): Promise<void> {
 
     console.log(`[worker] Found ${stale.length} stale executions, recovering...`);
 
-    const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000);
-
     const toRequeue: { exec: typeof stale[0]; task: NonNullable<Awaited<ReturnType<typeof getTaskById>>> }[] = [];
 
     for (const exec of stale) {
-      if (
-        exec.status === "running" &&
-        exec.started_at &&
-        new Date(exec.started_at) < TEN_MINUTES_AGO
-      ) {
+      // On startup, no worker owns any execution — all non-terminal states are orphaned.
+      // Re-enqueue pending/queued/running so they get retried.
+      const task = await getTaskById(exec.task_id);
+      if (!task) {
         await updateExecution(exec.id, {
           status: "failed",
           completed_at: new Date(),
-          error: "Worker crashed during execution (stale recovery)",
+          error: "Task no longer exists (stale recovery)",
         });
-        console.log(
-          `[worker] Marked stale execution ${exec.id} as failed`,
-        );
-      } else if (exec.status === "pending" || exec.status === "queued") {
-        const task = await getTaskById(exec.task_id);
-        if (task) {
-          toRequeue.push({ exec, task });
-        } else {
-          await updateExecution(exec.id, {
-            status: "failed",
-            completed_at: new Date(),
-            error: "Task no longer exists (stale recovery)",
-          });
-        }
+        continue;
       }
+
+      if (exec.status === "running") {
+        // Reset running → pending so it re-enters the queue cleanly
+        await updateExecution(exec.id, {
+          status: "pending",
+          started_at: null,
+          completed_at: null,
+          error: null,
+          result: null,
+        });
+        console.log(`[worker] Reset running execution ${exec.id} → pending`);
+      }
+
+      toRequeue.push({ exec, task });
     }
 
     if (toRequeue.length > 0) {
