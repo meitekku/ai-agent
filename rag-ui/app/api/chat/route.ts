@@ -30,6 +30,7 @@ import {
   type KnowledgeBase,
 } from "@/lib/rag-client";
 
+import pg from "pg";
 import { TAVILY_API_KEY, CRM_SERVICE_URL, TASK_WORKER_URL, GEMINI_MODEL } from "@/lib/constants";
 import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
@@ -54,6 +55,15 @@ const hasTavily = !!TAVILY_API_KEY;
 const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 const hasCrm = !!CRM_SERVICE_URL;
 const hasScheduler = !!TASK_WORKER_URL;
+
+const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
+let roPool: pg.Pool | null = null;
+function getReadOnlyPool(): pg.Pool {
+  if (!roPool) {
+    roPool = new pg.Pool({ connectionString: DATABASE_URL, max: 3 });
+  }
+  return roPool;
+}
 
 // ---------------------------------------------------------------------------
 // Skills — progressive disclosure (official AI SDK pattern)
@@ -239,6 +249,13 @@ function buildSystemPrompt(
 - **generateSlides**: 商談・提案書・CRM に関係ない一般的なスライド作成依頼の場合のみ使用（例: 「機械学習の解説スライドを作って」「チーム紹介スライドを作って」）。CRM の商談データや提案書が関係する場合は必ず fetchAndAnalyze ワークフローを使うこと。
   ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。
 - **suggestSlides**: 回答がスライド化に適している場合（解説・分析・比較・手順など構造化された内容）に呼び出す。短い挨拶・雑談・簡単な回答では不要。テキスト回答と同じステップで呼び出すこと。`;
+
+  // 新ツール説明
+  prompt += `
+- **analyzeImage**: 画像URLまたはfileIdを指定して画像をAI分析。OCR、チャート読取、オブジェクト識別、画像に関する質問に回答。ユーザーが画像について質問した場合に使用
+- **readFile**: 以前アップロード/生成されたファイルを読み取る。fileIdを指定。CSVやJSONの内容確認、アップロードされたドキュメントの分析に使用
+- **httpRequest**: 任意のREST APIを呼び出す（GET/POST/PUT等）。天気、為替、株価、Webhook等の外部API連携に使用。ウェブ検索/ページ読取には専用ツールを使うこと
+- **queryDatabase**: PostgreSQLに対してSELECTクエリを実行（読取専用）。チャット統計、タスク実行履歴、スライド情報等の集計・分析に使用`;
 
   // generateImage ツール説明
   if (geminiImageModel) {
@@ -816,6 +833,266 @@ export async function POST(req: Request) {
     inputSchema: z.object({}),
     execute: async () => ({ suggested: true }),
   });
+
+  // ---- analyzeImage ------------------------------------------------
+  tools.analyzeImage = tool({
+    description:
+      "画像を分析します（Gemini Vision）。画像の内容説明、テキスト抽出（OCR）、チャート/表の読取、オブジェクト識別、画像に関する質問に回答。sourceは画像URL（https://...）またはfileId（/api/files/xxxで配信されるファイルのID）。",
+    inputSchema: z.object({
+      source: z
+        .string()
+        .describe("画像URL（https://...）または /api/files/ のファイルID"),
+      question: z
+        .string()
+        .optional()
+        .describe("画像についての質問。省略時は一般的な説明を生成"),
+    }),
+    execute: async ({ source, question }) => {
+      console.log(`[chat] 👁️ analyzeImage: ${source.slice(0, 60)}`);
+      const t0 = Date.now();
+      try {
+        let imageData: Uint8Array;
+        let mimeType = "image/png";
+
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+          const res = await fetch(source, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; RAGBot/1.0)" },
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!res.ok)
+            return { success: false, error: `画像取得失敗: HTTP ${res.status}` };
+          mimeType = res.headers.get("content-type") || "image/png";
+          imageData = new Uint8Array(await res.arrayBuffer());
+        } else {
+          // fileId → read from disk
+          const fileRow = await getChatFile(source);
+          if (!fileRow)
+            return { success: false, error: `ファイルが見つかりません: ${source}` };
+          const buffer = await readStoredFile(fileRow.stored_path);
+          imageData = new Uint8Array(buffer);
+          mimeType = fileRow.media_type;
+        }
+
+        const prompt = question || "この画像を詳細に説明してください。テキストがあれば抽出し、チャートや表があればデータを読み取ってください。";
+        const imageModel = getChatModel();
+        const result = await generateText({
+          model: imageModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "image" as const, image: imageData, mediaType: mimeType },
+                { type: "text" as const, text: prompt },
+              ],
+            },
+          ],
+        });
+
+        console.log(`[chat] 👁️ analyzeImage done: ${Date.now() - t0}ms`);
+        return {
+          success: true,
+          analysis: result.text || "分析結果なし",
+        };
+      } catch (err) {
+        console.error(`[chat] ❌ analyzeImage failed:`, err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  });
+
+  // ---- readFile ---------------------------------------------------
+  tools.readFile = tool({
+    description:
+      "以前アップロード/生成されたファイルの内容を読み取ります。/api/files/{id} で配信されるファイルのIDを指定。テキストファイル（CSV, JSON, Markdown等）はテキスト内容を、バイナリファイルはサイズ情報を返します。",
+    inputSchema: z.object({
+      fileId: z
+        .string()
+        .describe("ファイルID（/api/files/ のパスから取得）"),
+    }),
+    execute: async ({ fileId }) => {
+      console.log(`[chat] 📂 readFile: ${fileId}`);
+      try {
+        const fileRow = await getChatFile(fileId);
+        if (!fileRow)
+          return { success: false, error: `ファイルが見つかりません: ${fileId}` };
+
+        const contentType = fileRow.media_type || "application/octet-stream";
+
+        if (
+          contentType.startsWith("text/") ||
+          contentType.includes("json") ||
+          contentType.includes("xml") ||
+          contentType.includes("csv") ||
+          contentType.includes("markdown")
+        ) {
+          const buffer = await readStoredFile(fileRow.stored_path);
+          const text = Buffer.from(buffer).toString("utf-8");
+          return {
+            success: true,
+            filename: fileRow.original_name,
+            mediaType: contentType,
+            content: text.slice(0, 50000),
+            truncated: text.length > 50000,
+          };
+        }
+
+        return {
+          success: true,
+          filename: fileRow.original_name,
+          mediaType: contentType,
+          size: fileRow.size_bytes,
+          note: "バイナリファイルです。画像は analyzeImage で分析できます。",
+        };
+      } catch (err) {
+        console.error(`[chat] ❌ readFile failed:`, err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  });
+
+  // ---- httpRequest ------------------------------------------------
+  tools.httpRequest = tool({
+    description:
+      "任意のURLにHTTPリクエストを送信。GET/POST/PUT/PATCH/DELETEに対応。外部REST API（天気、為替、株価、Webhook等）の呼出に使用。ウェブ検索にはwebSearch、ページ読取にはreadUrl、CRM APIにはcrmApi、KB検索にはsearchKnowledgeBaseを使うこと。",
+    inputSchema: z.object({
+      url: z.string().describe("リクエスト先URL"),
+      method: z
+        .enum(["GET", "POST", "PUT", "PATCH", "DELETE"])
+        .optional()
+        .describe("HTTPメソッド（デフォルト: GET）"),
+      headers: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe("HTTPヘッダー（key-value）"),
+      body: z
+        .string()
+        .optional()
+        .describe("リクエストボディ（JSON文字列等）"),
+    }),
+    execute: async ({ url, method, headers, body }) => {
+      const m = method ?? "GET";
+      console.log(`[chat] 🌐 httpRequest: ${m} ${url}`);
+      const t0 = Date.now();
+      try {
+        const res = await fetch(url, {
+          method: m,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; RAGBot/1.0)",
+            ...(body ? { "Content-Type": "application/json" } : {}),
+            ...headers,
+          },
+          body: body || undefined,
+          signal: AbortSignal.timeout(30000),
+        });
+
+        const contentType = res.headers.get("content-type") || "";
+        let responseBody: string;
+
+        if (contentType.includes("json")) {
+          const data = await res.json();
+          responseBody = JSON.stringify(data);
+        } else {
+          responseBody = await res.text();
+        }
+
+        if (responseBody.length > 12000) {
+          responseBody = responseBody.slice(0, 12000) + "\n...(truncated)";
+        }
+
+        console.log(`[chat] 🌐 httpRequest done: ${Date.now() - t0}ms, status=${res.status}`);
+        return {
+          status: res.status,
+          statusText: res.statusText,
+          contentType,
+          body: responseBody,
+        };
+      } catch (err) {
+        console.error(`[chat] ❌ httpRequest failed:`, err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  });
+
+  // ---- queryDatabase ----------------------------------------------
+  const WRITE_PATTERN =
+    /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|VACUUM|CLUSTER|REINDEX|COMMENT|SECURITY|SET\s+ROLE)/i;
+
+  tools.queryDatabase = tool({
+    description:
+      "PostgreSQLに対して読み取り専用SQLクエリを実行。10秒タイムアウト付きREAD ONLYトランザクションで実行。利用可能テーブル: chat_conversations, chat_messages, chat_files, slide_decks, slide_pages, skills, scheduled_tasks, task_executions 等。データの集計・統計・フィルタリングに使用。ドキュメント内容の検索にはsearchKnowledgeBaseを使うこと。",
+    inputSchema: z.object({
+      sql: z
+        .string()
+        .describe("SELECT文のみ。INSERT/UPDATE/DELETE等の書込み操作は拒否されます。"),
+    }),
+    execute: async ({ sql }) => {
+      console.log(`[chat] 🗄️ queryDatabase: ${sql.slice(0, 100)}`);
+      const t0 = Date.now();
+
+      if (WRITE_PATTERN.test(sql)) {
+        return {
+          success: false,
+          error: "書込み操作は許可されていません。SELECTクエリのみ実行可能です。",
+        };
+      }
+
+      const client = await getReadOnlyPool().connect();
+      try {
+        await client.query("SET statement_timeout = '10s'");
+        await client.query("BEGIN READ ONLY");
+
+        const result = await client.query(sql);
+
+        await client.query("COMMIT");
+
+        const rows = result.rows ?? [];
+        console.log(`[chat] 🗄️ queryDatabase done: ${Date.now() - t0}ms, ${rows.length} rows`);
+
+        const output = {
+          success: true,
+          rowCount: rows.length,
+          columns: result.fields?.map((f: { name: string }) => f.name) ?? [],
+          rows: rows.slice(0, 200),
+          truncated: rows.length > 200,
+        };
+
+        // Check serialized size
+        const serialized = JSON.stringify(output);
+        if (serialized.length > 20000) {
+          return {
+            success: true,
+            rowCount: rows.length,
+            columns: result.fields?.map((f: { name: string }) => f.name) ?? [],
+            rows: rows.slice(0, 50),
+            truncated: true,
+            note: "出力が大きいため先頭50行のみ表示。",
+          };
+        }
+
+        return output;
+      } catch (err) {
+        try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+        console.error(`[chat] ❌ queryDatabase failed:`, err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        client.release();
+      }
+    },
+  });
+
+  // NOTE: editFile, listFiles, grepFiles are task-worker only (not in chat — too many tools)
 
   // loadSkill: registered only when skills exist (prevents LLM hallucination)
   let skillSummaries: SkillSummary[] = [];

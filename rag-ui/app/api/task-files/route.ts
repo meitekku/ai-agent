@@ -1,7 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveFile } from "@/lib/file-storage";
 import { insertChatFile } from "@/lib/chat-files-db";
-import { insertExecutionFile } from "@/lib/scheduler-db";
+import { insertExecutionFile, listExecutionFiles, listExecutionFilesForTask } from "@/lib/scheduler-db";
+
+/**
+ * GET /api/task-files?executionId=N   — list files for a specific execution
+ * GET /api/task-files?recent=N        — list recent files across all executions (max N)
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const executionId = req.nextUrl.searchParams.get("executionId");
+    const recent = req.nextUrl.searchParams.get("recent");
+
+    if (executionId) {
+      const files = await listExecutionFiles(parseInt(executionId, 10));
+      return NextResponse.json({ files });
+    }
+
+    if (recent) {
+      // List recent files across all executions
+      // Use a dummy large taskId=0 won't work, so import the db pool directly
+      const { ensureSchedulerTables, getSchedulerPool } = await import("@/lib/scheduler-db");
+      await ensureSchedulerTables();
+      const limit = Math.min(parseInt(recent, 10) || 50, 100);
+      const res = await getSchedulerPool().query(
+        `SELECT * FROM task_execution_files ORDER BY created_at DESC LIMIT $1`,
+        [limit],
+      );
+      return NextResponse.json({ files: res.rows });
+    }
+
+    return NextResponse.json({ error: "executionId or recent parameter required" }, { status: 400 });
+  } catch (e) {
+    console.error("GET /api/task-files error:", e);
+    return NextResponse.json({ error: "Failed to list files" }, { status: 500 });
+  }
+}
 
 /**
  * POST /api/task-files

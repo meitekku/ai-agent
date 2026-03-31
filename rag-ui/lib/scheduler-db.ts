@@ -13,6 +13,11 @@ function getPool(): pg.Pool {
   return pool;
 }
 
+/** Exported for use in task-files route */
+export function getSchedulerPool(): pg.Pool {
+  return getPool();
+}
+
 // ============================================================
 // Schema
 // ============================================================

@@ -55,6 +55,13 @@ task-worker/
 | `executeCode` | filterable | `OPENSANDBOX_URL` 設定時のみ有効 |
 | `createFile` | filterable | 常に有効（`RAG_UI_URL` 経由でアップロード）|
 | `generateImage` | filterable | Gemini AI Studio または Vertex AI 使用時に自動追加 |
+| `analyzeImage` | filterable | 常に有効。Gemini Vision で画像分析（OCR、チャート読取、内容説明）|
+| `readFile` | filterable | 常に有効。以前の createFile/executeCode/generateImage の結果ファイルを読み取り |
+| `httpRequest` | filterable | 常に有効。任意の外部 REST API 呼出（GET/POST/PUT/PATCH/DELETE）|
+| `queryDatabase` | filterable | 常に有効。PostgreSQL に対する READ ONLY SQL クエリ（10s タイムアウト）|
+| `editFile` | filterable | 常に有効。既存ファイルのテキスト編集（replace/append/prepend/insertAfter）|
+| `listFiles` | filterable | 常に有効。現在/過去の実行のファイル一覧取得 |
+| `grepFiles` | filterable | 常に有効。テキストファイル内容を正規表現で横断検索 |
 | `sendEmail` | filterable | `RESEND_API_KEY` 設定時のみ有効 |
 | `loadSkill` | **implicit** | 有効なスキルが DB に存在する時に自動追加。`allowedTools` フィルター対象外 |
 

@@ -37,6 +37,13 @@ export const ALL_TOOLS = [
   "crmApi",
   "createFile",
   "sendEmail",
+  "analyzeImage",
+  "readFile",
+  "httpRequest",
+  "queryDatabase",
+  "editFile",
+  "listFiles",
+  "grepFiles",
 ];
 
 export const MODEL_OPTIONS = [

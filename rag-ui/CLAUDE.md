@@ -25,6 +25,9 @@ Browser useChat → /api/chat Route Handler → isImageModel?
                                               → searchKnowledgeBase（LightRAG search-only）
                                               → webSearch / readPage（Tavily）or google_search（Gemini grounding）
                                               → generateImage（Gemini 画像生成ツール）
+                                              → analyzeImage（Gemini Vision 画像分析）
+                                              → readFile / editFile / listFiles / grepFiles（ファイル操作）
+                                              → httpRequest / queryDatabase（HTTP・SQL）
                                               → createScheduledTask / listScheduledTasks / updateScheduledTask / deleteScheduledTask（定時タスク管理）
 ```
 
