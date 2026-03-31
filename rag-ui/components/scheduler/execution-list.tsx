@@ -24,6 +24,20 @@ export const ExecutionList = memo(function ExecutionList({
     refetchInterval: 15000,
   });
 
+  // Scroll to execution from notification hash (e.g. #execution-123)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#execution-") || isPending) return;
+    const el = document.getElementById(hash.slice(1));
+    if (!el) return;
+    // Clear hash so 15s polling refetch won't re-trigger
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary/50");
+    const timer = setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    return () => clearTimeout(timer);
+  }, [executions, isPending]);
+
   if (isPending) {
     return (
       <div className="grid gap-2">
@@ -38,20 +52,6 @@ export const ExecutionList = memo(function ExecutionList({
       </div>
     );
   }
-
-  // Scroll to execution from notification hash (e.g. #execution-123)
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash.startsWith("#execution-")) return;
-    const el = document.getElementById(hash.slice(1));
-    if (!el) return;
-    // Clear hash so 15s polling refetch won't re-trigger
-    history.replaceState(null, "", window.location.pathname + window.location.search);
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.add("ring-2", "ring-primary/50");
-    const timer = setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
-    return () => clearTimeout(timer);
-  }, [executions]);
 
   if (executions.length === 0) {
     return (
