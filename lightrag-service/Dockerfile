@@ -8,7 +8,7 @@ RUN uv sync --frozen --no-dev
 
 COPY app/ ./app/
 COPY entrypoint.sh ./
-RUN mkdir -p /app/data /app/seed
+RUN mkdir -p /app/data
 
 EXPOSE 8007
 ENTRYPOINT ["./entrypoint.sh"]

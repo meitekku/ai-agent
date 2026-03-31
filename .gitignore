@@ -25,3 +25,6 @@ gen-lang-client-*.json
 data/
 
 temp
+
+# Backup data
+backup/

@@ -55,7 +55,6 @@ services:
       - "${LIGHTRAG_PORT:-127.0.0.1:8007}:8007"
     volumes:
       - lightrag-data:/app/data
-      - ./seed-data/graph_chunk_entity_relation.graphml:/app/seed/graph_chunk_entity_relation.graphml:ro
       - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       postgres:
