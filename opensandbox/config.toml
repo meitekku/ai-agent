@@ -8,7 +8,7 @@ type = "docker"
 execd_image = "opensandbox/execd:v1.0.6"
 
 [docker]
-# bridge mode so sandbox containers can join the compose network
-network_mode = "bridge"
+# sandbox containers must be on the compose network so the SDK (task-worker) can reach them
+network_mode = "rag-deploy_default"
 # allows sandbox containers to reach compose services
 host_ip = "host.docker.internal"

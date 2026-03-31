@@ -92,6 +92,9 @@ async function recoverStaleExecutions(): Promise<void> {
 
     const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000);
 
+    // Collect pending/queued executions that need re-enqueue
+    const toRequeue: { exec: typeof stale[0]; task: NonNullable<Awaited<ReturnType<typeof getTaskById>>> }[] = [];
+
     for (const exec of stale) {
       if (
         exec.status === "running" &&
@@ -108,30 +111,9 @@ async function recoverStaleExecutions(): Promise<void> {
           `[worker] Marked stale execution ${exec.id} as failed`,
         );
       } else if (exec.status === "pending" || exec.status === "queued") {
-        // Re-enqueue pending/queued tasks
         const task = await getTaskById(exec.task_id);
         if (task) {
-          const redis = createClient({ url: REDIS_URL });
-          await redis.connect();
-          try {
-            await redis.lPush(
-              QUEUE_KEY,
-              JSON.stringify({
-                taskId: exec.task_id,
-                executionId: exec.id,
-                prompt: task.prompt,
-                kbSlug: task.kb_slug,
-                allowedTools: task.allowed_tools,
-                maxToolCalls: task.max_tool_calls,
-                timeoutSeconds: task.timeout_sec,
-              }),
-            );
-          } finally {
-            await redis.disconnect();
-          }
-          console.log(
-            `[worker] Re-enqueued stale execution ${exec.id}`,
-          );
+          toRequeue.push({ exec, task });
         } else {
           await updateExecution(exec.id, {
             status: "failed",
@@ -139,6 +121,33 @@ async function recoverStaleExecutions(): Promise<void> {
             error: "Task no longer exists (stale recovery)",
           });
         }
+      }
+    }
+
+    // Re-enqueue all pending/queued with a single Redis connection
+    if (toRequeue.length > 0) {
+      const redis = createClient({ url: REDIS_URL });
+      await redis.connect();
+      try {
+        for (const { exec, task } of toRequeue) {
+          await redis.lPush(
+            QUEUE_KEY,
+            JSON.stringify({
+              taskId: exec.task_id,
+              executionId: exec.id,
+              prompt: task.prompt,
+              kbSlug: task.kb_slug,
+              allowedTools: task.allowed_tools,
+              maxToolCalls: task.max_tool_calls,
+              timeoutSeconds: task.timeout_sec,
+            }),
+          );
+          console.log(
+            `[worker] Re-enqueued stale execution ${exec.id}`,
+          );
+        }
+      } finally {
+        await redis.disconnect();
       }
     }
   } catch (err) {

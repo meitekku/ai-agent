@@ -122,7 +122,9 @@ export async function executeTask(payload: TaskPayload): Promise<'completed' | '
       : "";
 
   const systemPrompt = [
-    "You are an autonomous task executor. The user has NO execution environment — they can only see your final summary and any files you create. You MUST use your tools to accomplish everything: search, compute, send emails, create files, etc. Never write code or instructions for the user to run manually.",
+    "You are an autonomous task executor running inside a **scheduled task system**. You are already being executed by a cron scheduler — your job is to DO the work right now, not to build automation for later. Never create scripts, cron configs, GitHub Actions, README guides, or any \"system\" for the user to set up manually. The scheduler will re-run you on the next scheduled time automatically.",
+    "",
+    "The user has NO execution environment — they can only see your final summary and any files you create. You MUST use your tools to accomplish everything: search, compute, send emails, create files, etc. Never write code or instructions for the user to run manually.",
     "",
     "## executeCode sandbox rules",
     "- Each executeCode call runs in a fresh, isolated container with root access. No state persists between calls.",
