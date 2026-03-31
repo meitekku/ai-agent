@@ -12,7 +12,7 @@ const runningAbortControllers = new Map<number, AbortController>();
 export function cancelExecution(executionId: number): boolean {
   const controller = runningAbortControllers.get(executionId);
   if (!controller) return false;
-  controller.abort("Cancelled by user");
+  controller.abort("ユーザーによりキャンセルされました");
   return true;
 }
 
@@ -153,7 +153,7 @@ async function recoverStaleExecutions(): Promise<void> {
         await updateExecution(exec.id, {
           status: "failed",
           completed_at: new Date(),
-          error: "Task no longer exists (stale recovery)",
+          error: "タスクが削除されました",
         });
         continue;
       }
@@ -167,7 +167,7 @@ async function recoverStaleExecutions(): Promise<void> {
           error: null,
           result: null,
         });
-        console.log(`[worker] Reset running execution ${exec.id} → pending`);
+        console.log(`[worker] Reset running execution ${exec.id} -> pending`);
       }
 
       toRequeue.push({ exec, task });

@@ -251,13 +251,14 @@ export async function executeTask(payload: TaskPayload, cancelSignal?: AbortSign
     return 'completed';
   } catch (err) {
     const executionMs = Date.now() - startTime;
-    const isAbort = err instanceof Error && err.name === "AbortError";
-    const isCancelled = isAbort && cancelSignal?.aborted;
-    const isTimeout = isAbort && !isCancelled;
+    const isAbort = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+    // Check cancel signal directly — AI SDK may wrap AbortError in AI_RetryError
+    const isCancelled = cancelSignal?.aborted === true;
+    const isTimeout = !isCancelled && (isAbort || (err instanceof Error && err.message?.includes("timed out")));
     const errorMsg = isCancelled
-      ? "Cancelled by user"
+      ? "ユーザーによりキャンセルされました"
       : isTimeout
-        ? "Execution timed out"
+        ? "実行がタイムアウトしました"
         : err instanceof Error
           ? err.message
           : String(err);

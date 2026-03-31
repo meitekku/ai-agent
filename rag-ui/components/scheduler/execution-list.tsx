@@ -17,6 +17,7 @@ export const ExecutionList = memo(function ExecutionList({
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const cancelExecution = useCallback(async (execId: number) => {
+    if (!confirm("この実行を停止しますか？")) return;
     setCancellingId(execId);
     try {
       await fetch(`/api/scheduler/${taskId}/executions/${execId}/cancel`, { method: "POST" });
