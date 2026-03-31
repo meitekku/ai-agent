@@ -101,12 +101,13 @@ async function extractOutputFiles(
   executionId: number,
 ): Promise<UploadedFile[]> {
   try {
-    // List files in /output (use ls -1 for reliable one-per-line output)
+    // List files in /output — use ||| delimiter to avoid SDK stdout newline stripping
     const lsResult = await sandbox.commands.run(
-      "ls -1 /output/ 2>/dev/null || true",
+      "find /output -maxdepth 1 -type f -printf '%f|||'",
     );
-    const names = (lsResult.logs?.stdout?.map((l: any) => l.text).join("") || "")
-      .split("\n")
+    const raw = lsResult.logs?.stdout?.map((l: any) => l.text).join("") || "";
+    const names = raw
+      .split("|||")
       .map((n: string) => n.trim())
       .filter(Boolean);
 
