@@ -35,15 +35,12 @@ jobs:
           REMOTE_DIR="/home/${{ secrets.SSH_USER }}/rag-deploy"
 
           # Create remote dir
-          ssh $SSH_OPTS "$REMOTE" "mkdir -p $REMOTE_DIR/seed-data"
+          ssh $SSH_OPTS "$REMOTE" "mkdir -p $REMOTE_DIR"
 
-          # Sync project files (compose, init.sql, seed-data)
+          # Sync project files
           rsync -avz -e "ssh $SSH_OPTS" \
             docker-compose.yml init.sql \
             "$REMOTE:$REMOTE_DIR/"
-          rsync -avz -e "ssh $SSH_OPTS" \
-            seed-data/ \
-            "$REMOTE:$REMOTE_DIR/seed-data/"
 
           # Write GCP Service Account JSON (printenv avoids shell quoting issues)
           printenv GCP_SA_KEY > /tmp/gcp-sa.json
