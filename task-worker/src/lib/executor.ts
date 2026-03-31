@@ -56,7 +56,7 @@ function buildSkillsPrompt(skills: SkillSummary[]): string {
   return `\n\n## Available Skills (use proactively)\n\nThe following skills are enabled. If the user's task is related to any of them, call \`loadSkill\` immediately to load the full instructions — do NOT ask the user first. Using a skill costs little; missing one degrades quality.\n\n${list}`;
 }
 
-export async function executeTask(payload: TaskPayload): Promise<'completed' | 'failed' | 'timeout'> {
+export async function executeTask(payload: TaskPayload, cancelSignal?: AbortSignal): Promise<'completed' | 'failed' | 'timeout' | 'cancelled'> {
   const startTime = Date.now();
   const taskName = payload.taskName || `Task #${payload.taskId}`;
 
@@ -166,7 +166,9 @@ export async function executeTask(payload: TaskPayload): Promise<'completed' | '
       tools: tools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(payload.maxToolCalls),
       maxOutputTokens: 32768,
-      abortSignal: AbortSignal.timeout(payload.timeoutSeconds * 1000),
+      abortSignal: cancelSignal
+        ? AbortSignal.any([AbortSignal.timeout(payload.timeoutSeconds * 1000), cancelSignal])
+        : AbortSignal.timeout(payload.timeoutSeconds * 1000),
       onStepFinish(event) {
         const calls = event.toolCalls || [];
         const results = event.toolResults || [];
@@ -249,53 +251,60 @@ export async function executeTask(payload: TaskPayload): Promise<'completed' | '
     return 'completed';
   } catch (err) {
     const executionMs = Date.now() - startTime;
-    const isTimeout =
-      err instanceof Error && err.name === "AbortError";
-    const errorMsg = isTimeout
-      ? "Execution timed out"
-      : err instanceof Error
-        ? err.message
-        : String(err);
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    const isCancelled = isAbort && cancelSignal?.aborted;
+    const isTimeout = isAbort && !isCancelled;
+    const errorMsg = isCancelled
+      ? "Cancelled by user"
+      : isTimeout
+        ? "Execution timed out"
+        : err instanceof Error
+          ? err.message
+          : String(err);
 
-    if (!isTimeout) {
+    const status = isCancelled ? "cancelled" : isTimeout ? "timeout" : "failed";
+
+    if (!isAbort) {
       const stack = err instanceof Error ? err.stack : "";
       console.error(`[executor] Full error:`, stack || errorMsg);
     }
 
     await updateExecution(payload.executionId, {
-      status: isTimeout ? "timeout" : "failed",
+      status,
       completed_at: new Date(),
       tool_calls: toolCallLog as unknown[],
       error: errorMsg,
       execution_ms: executionMs,
     });
 
-    if (isTimeout) {
-      await notifyTimeout(payload.taskId, payload.executionId, taskName);
-    } else {
-      await notifyFailure(
-        payload.taskId,
-        payload.executionId,
+    if (!isCancelled) {
+      if (isTimeout) {
+        await notifyTimeout(payload.taskId, payload.executionId, taskName);
+      } else {
+        await notifyFailure(
+          payload.taskId,
+          payload.executionId,
+          taskName,
+          errorMsg,
+        );
+      }
+
+      await sendNotificationEmail({
         taskName,
-        errorMsg,
-      );
+        status: isTimeout ? "timeout" : "failure",
+        error: errorMsg,
+        executionMs,
+        toolCalls: toolCallLog,
+        cronExpr: payload.cronExpr,
+        executionId: payload.executionId,
+        notifyTo: payload.notifyTo || undefined,
+        notifyFrom: payload.notifyFrom || undefined,
+      });
     }
 
-    await sendNotificationEmail({
-      taskName,
-      status: isTimeout ? "timeout" : "failure",
-      error: errorMsg,
-      executionMs,
-      toolCalls: toolCallLog,
-      cronExpr: payload.cronExpr,
-      executionId: payload.executionId,
-      notifyTo: payload.notifyTo || undefined,
-      notifyFrom: payload.notifyFrom || undefined,
-    });
-
-    console.error(
-      `[executor] Task ${payload.taskId} ${isTimeout ? "timed out" : "failed"} after ${executionMs}ms: ${errorMsg}`,
+    console.log(
+      `[executor] Task ${payload.taskId} ${status} after ${executionMs}ms: ${errorMsg}`,
     );
-    return isTimeout ? 'timeout' : 'failed';
+    return status as 'completed' | 'failed' | 'timeout' | 'cancelled';
   }
 }

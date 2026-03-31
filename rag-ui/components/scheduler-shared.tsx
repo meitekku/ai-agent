@@ -274,6 +274,8 @@ export function statusBadge(status: string) {
       return <Badge className="bg-amber-500/10 text-amber-600 border-transparent">タイムアウト</Badge>;
     case "running":
       return <Badge className="bg-blue-500/10 text-blue-600 border-transparent animate-pulse">実行中</Badge>;
+    case "cancelled":
+      return <Badge className="bg-zinc-500/10 text-zinc-500 border-transparent">キャンセル</Badge>;
     case "queued":
       return <Badge variant="outline">キュー中</Badge>;
     default:

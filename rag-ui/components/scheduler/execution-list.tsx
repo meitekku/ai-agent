@@ -1,9 +1,9 @@
 "use client";
 
-import { memo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { memo, useEffect, useCallback, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RotateCcwIcon, ChevronRightIcon } from "lucide-react";
+import { RotateCcwIcon, ChevronRightIcon, SquareIcon } from "lucide-react";
 import { formatDate, formatDuration, statusBadge } from "@/components/scheduler-shared";
 import { useSchedulerDetailStore, type TaskExecution } from "@/lib/scheduler-detail-store";
 
@@ -13,6 +13,18 @@ export const ExecutionList = memo(function ExecutionList({
   taskId: number;
 }) {
   const openResult = useSchedulerDetailStore((s) => s.openResult);
+  const queryClient = useQueryClient();
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  const cancelExecution = useCallback(async (execId: number) => {
+    setCancellingId(execId);
+    try {
+      await fetch(`/api/scheduler/${taskId}/executions/${execId}/cancel`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: ["scheduler-executions", taskId] });
+    } finally {
+      setCancellingId(null);
+    }
+  }, [taskId, queryClient]);
 
   const { data: executions = [], isPending } = useQuery({
     queryKey: ["scheduler-executions", taskId],
@@ -88,7 +100,18 @@ export const ExecutionList = memo(function ExecutionList({
                   {formatDuration(exec.execution_ms)}
                 </span>
               )}
-              {hasDetail && (
+              {(exec.status === "running" || exec.status === "queued") && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); cancelExecution(exec.id); }}
+                  disabled={cancellingId === exec.id}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                >
+                  <SquareIcon className="size-3" />
+                  {cancellingId === exec.id ? "..." : "停止"}
+                </button>
+              )}
+              {hasDetail && exec.status !== "running" && exec.status !== "queued" && (
                 <ChevronRightIcon className="size-4 text-muted-foreground ml-auto shrink-0" />
               )}
             </div>

@@ -6,6 +6,20 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const QUEUE_KEY = "scheduler:task-queue";
 const MAX_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "3", 10);
 
+// Track running executions for cancellation
+const runningAbortControllers = new Map<number, AbortController>();
+
+export function cancelExecution(executionId: number): boolean {
+  const controller = runningAbortControllers.get(executionId);
+  if (!controller) return false;
+  controller.abort("Cancelled by user");
+  return true;
+}
+
+export function getRunningExecutionIds(): number[] {
+  return [...runningAbortControllers.keys()];
+}
+
 export async function startWorker(): Promise<void> {
   console.log(`[worker] Starting task worker (concurrency=${MAX_CONCURRENCY})...`);
 
@@ -55,7 +69,11 @@ export async function startWorker(): Promise<void> {
 
       // Fire and forget — don't await
       runningCount++;
-      processTask(payload, task, redis).finally(() => {
+      const abortController = new AbortController();
+      const execId = payload.executionId as number;
+      runningAbortControllers.set(execId, abortController);
+      processTask(payload, task, redis, abortController.signal).finally(() => {
+        runningAbortControllers.delete(execId);
         runningCount--;
       });
     } catch (err) {
@@ -81,11 +99,12 @@ async function processTask(
   payload: Record<string, unknown>,
   task: Awaited<ReturnType<typeof getTaskById>>,
   redis: { lPush: (key: string, value: string) => Promise<unknown> },
+  cancelSignal: AbortSignal,
 ): Promise<void> {
   try {
-    const execStatus = await executeTask(payload as any);
+    const execStatus = await executeTask(payload as any, cancelSignal);
 
-    // Retry on failure if retries remain
+    // Retry on failure if retries remain (don't retry cancelled tasks)
     if (execStatus === "failed") {
       const retryMax = (task?.retry_max ?? 0) as number;
       const retryCount = ((payload.retryCount as number) ?? 0);
