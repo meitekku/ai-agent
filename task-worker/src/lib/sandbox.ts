@@ -7,6 +7,7 @@ const RAG_UI_URL = process.env.RAG_UI_URL || "http://rag-ui:3000";
 const config = new ConnectionConfig({
   domain: OPENSANDBOX_URL,
   requestTimeoutSeconds: 120,
+  useServerProxy: true,
 });
 
 export interface CodeResult {

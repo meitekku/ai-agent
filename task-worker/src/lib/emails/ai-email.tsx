@@ -81,7 +81,7 @@ export function AiEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Stella AI &middot;{" "}
-              {appUrl.replace(/^https?:\/\//, "")}
+              {appUrl?.replace(/^https?:\/\//, "") ?? ""}
             </Text>
           </Section>
         </Container>

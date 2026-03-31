@@ -51,7 +51,7 @@ export function NotificationBell() {
         >
           <BellIcon className="size-4" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+            <span className="absolute -top-1 -right-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-white">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -87,7 +87,9 @@ export function NotificationBell() {
                 className="flex items-start gap-3 px-3 py-2.5 cursor-pointer"
                 onSelect={() => {
                   if (!n.read) markRead([n.id]);
-                  router.push(`/scheduler/${n.task_id}`);
+                  router.push(
+                    `/scheduler/${n.task_id}${n.execution_id ? `#execution-${n.execution_id}` : ""}`,
+                  );
                 }}
               >
                 <span

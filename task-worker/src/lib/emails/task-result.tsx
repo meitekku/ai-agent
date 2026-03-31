@@ -155,7 +155,7 @@ export function TaskResultEmail({
           <Section style={footer}>
             <Text style={footerText}>
               FG タスクワーカー &middot;{" "}
-              {appUrl.replace(/^https?:\/\//, "")}
+              {appUrl?.replace(/^https?:\/\//, "") ?? ""}
             </Text>
           </Section>
         </Container>

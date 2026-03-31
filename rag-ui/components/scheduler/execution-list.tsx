@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RotateCcwIcon, ChevronRightIcon } from "lucide-react";
@@ -39,6 +39,20 @@ export const ExecutionList = memo(function ExecutionList({
     );
   }
 
+  // Scroll to execution from notification hash (e.g. #execution-123)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#execution-")) return;
+    const el = document.getElementById(hash.slice(1));
+    if (!el) return;
+    // Clear hash so 15s polling refetch won't re-trigger
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary/50");
+    const timer = setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    return () => clearTimeout(timer);
+  }, [executions]);
+
   if (executions.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8 text-center">
@@ -57,9 +71,10 @@ export const ExecutionList = memo(function ExecutionList({
         return (
           <button
             key={exec.id}
+            id={`execution-${exec.id}`}
             type="button"
             onClick={() => hasDetail && openResult(exec)}
-            className={`w-full rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-colors ${
+            className={`w-full rounded-lg border border-border/50 px-4 py-3 text-left text-sm transition-all ${
               hasDetail ? "hover:bg-muted/30 cursor-pointer" : "cursor-default"
             }`}
           >

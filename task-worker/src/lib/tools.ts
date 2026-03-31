@@ -572,7 +572,7 @@ async function sendEmail(
       from: EMAIL_FROM,
       to,
       subject,
-      react: AiEmail({ subject, body }),
+      react: AiEmail({ subject, body, appUrl: process.env.APP_URL }),
     });
     if (error) {
       return JSON.stringify({ error: `Resend API error: ${error.message}` });
