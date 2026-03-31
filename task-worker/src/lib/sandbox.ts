@@ -101,9 +101,9 @@ async function extractOutputFiles(
   executionId: number,
 ): Promise<UploadedFile[]> {
   try {
-    // List files in /output
+    // List files in /output (use ls -1 for reliable one-per-line output)
     const lsResult = await sandbox.commands.run(
-      "find /output -maxdepth 1 -type f -printf '%f\\n' 2>/dev/null || true",
+      "ls -1 /output/ 2>/dev/null || true",
     );
     const names = (lsResult.logs?.stdout?.map((l: any) => l.text).join("") || "")
       .split("\n")
@@ -117,11 +117,18 @@ async function extractOutputFiles(
     for (const name of names) {
       try {
         const mediaType = guessMimeType(name);
-        // readBytesStream returns AsyncIterable<Uint8Array>.
-        // Bun's ReadableStream.from() accepts AsyncIterable but TS types omit the static method.
-        const stream = sandbox.files.readBytesStream(`/output/${name}`);
-        const fromStream = (ReadableStream as unknown as { from(i: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> }).from;
-        const readable = fromStream(stream);
+        // Collect all bytes from the async iterable, then upload as a single Blob
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of sandbox.files.readBytesStream(`/output/${name}`)) {
+          chunks.push(chunk);
+        }
+        const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+        const merged = new Uint8Array(totalLen);
+        let offset = 0;
+        for (const c of chunks) {
+          merged.set(c, offset);
+          offset += c.length;
+        }
 
         const res = await fetch(`${RAG_UI_URL}/api/task-files`, {
           method: "POST",
@@ -131,9 +138,7 @@ async function extractOutputFiles(
             "x-execution-id": String(executionId),
             "content-type": mediaType,
           },
-          body: readable,
-          // @ts-ignore — duplex required for streaming request body in Node.js/Bun
-          duplex: "half",
+          body: merged,
         });
 
         if (res.ok) {
@@ -144,7 +149,7 @@ async function extractOutputFiles(
             size: data.size,
             url: data.url,
           });
-          console.log(`[sandbox] Streamed /output/${name} → fileId=${data.fileId} (${data.size} bytes)`);
+          console.log(`[sandbox] Uploaded /output/${name} → fileId=${data.fileId} (${data.size} bytes)`);
         } else {
           console.error(`[sandbox] Upload failed for /output/${name}: ${res.status}`);
         }
