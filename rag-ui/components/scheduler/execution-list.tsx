@@ -33,7 +33,11 @@ export const ExecutionList = memo(function ExecutionList({
       if (!res.ok) return [];
       return ((await res.json()) as { executions: TaskExecution[] }).executions;
     },
-    refetchInterval: 15000,
+    refetchInterval: (query) => {
+      const execs = query.state.data as TaskExecution[] | undefined;
+      const hasActive = execs?.some((e) => e.status === "running" || e.status === "queued");
+      return hasActive ? 3000 : 15000;
+    },
   });
 
   // Scroll to execution from notification hash (e.g. #execution-123)
