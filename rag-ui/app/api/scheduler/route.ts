@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       name: body.name,
       description: body.description,
       cron_expr: body.cron_expr,
+      timezone: body.timezone,
       prompt: body.prompt,
       kb_slug: body.kb_slug,
       allowed_tools: body.allowed_tools,

@@ -48,6 +48,7 @@ export const EditDialog = memo(function EditDialog({
                 name: editForm.name.trim(),
                 description: editForm.description.trim(),
                 cron_expr: configToCron(editForm.schedule),
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 prompt: editForm.prompt.trim(),
                 model: editForm.model === "default" ? null : editForm.model,
                 allowed_tools: ALL_TOOLS,

@@ -52,6 +52,7 @@ interface ScheduledTask {
   name: string;
   description: string;
   cron_expr: string;
+  timezone: string;
   prompt: string;
   kb_slug: string | null;
   allowed_tools: string[];
@@ -124,6 +125,7 @@ export const SchedulerPage = memo(function SchedulerPage() {
           name: form.name.trim(),
           description: form.description.trim(),
           cron_expr: configToCron(form.schedule),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           prompt: form.prompt.trim(),
           allowed_tools: ALL_TOOLS,
           model: form.model === "default" ? null : form.model,
@@ -303,6 +305,9 @@ export const SchedulerPage = memo(function SchedulerPage() {
                         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                           <ClockIcon className="size-3" />
                           {describeSchedule(task.cron_expr)}
+                          {task.cron_expr !== MANUAL_CRON && task.timezone && (
+                            <span className="text-muted-foreground/60">({task.timezone.replace(/^.*\//, "")})</span>
+                          )}
                         </span>
                         {task.cron_expr !== MANUAL_CRON && task.next_run_at && (
                           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -1523,8 +1523,9 @@ export async function POST(req: Request) {
         cron_expr: z
           .string()
           .describe(
-            "5フィールドCron式。分 時 日 月 曜日。例: '0 9 * * *'=毎日9時, '0 9 * * 1'=毎週月曜9時, '0 */6 * * *'=6時間毎, '30 8 * * 1-5'=平日8:30",
+            "5フィールドCron式。分 時 日 月 曜日。ユーザーのローカル時間で指定。例: '0 9 * * *'=毎日9時, '0 9 * * 1'=毎週月曜9時, '0 */6 * * *'=6時間毎, '30 8 * * 1-5'=平日8:30",
           ),
+        timezone: z.string().optional().describe("IANAタイムゾーン。省略時はAsia/Tokyo。例: 'Asia/Tokyo', 'America/New_York'"),
         kb_slug: z.string().optional().describe("タスクが参照するナレッジベースのslug。KB検索が不要なら省略"),
         model: z.string().optional().describe("使用するGeminiモデル名。省略時はデフォルト(gemini-3-flash-preview)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'"),
         description: z.string().optional().describe("タスクの目的や背景の説明（管理画面表示用）"),
@@ -1536,6 +1537,7 @@ export async function POST(req: Request) {
             name: args.name,
             prompt: args.prompt,
             cron_expr: args.cron_expr,
+            timezone: args.timezone || "Asia/Tokyo",
             kb_slug: args.kb_slug,
             model: args.model,
             description: args.description,
@@ -1578,6 +1580,7 @@ export async function POST(req: Request) {
         name: z.string().optional().describe("新しいタスク名"),
         prompt: z.string().optional().describe("新しいプロンプト"),
         cron_expr: z.string().optional().describe("新しいCron式"),
+        timezone: z.string().optional().describe("IANAタイムゾーン。例: 'Asia/Tokyo'"),
         enabled: z.boolean().optional().describe("true=有効, false=一時停止"),
       }),
       execute: async (args) => {

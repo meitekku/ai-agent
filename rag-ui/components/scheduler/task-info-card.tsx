@@ -43,7 +43,12 @@ export const TaskInfoCard = memo(function TaskInfoCard({
           {isManual ? <HandIcon className="size-4 shrink-0" /> : <ClockIcon className="size-4 shrink-0" />}
           <div>
             <div className="text-xs text-muted-foreground/70">スケジュール</div>
-            <div className="font-medium text-foreground">{describeSchedule(task.cron_expr)}</div>
+            <div className="font-medium text-foreground">
+              {describeSchedule(task.cron_expr)}
+              {!isManual && task.timezone && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">({task.timezone.replace(/^.*\//, "")})</span>
+              )}
+            </div>
           </div>
         </div>
         {!isManual && (

@@ -34,6 +34,7 @@ export interface ScheduledTask {
   name: string;
   description: string;
   cron_expr: string;
+  timezone: string;
   prompt: string;
   kb_slug: string | null;
   allowed_tools: string[];

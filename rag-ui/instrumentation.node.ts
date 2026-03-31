@@ -23,7 +23,7 @@ async function tickScheduler() {
           notifyTo: task.notify_to,
           notifyFrom: task.notify_from,
         });
-        await updateNextRunAt(task.id, task.cron_expr);
+        await updateNextRunAt(task.id, task.cron_expr, task.timezone);
         console.log(
           `[scheduler] Enqueued task ${task.id} "${task.name}" (execution ${executionId})`,
         );

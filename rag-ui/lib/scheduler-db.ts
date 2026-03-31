@@ -54,6 +54,7 @@ export async function ensureSchedulerTables(): Promise<void> {
     await client.query(`ALTER TABLE scheduled_tasks ADD COLUMN IF NOT EXISTS model VARCHAR(100)`);
     await client.query(`ALTER TABLE scheduled_tasks ADD COLUMN IF NOT EXISTS notify_to TEXT`);
     await client.query(`ALTER TABLE scheduled_tasks ADD COLUMN IF NOT EXISTS notify_from TEXT`);
+    await client.query(`ALTER TABLE scheduled_tasks ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT 'Asia/Tokyo'`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS task_executions (
         id            SERIAL PRIMARY KEY,
@@ -121,6 +122,7 @@ export interface ScheduledTask {
   name: string;
   description: string;
   cron_expr: string;
+  timezone: string;
   prompt: string;
   kb_slug: string | null;
   allowed_tools: string[];
@@ -168,9 +170,10 @@ export interface TaskNotification {
 // Helpers
 // ============================================================
 
-function computeNextRunAt(cronExpr: string): Date | null {
+function computeNextRunAt(cronExpr: string, timezone?: string): Date | null {
   try {
-    const job = new Cron(cronExpr);
+    const opts = timezone ? { timezone } : {};
+    const job = new Cron(cronExpr, opts);
     const next = job.nextRun();
     return next;
   } catch {
@@ -212,6 +215,7 @@ export async function createTask(data: {
   name: string;
   description?: string;
   cron_expr: string;
+  timezone?: string;
   prompt: string;
   kb_slug?: string;
   allowed_tools?: string[];
@@ -224,17 +228,19 @@ export async function createTask(data: {
   enabled?: boolean;
 }): Promise<number> {
   await ensureSchedulerTables();
-  const nextRun = computeNextRunAt(data.cron_expr);
+  const tz = data.timezone || "Asia/Tokyo";
+  const nextRun = computeNextRunAt(data.cron_expr, tz);
   const res = await getPool().query(
     `INSERT INTO scheduled_tasks
-       (name, description, cron_expr, prompt, kb_slug, allowed_tools,
+       (name, description, cron_expr, timezone, prompt, kb_slug, allowed_tools,
         max_tool_calls, timeout_sec, retry_max, model, notify_to, notify_from, enabled, next_run_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING id`,
     [
       data.name,
       data.description || "",
       data.cron_expr,
+      tz,
       data.prompt,
       data.kb_slug || null,
       data.allowed_tools || [],
@@ -274,6 +280,7 @@ export async function updateTask(
     name?: string;
     description?: string;
     cron_expr?: string;
+    timezone?: string;
     prompt?: string;
     kb_slug?: string | null;
     allowed_tools?: string[];
@@ -299,9 +306,13 @@ export async function updateTask(
 
   fields.push(`updated_at = NOW()`);
 
-  // Recompute next_run_at if cron_expr changed
-  if (data.cron_expr !== undefined) {
-    const nextRun = computeNextRunAt(data.cron_expr);
+  // Recompute next_run_at if cron_expr or timezone changed
+  if (data.cron_expr !== undefined || data.timezone !== undefined) {
+    // Need current task to get existing values for the unchanged field
+    const current = await getTask(id);
+    const cronExpr = data.cron_expr ?? current?.cron_expr ?? "0 0 * * *";
+    const tz = data.timezone ?? current?.timezone ?? "Asia/Tokyo";
+    const nextRun = computeNextRunAt(cronExpr, tz);
     fields.push(`next_run_at = $${idx++}`);
     values.push(nextRun);
   }
@@ -326,8 +337,8 @@ export async function getTasksDueNow(): Promise<ScheduledTask[]> {
   return res.rows.map(rowToTask);
 }
 
-export async function updateNextRunAt(id: number, cronExpr: string): Promise<void> {
-  const nextRun = computeNextRunAt(cronExpr);
+export async function updateNextRunAt(id: number, cronExpr: string, timezone?: string): Promise<void> {
+  const nextRun = computeNextRunAt(cronExpr, timezone);
   await getPool().query(
     `UPDATE scheduled_tasks SET next_run_at = $1, last_run_at = NOW() WHERE id = $2`,
     [nextRun, id],
