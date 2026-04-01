@@ -39,7 +39,7 @@ Browser useChat → /api/chat Route Handler → isImageModel?
 - 画像生成: 2つのパス — (A) 画像モデル選択時は `generateText` + `responseModalities` でネイティブ画像出力、(B) テキストモデルから `generateImage` ツールで AI SDK `generateImage()` 呼出
 - 生成画像は `saveFile()` でディスク保存 + `insertChatFile()` で DB 登録 → `/api/files/{id}` で配信
 - 画像モデル使用中はスケルトンプレースホルダー表示 + `beforeunload` + SPA ナビガードで離脱防止
-- 孤立ファイル自動削除: 起動時 + 6時間ごとに未参照ファイル（60分以上）をクリーンアップ
+- 孤立ファイル自動削除: 起動時 + 6時間ごとに未参照ファイル（60分以上）をクリーンアップ。`task_execution_files` で参照されたファイルは除外
 - 会話削除時にファイルもカスケード削除（DB + ディスク）
 - Chat は tool-calling 方式：LLM が質問内容に応じて searchKnowledgeBase ツールの使用を判断
 - `kb_config` テーブルで KB の title + description を管理 → ツール description に動的注入

@@ -246,6 +246,7 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `rag-ui/components/ai-elements/message.tsx` | 同上 | **rag-deploy のみ** | MessageResponse に widget セグメント分割ロジック追加 |
 | `rag-ui/app/api/chat/route.ts` | 同上 | **rag-deploy のみ** | CRM tools（fetchAndAnalyze 統合、generateProposal 廃止）+ 画像モデルパス + generateImage + WIDGET_SYSTEM_PROMPT |
 | `rag-ui/components/image-lightbox.tsx` | 同上 | **rag-deploy のみ** | shadcn Dialog ベース画像拡大表示 + ダウンロードボタン |
+| `rag-ui/lib/chat-files-db.ts` | 同上 | **rag-deploy のみ** | `getOrphanFiles()` に `task_execution_files` 除外チェック追加（タスク生成ファイル誤削除防止） |
 | `rag-ui/lib/file-cleanup.ts` | 同上 | 一致 | 孤立ファイル自動削除 |
 | `rag-ui/instrumentation.ts` | 同上 | 一致 | 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ |
 | `rag-ui/` その他全ファイル | 同上 | 一致 | 変更なし |
@@ -472,6 +473,7 @@ GCP_SA_KEY_FILE=./your-sa-key.json
 | スライドのデザインがページごとにバラバラ | 各スライド独立並列生成、全体コンテキストなし | render prompt に「デッキ全体のデザイン統一ルール」追加 |
 | styleOptions がスライド生成に反映されない | `renderSlides()` が styleOptions を受け取らず API に未送信 | `renderSlides()` に styleOptions パラメータ追加、render API body に含める |
 | fetchAndAnalyze が crm-service 障害で全失敗 → ProposalPanel 開かず | `generateRationale()` が Gemini API エラーを catch せず throw → analyze endpoint が 500 返却 → fetchAndAnalyze が `{ error }` 返却 → detection effect が sessionKey を検出できず | 2 箇所修正: (1) `generateRationale()` に外側 try-catch 追加（Gemini 失敗時 fallback rationale 返却）(2) `fetchAndAnalyze` の analyze 呼出に try-catch 追加（失敗時もスコアリング結果なしで sessionKey 生成 → ProposalPanel は必ず開く） |
+| task 生成ファイルが 60 分後に消える | `getOrphanFiles()` が `chat_messages` のみ参照チェック → `task_execution_files` で参照されたファイルも「孤立」と誤判定 → `cleanupOrphanFiles()` がディスク + DB から削除 | `getOrphanFiles()` に `task_execution_files` の EXISTS チェック追加。タスク実行で生成されたファイルは孤立判定から除外 |
 
 ## トラブルシューティング
 
