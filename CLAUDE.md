@@ -17,6 +17,39 @@ docker-compose.yml
 
 外部公開ポートは **4002 のみ**。内部サービス（postgres/valkey/lightrag/crm-service/task-worker/opensandbox）はホストに公開しない。
 
+## デプロイ環境
+
+### 本番（EC2） — AI博覧会デモ用
+
+| 項目 | 値 |
+|------|-----|
+| URL | https://ai.agent.kakiage-kun.jp |
+| Instance | `i-0789466d74768eaf9` t4g.medium (ARM64, 2C/4GB, 30GB gp3) |
+| Elastic IP | `35.74.76.156` |
+| Region | ap-northeast-1 |
+| Nginx | 80/443 → localhost:4002, Let's Encrypt SSL (auto-renew) |
+| 定時開閉 | EventBridge Scheduler: 08:00 JST start / 22:00 JST stop |
+| SSH | `ssh -i ~/.ssh/rag-deploy-key.pem ec2-user@35.74.76.156` |
+
+### 開発（Orange Pi） — 社内常駐
+
+| 項目 | 値 |
+|------|-----|
+| SSH | `ssh zwg@100.106.83.107` |
+| Dir | `~/rag-deploy` |
+
+## CI/CD — GitHub Actions (Self-hosted Mac Runner)
+
+2 つのリポジトリが同じ Mac 上の別々の runner でビルドし、異なるターゲットにデプロイ:
+
+| リポジトリ | remote | Runner | デプロイ先 |
+|-----------|--------|--------|-----------|
+| `wgzhaocv/rag-deploy` | `origin` | `~/actions-runner` | Orange Pi |
+| `FGjp-techdes/ai-agent-v2` | `fg` | `~/actions-runner-ec2` | EC2 |
+
+Mac (ARM64) でビルド → `docker save` + `scp` → ターゲットで `docker load` + `up -d`。
+`github.repository` で分岐し、同一 `deploy.yml` で両方のフローを定義。
+
 ## プロジェクト構造
 
 ```
@@ -271,32 +304,34 @@ rag-deploy は `rag-ui` と `lightrag-service` のコピーをベースに、デ
 | `KINTONE_API_TOKEN` | Kintone API トークン（オプション） |
 | `KINTONE_APP_ID` | Kintone アプリ ID（オプション） |
 | `RESEND_API_KEY` | Resend API Key（オプション、定時タスクのメール通知用） |
+| `EMAIL_FROM` | メール送信元（例: `FleGrowth AI エージェント <noreply@ai.agent.kakiage-kun.jp>`） |
+| `APP_URL` | アプリ URL（例: `https://ai.agent.kakiage-kun.jp`） |
 
 ## コマンド
 
 ```bash
-# ビルド
+# ── ローカル ──
 docker compose --profile prod build
-
-# 起動
 docker compose --profile prod up -d
-
-# 状態確認
 docker compose --profile prod ps
-
-# ログ確認
 docker compose --profile prod logs -f lightrag
-docker compose --profile prod logs -f rag-ui
-docker compose --profile prod logs -f crm-service
-
-# 停止
 docker compose --profile prod down
+docker compose --profile prod down -v          # データ含め完全削除
+docker compose --profile prod build --no-cache # 強制再ビルド
 
-# データ含め完全削除
-docker compose --profile prod down -v
+# ── EC2 操作（AWS CLI） ──
+aws ec2 start-instances --region ap-northeast-1 --instance-ids i-0789466d74768eaf9   # 開機
+aws ec2 stop-instances --region ap-northeast-1 --instance-ids i-0789466d74768eaf9    # 関機
+aws ec2 reboot-instances --region ap-northeast-1 --instance-ids i-0789466d74768eaf9  # 再起動
+aws ec2 terminate-instances --region ap-northeast-1 --instance-ids i-0789466d74768eaf9 # 削除
 
-# 強制再ビルド
-docker compose --profile prod build --no-cache
+# ── EC2 SSH ──
+ssh -i ~/.ssh/rag-deploy-key.pem ec2-user@35.74.76.156
+# EC2 上で: cd ~/rag-deploy && docker compose --profile prod ps
+
+# ── デプロイ ──
+git push fg main      # → EC2 へ自動デプロイ
+git push origin main   # → Orange Pi へ自動デプロイ
 ```
 
 ## データ永続化
