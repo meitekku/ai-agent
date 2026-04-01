@@ -110,7 +110,7 @@ export async function deleteChatFiles(ids: string[]): Promise<string[]> {
 
 /**
  * Find orphan files: uploaded over `maxAgeMinutes` ago but not referenced
- * in any chat_messages parts.
+ * in any chat_messages parts or task_execution_files.
  * Returns empty array if chat_messages table doesn't exist yet.
  */
 export async function getOrphanFiles(
@@ -124,6 +124,13 @@ export async function getOrphanFiles(
   );
   if (tableCheck.rows.length === 0) return [];
 
+  // Check if task_execution_files table exists
+  const taskTableCheck = await getPool().query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_name = 'task_execution_files' LIMIT 1`,
+  );
+  const hasTaskFiles = taskTableCheck.rows.length > 0;
+
   const res = await getPool().query(
     `SELECT cf.*
      FROM chat_files cf
@@ -132,7 +139,11 @@ export async function getOrphanFiles(
          SELECT 1 FROM chat_messages cm,
            jsonb_array_elements(cm.parts) AS p
          WHERE p->>'url' = '/api/files/' || cf.id
-       )`,
+       )
+       ${hasTaskFiles ? `AND NOT EXISTS (
+         SELECT 1 FROM task_execution_files tef
+         WHERE tef.file_id = cf.id
+       )` : ""}`,
     [maxAgeMinutes],
   );
   return res.rows;
