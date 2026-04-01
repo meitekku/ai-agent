@@ -1,4 +1,4 @@
-name: Deploy to Orange Pi
+name: Deploy
 
 on:
   push:
@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  # ── Orange Pi（個人 origin: wgzhaocv/rag-deploy） ──
+  deploy-orangepi:
+    if: github.repository == 'wgzhaocv/rag-deploy'
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 25
 
@@ -84,3 +86,76 @@ jobs:
 
           # Cleanup
           rm -f /tmp/rag-images.tar ~/.ssh/rag-deploy-key
+
+  # ── EC2（会社 fg: FGjp-techdes/ai-agent-v2） ──
+  deploy-ec2:
+    if: github.repository == 'FGjp-techdes/ai-agent-v2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Deploy to EC2
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          # Write deploy key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key
+          chmod 600 ~/.ssh/rag-deploy-key
+          SSH_OPTS="-i ~/.ssh/rag-deploy-key -o StrictHostKeyChecking=no"
+          REMOTE="ec2-user@${{ secrets.EC2_HOST }}"
+          REMOTE_DIR="/home/ec2-user/rag-deploy"
+
+          # Create remote dir
+          ssh $SSH_OPTS "$REMOTE" "mkdir -p $REMOTE_DIR"
+
+          # Sync source code to EC2
+          rsync -avz --delete -e "ssh $SSH_OPTS" \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude '.venv' \
+            --exclude '*.pem' \
+            ./ "$REMOTE:$REMOTE_DIR/"
+
+          # Write GCP Service Account JSON
+          printenv GCP_SA_KEY > /tmp/gcp-sa.json
+          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
+          rm -f /tmp/gcp-sa.json
+
+          # Write .env on remote
+          ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/.env << 'EOF'
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
+          PW=${{ secrets.PW }}
+          SALESFORCE_INSTANCE_URL=${{ secrets.SALESFORCE_INSTANCE_URL }}
+          SALESFORCE_CLIENT_ID=${{ secrets.SALESFORCE_CLIENT_ID }}
+          SALESFORCE_CLIENT_SECRET=${{ secrets.SALESFORCE_CLIENT_SECRET }}
+          KINTONE_SUBDOMAIN=${{ secrets.KINTONE_SUBDOMAIN }}
+          KINTONE_API_TOKEN=${{ secrets.KINTONE_API_TOKEN }}
+          KINTONE_APP_ID=${{ secrets.KINTONE_APP_ID }}
+          APP_URL=${{ secrets.APP_URL }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          USE_VERTEX_AI=true
+          GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION=global
+          GCP_SA_KEY_FILE=./gcp-sa.json
+          EOF
+          sed -i 's/^[[:space:]]*//' $REMOTE_DIR/.env"
+
+          # Build and deploy on EC2
+          ssh $SSH_OPTS "$REMOTE" "
+            cd $REMOTE_DIR
+            docker compose --profile prod build
+            docker build -f opensandbox/Dockerfile.sandbox-python -t sandbox-python:latest opensandbox/
+            docker compose --profile prod up -d
+            echo ''
+            docker compose --profile prod ps
+          "
+
+          # Cleanup
+          rm -f ~/.ssh/rag-deploy-key
