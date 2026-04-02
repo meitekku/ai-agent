@@ -7,6 +7,62 @@ const REDIRECT_URL_COOKIE = "redirect_url";
 
 const PW = process.env.PW;
 
+// ─── OG metadata for bot responses (no real page content exposed) ──
+
+const OG_SITE = "FleGrowth Stella";
+const OG_DESC =
+  "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム";
+
+const OG_PAGES: Record<string, { title: string; alt: string }> = {
+  "/": { title: "統合 AI アシスタント", alt: "FleGrowth Stella — 統合 AI アシスタント" },
+  "/new": { title: "AI チャット", alt: "AI チャット — FleGrowth Stella" },
+  "/documents": { title: "ドキュメント管理", alt: "ドキュメント管理 — FleGrowth Stella" },
+  "/skills": { title: "スキル管理", alt: "スキル管理 — FleGrowth Stella" },
+  "/scheduler": { title: "スケジューラ", alt: "スケジューラ — FleGrowth Stella" },
+  "/gate": { title: "ログイン", alt: "ログイン — FleGrowth Stella" },
+  "/system-error": { title: "システムエラー", alt: "システムエラー — FleGrowth Stella" },
+};
+
+function getOgPage(pathname: string) {
+  // Exact match first, then fallback patterns
+  if (OG_PAGES[pathname]) return OG_PAGES[pathname];
+  if (pathname.startsWith("/chat/")) return OG_PAGES["/new"];
+  if (pathname.startsWith("/documents/")) return OG_PAGES["/documents"];
+  if (pathname.startsWith("/scheduler/")) return OG_PAGES["/scheduler"];
+  if (pathname.startsWith("/graph/")) return OG_PAGES["/documents"];
+  return OG_PAGES["/"];
+}
+
+function buildBotHtml(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const page = getOgPage(pathname);
+  const base = process.env.APP_URL || request.nextUrl.origin;
+  const ogImage = `${base}${pathname === "/" ? "" : pathname}/opengraph-image`;
+  const title = `${page.title} | ${OG_SITE}`;
+
+  return new Response(
+    `<!DOCTYPE html><html><head>
+<meta charset="utf-8"/>
+<title>${title}</title>
+<meta property="og:title" content="${title}"/>
+<meta property="og:description" content="${OG_DESC}"/>
+<meta property="og:site_name" content="${OG_SITE}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:locale" content="ja_JP"/>
+<meta property="og:image" content="${ogImage}"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="${page.alt}"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="${title}"/>
+<meta name="twitter:description" content="${OG_DESC}"/>
+<meta name="twitter:image" content="${ogImage}"/>
+</head><body></body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8" } }
+  );
+}
+
 function setTokenCookie(response: NextResponse) {
   const token = generateToken(PW!);
   response.cookies.set(AUTH_COOKIE_NAME, token, {
@@ -24,11 +80,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/system-error", request.url));
   }
 
-  // Allow bots (Slackbot, Twitterbot etc.) for OG link previews.
-  // Exclude /chat/[id] which contains conversation history.
+  // Bots get a minimal HTML with OG meta tags only — no real page content exposed.
+  // OG image routes (/*/opengraph-image, /*/twitter-image) pass through to generate PNG.
   const { isBot } = userAgent(request);
-  if (isBot && !/^\/chat\/[^/]+$/.test(request.nextUrl.pathname)) {
-    return NextResponse.next();
+  if (isBot) {
+    if (/opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
+      return NextResponse.next();
+    }
+    return buildBotHtml(request);
   }
 
   const url = request.nextUrl.clone();

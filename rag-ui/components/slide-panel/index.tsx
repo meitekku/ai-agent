@@ -426,93 +426,126 @@ export function SlidePanel() {
       setGeneratingCompleted(doneCount);
 
       try {
-        // Worker pool: N workers share a cursor into the pending list
-        const CONCURRENCY = 3;
-        let cursor = 0;
+        // --- Helper: render one slide ---
+        async function renderOne(idx: number, templateHtml?: string) {
+          const section = sections[idx];
+          try {
+            const body: Record<string, unknown> = {
+              slide_plan_section: section.plan_text,
+              slide_title: section.title,
+              slide_index: idx,
+              total_slides: sections.length,
+              deck_title: title,
+              slide_type: section.type,
+              style_options: renderStyleOptions || undefined,
+            };
+            if (templateHtml) body.template_html = templateHtml;
 
-        async function worker() {
-          while (cursor < pending.length) {
-            if (controller.signal.aborted) return;
-            const idx = pending[cursor++]; // grab next index atomically (single-threaded JS)
-            const section = sections[idx];
+            const res = await fetchWithRetry(
+              "/api/slides/htmlslide/render",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+              },
+              RENDER_TIMEOUT_MS,
+            );
 
-            try {
-              const res = await fetchWithRetry(
-                "/api/slides/htmlslide/render",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    slide_plan_section: section.plan_text,
-                    slide_title: section.title,
-                    slide_index: idx,
-                    total_slides: sections.length,
-                    deck_title: title,
-                    slide_type: section.type,
-                    style_options: renderStyleOptions || undefined,
-                  }),
-                  signal: controller.signal,
-                },
-                RENDER_TIMEOUT_MS,
-              );
+            if (!res.ok) {
+              const text = await res.text();
+              let detail = `HTTP ${res.status}`;
+              try { detail = JSON.parse(text).detail || detail; } catch { /* */ }
+              throw new Error(detail);
+            }
 
-              if (!res.ok) {
-                const text = await res.text();
-                let detail = `HTTP ${res.status}`;
-                try { detail = JSON.parse(text).detail || detail; } catch { /* */ }
-                throw new Error(detail);
+            const data = await res.json();
+            slides[idx] = {
+              index: idx,
+              title: section.title,
+              html: data.html || "",
+              type: section.type,
+            };
+          } catch (e) {
+            if (e instanceof DOMException && e.name === "AbortError") return;
+            const errMsg = e instanceof Error ? e.message : "Generation failed";
+            console.error(`[slide-panel] Slide ${idx + 1} failed:`, errMsg);
+            slides[idx] = {
+              index: idx,
+              title: section.title,
+              html: failedSlideHtml(section.title, errMsg),
+              type: section.type,
+              failed: true,
+            };
+            newFailCount++;
+          }
+
+          doneCount++;
+          setGeneratedSlides([...slides]);
+          setGeneratingCompleted(doneCount);
+
+          // Incremental save (debounced)
+          const deckIdNow = currentDeckIdRef.current;
+          if (deckIdNow && !slides[idx]?.failed) {
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = setTimeout(() => {
+              const completed = slides
+                .filter((s) => s && s.html && !s.failed)
+                .map((s, i) => ({
+                  slide_index: i,
+                  title: s.title,
+                  slide_type: s.type,
+                  html: s.html,
+                }));
+              if (completed.length > 0) {
+                updateSlideDeck(deckIdNow, { slides: completed }).catch(() => {});
               }
-
-              const data = await res.json();
-              slides[idx] = {
-                index: idx,
-                title: section.title,
-                html: data.html || "",
-                type: section.type,
-              };
-            } catch (e) {
-              if (e instanceof DOMException && e.name === "AbortError") return;
-              const errMsg = e instanceof Error ? e.message : "Generation failed";
-              console.error(`[slide-panel] Slide ${idx + 1} failed:`, errMsg);
-              slides[idx] = {
-                index: idx,
-                title: section.title,
-                html: failedSlideHtml(section.title, errMsg),
-                type: section.type,
-                failed: true,
-              };
-              newFailCount++;
-            }
-
-            doneCount++;
-            setGeneratedSlides([...slides]);
-            setGeneratingCompleted(doneCount);
-
-            // Incremental save (debounced) — update DB with completed slides so far
-            const deckIdNow = currentDeckIdRef.current;
-            if (deckIdNow && !slides[idx]?.failed) {
-              if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-              saveTimerRef.current = setTimeout(() => {
-                const completed = slides
-                  .filter((s) => s && s.html && !s.failed)
-                  .map((s, i) => ({
-                    slide_index: i,
-                    title: s.title,
-                    slide_type: s.type,
-                    html: s.html,
-                  }));
-                if (completed.length > 0) {
-                  updateSlideDeck(deckIdNow, { slides: completed }).catch(() => {});
-                }
-              }, 1500);
-            }
+            }, 1500);
           }
         }
 
-        // Spawn workers and wait for all to finish
-        await Promise.all(
-          Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker()),
+        // --- Two-phase rendering for style consistency ---
+        // Phase A: Render cover + first content slide in parallel to establish the style
+        const coverIdx = pending.find((i) => sections[i].type === "cover");
+        const firstContentIdx = pending.find(
+          (i) => sections[i].type !== "cover" && sections[i].type !== "back-cover",
         );
+
+        const phaseA: number[] = [];
+        if (coverIdx !== undefined) phaseA.push(coverIdx);
+        if (firstContentIdx !== undefined) phaseA.push(firstContentIdx);
+        // If no content slide found, just render cover
+        if (phaseA.length === 0 && pending.length > 0) phaseA.push(pending[0]);
+
+        if (controller.signal.aborted) return;
+        await Promise.all(phaseA.map((idx) => renderOne(idx)));
+
+        // Phase B: Render remaining slides in parallel, using first content slide as template
+        const templateHtml =
+          firstContentIdx !== undefined && slides[firstContentIdx] && !slides[firstContentIdx].failed
+            ? slides[firstContentIdx].html
+            : undefined;
+
+        const phaseB = pending.filter((i) => !phaseA.includes(i));
+
+        if (phaseB.length > 0 && !controller.signal.aborted) {
+          const CONCURRENCY = 3;
+          let cursor = 0;
+
+          async function worker() {
+            while (cursor < phaseB.length) {
+              if (controller.signal.aborted) return;
+              const idx = phaseB[cursor++];
+              // Pass template for content slides (not for back-cover)
+              const tpl = sections[idx].type !== "back-cover" ? templateHtml : undefined;
+              await renderOne(idx, tpl);
+            }
+          }
+
+          await Promise.all(
+            Array.from({ length: Math.min(CONCURRENCY, phaseB.length) }, () => worker()),
+          );
+        }
 
         // Clear any pending debounced save
         if (saveTimerRef.current) {
