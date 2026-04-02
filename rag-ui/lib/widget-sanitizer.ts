@@ -245,7 +245,7 @@ parent.postMessage({type:'widget:ready'},'*');
 ${styleBlock}
 @keyframes sd-show{to{opacity:1}}
 [data-wa]{opacity:0;animation:sd-show 0s step-end var(--d,0ms) forwards}
-canvas{border-radius:8px;background:linear-gradient(110deg,rgba(150,150,150,0.06) 30%,rgba(150,150,150,0.12) 50%,rgba(150,150,150,0.06) 70%);background-size:200% 100%;animation:_cshim 1.5s linear infinite}
+canvas{display:block;width:100%;border-radius:8px;background:linear-gradient(110deg,rgba(150,150,150,0.06) 30%,rgba(150,150,150,0.12) 50%,rgba(150,150,150,0.06) 70%);background-size:200% 100%;animation:_cshim 1.5s linear infinite}
 canvas._charted{background:none!important;animation:none}
 @keyframes _cshim{from{background-position:200% 0}to{background-position:-200% 0}}
 </style>

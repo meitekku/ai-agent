@@ -116,6 +116,8 @@ export function SlidePanel() {
   const [restoringVersion, setRestoringVersion] = useState(false);
 
   // Refs
+  const currentDeckIdRef = useRef<number | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const slideContainerRef = useRef<HTMLDivElement>(null);
@@ -127,6 +129,9 @@ export function SlidePanel() {
   const initiatedRef = useRef(false);
   // Track previous question/answer to detect re-open vs new generation
   const prevDataRef = useRef({ question: "", answer: "" });
+
+  // Keep ref in sync with state (for use inside renderSlides worker)
+  useEffect(() => { currentDeckIdRef.current = currentDeckId; }, [currentDeckId]);
 
   const failedCount = generatedSlides.filter((s) => s?.failed).length;
 
@@ -227,17 +232,37 @@ export function SlidePanel() {
       .then((detail) => {
         setDeckTitle(detail.title);
         setCurrentDeckId(detail.id);
+
+        let parsedSections: SlideSection[] = [];
         if (detail.plan_md) {
           setPlanMd(detail.plan_md);
           const parsed = parsePlanMd(detail.plan_md);
-          setSlideSections(parsed.slides);
+          parsedSections = parsed.slides;
+          setSlideSections(parsedSections);
         }
+
         const slides = detail.slides.map((s) => ({
           index: s.slide_index,
           title: s.title,
           html: s.html,
           type: s.slide_type,
         }));
+
+        // Detect partial deck: plan exists but fewer slides than expected → auto-resume
+        if (parsedSections.length > 0 && slides.length < parsedSections.length) {
+          // Set existing slides, then resume rendering missing ones
+          const existingSlides: GeneratedSlide[] = parsedSections.map((sec, i) => {
+            const existing = slides.find((s) => s.index === i);
+            if (existing) return { ...existing, failed: false };
+            return { index: i, title: sec.title, html: "", type: sec.type };
+          });
+          setGeneratedSlides(existingSlides);
+          setActiveIndex(0);
+          // Resume: render only missing slides
+          renderSlides(parsedSections, detail.title, existingSlides, detail.style_options as any);
+          return;
+        }
+
         setGeneratedSlides(slides);
         setPhase("done");
         setActiveIndex(0);
@@ -333,6 +358,27 @@ export function SlidePanel() {
       setDeckTitle(parsed.title);
       setSlideSections(parsed.slides);
       setPhase("plan_ready");
+
+      // Save draft deck to DB immediately (no slides yet)
+      try {
+        const pathMatch = window.location.pathname.match(/\/chat\/(.+)/);
+        const conversationId = pathMatch?.[1] || undefined;
+        const result = await saveSlideDeck({
+          title: parsed.title || question,
+          question,
+          answer,
+          plan_md: md,
+          conversation_id: conversationId,
+          style_options: styleOptions ? Object.fromEntries(
+            Object.entries(styleOptions).filter(([, v]) => v !== undefined),
+          ) as Record<string, string | undefined> : undefined,
+          slides: [],
+        });
+        setCurrentDeckId(result.id);
+        setConversationDeckId(result.id);
+      } catch {
+        // Draft save failure is non-critical
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Failed to generate plan");
@@ -340,7 +386,7 @@ export function SlidePanel() {
     } finally {
       abortRef.current = null;
     }
-  }, [question, answer]);
+  }, [question, answer, styleOptions]);
 
   // ============================================================
   // Phase 2: Render slides (per-slide error tolerance + retry)
@@ -441,6 +487,25 @@ export function SlidePanel() {
             doneCount++;
             setGeneratedSlides([...slides]);
             setGeneratingCompleted(doneCount);
+
+            // Incremental save (debounced) — update DB with completed slides so far
+            const deckIdNow = currentDeckIdRef.current;
+            if (deckIdNow && !slides[idx]?.failed) {
+              if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+              saveTimerRef.current = setTimeout(() => {
+                const completed = slides
+                  .filter((s) => s && s.html && !s.failed)
+                  .map((s, i) => ({
+                    slide_index: i,
+                    title: s.title,
+                    slide_type: s.type,
+                    html: s.html,
+                  }));
+                if (completed.length > 0) {
+                  updateSlideDeck(deckIdNow, { slides: completed }).catch(() => {});
+                }
+              }, 1500);
+            }
           }
         }
 
@@ -449,10 +514,16 @@ export function SlidePanel() {
           Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker()),
         );
 
+        // Clear any pending debounced save
+        if (saveTimerRef.current) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+        }
+
         setPhase("done");
         setActiveIndex(0);
 
-        // Auto-save (only successful slides)
+        // Final save — ensure all slides are persisted
         const successSlides = slides.filter((s) => !s.failed);
         if (successSlides.length > 0) {
           autoSave(slides);
@@ -511,29 +582,37 @@ export function SlidePanel() {
 
         if (slidesData.length === 0) return;
 
-        // Get conversation ID from URL
-        const pathMatch = window.location.pathname.match(/\/chat\/(.+)/);
-        const conversationId = pathMatch?.[1] || undefined;
+        const existingId = currentDeckIdRef.current;
 
-        const result = await saveSlideDeck({
-          title: deckTitle || question,
-          question,
-          answer,
-          plan_md: planMd || undefined,
-          conversation_id: conversationId,
-          slides: slidesData,
-        });
-        setCurrentDeckId(result.id);
-        setSaved(true);
-        setCurrentVersion(1);
-        setMaxVersion(1);
+        if (existingId) {
+          // Deck already exists (created at plan phase) — update with final slides
+          await updateSlideDeck(existingId, { slides: slidesData });
+          setSaved(true);
+        } else {
+          // No deck yet (fallback) — create new
+          const pathMatch = window.location.pathname.match(/\/chat\/(.+)/);
+          const conversationId = pathMatch?.[1] || undefined;
+          const result = await saveSlideDeck({
+            title: deckTitle || question,
+            question,
+            answer,
+            plan_md: planMd || undefined,
+            conversation_id: conversationId,
+            slides: slidesData,
+          });
+          setCurrentDeckId(result.id);
+          setConversationDeckId(result.id);
+          setSaved(true);
+          setCurrentVersion(1);
+          setMaxVersion(1);
+        }
 
         // Cache in store for instant reopen
         const cached = slides
           .filter((s) => !s.failed)
           .map((s) => ({ index: s.index, title: s.title, html: s.html, type: s.type }));
         storeSetCachedSlides(cached, deckTitle || question);
-        setConversationDeckId(result.id);
+        if (existingId) setConversationDeckId(existingId);
       } catch {
         // Auto-save failure is non-critical
       }
