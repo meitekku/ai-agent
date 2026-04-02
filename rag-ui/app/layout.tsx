@@ -21,9 +21,6 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.APP_URL || "http://localhost:3000"
-  ),
   title: {
     default: "FleGrowth Stella",
     template: "%s | FleGrowth Stella",
