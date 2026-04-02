@@ -24,7 +24,6 @@ const OG_PAGES: Record<string, { title: string; alt: string }> = {
 };
 
 function getOgPage(pathname: string) {
-  // Exact match first, then fallback patterns
   if (OG_PAGES[pathname]) return OG_PAGES[pathname];
   if (pathname.startsWith("/chat/")) return OG_PAGES["/new"];
   if (pathname.startsWith("/documents/")) return OG_PAGES["/documents"];
@@ -80,16 +79,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/system-error", request.url));
   }
 
-  // OG image routes return branded PNG cards only — no sensitive data, open to all.
-  if (/opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
-    return NextResponse.next();
-  }
-
-  // Bots get a minimal HTML with OG meta tags only — no real page content exposed.
+  // SNS bots → minimal HTML with OG meta tags only, no real page content.
+  // UA spoofable, but buildBotHtml only exposes public metadata.
   const { isBot } = userAgent(request);
-  if (isBot) {
-    return buildBotHtml(request);
-  }
+  if (isBot) return buildBotHtml(request);
 
   const url = request.nextUrl.clone();
   const { pathname } = url;
@@ -149,6 +142,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:png|jpg|jpeg|gif|ico|svg|js|css|woff|woff2)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*(?:opengraph-image|twitter-image)|.*\\.(?:png|jpg|jpeg|gif|ico|svg|js|css|woff|woff2)$).*)",
   ],
 };

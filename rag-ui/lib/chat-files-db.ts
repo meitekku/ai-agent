@@ -75,21 +75,19 @@ export async function getChatFile(id: string): Promise<ChatFileRow | null> {
 
 /**
  * Find all file IDs referenced in a conversation's messages.
- * Scans parts JSONB for urls matching /api/files/{id}.
+ * Uses regex on full parts JSONB text to catch references at any nesting
+ * level (e.g. user uploads as top-level file parts AND generateImage tool
+ * results where URLs are nested inside result.images[].url).
  */
 export async function getFileIdsByConversation(
   conversationId: string,
 ): Promise<string[]> {
   await ensureChatFilesTables();
-  // Extract file URLs from message parts JSONB
   const res = await getPool().query(
-    `SELECT DISTINCT
-       substring(p->>'url' FROM '/api/files/(.+)$') AS file_id
+    `SELECT DISTINCT m[1] AS file_id
      FROM chat_messages,
-       jsonb_array_elements(parts) AS p
-     WHERE conversation_id = $1
-       AND p->>'type' = 'file'
-       AND p->>'url' LIKE '/api/files/%'`,
+       regexp_matches(parts::text, '/api/files/([A-Za-z0-9_-]+)', 'g') AS m
+     WHERE conversation_id = $1`,
     [conversationId],
   );
   return res.rows.map((r) => r.file_id).filter(Boolean);
@@ -131,14 +129,17 @@ export async function getOrphanFiles(
   );
   const hasTaskFiles = taskTableCheck.rows.length > 0;
 
+  // Build the file-reference pattern to match in JSONB text
+  // Tool results store URLs nested (e.g. generateImage result.images[].url),
+  // so a top-level p->>'url' check misses them. Use textual LIKE on the full
+  // parts JSONB to catch any /api/files/{id} reference regardless of nesting.
   const res = await getPool().query(
     `SELECT cf.*
      FROM chat_files cf
      WHERE cf.created_at < NOW() - INTERVAL '1 minute' * $1
        AND NOT EXISTS (
-         SELECT 1 FROM chat_messages cm,
-           jsonb_array_elements(cm.parts) AS p
-         WHERE p->>'url' = '/api/files/' || cf.id
+         SELECT 1 FROM chat_messages cm
+         WHERE cm.parts::text LIKE '%/api/files/' || cf.id || '%'
        )
        ${hasTaskFiles ? `AND NOT EXISTS (
          SELECT 1 FROM task_execution_files tef
