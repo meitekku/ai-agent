@@ -24,9 +24,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/system-error", request.url));
   }
 
-  // Allow bots to access OG image routes only (no sensitive data in generated images)
+  // Allow bots (Slackbot, Twitterbot etc.) for OG link previews.
+  // Exclude /chat/[id] which contains conversation history.
   const { isBot } = userAgent(request);
-  if (isBot && /opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
+  if (isBot && !/^\/chat\/[^/]+$/.test(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
