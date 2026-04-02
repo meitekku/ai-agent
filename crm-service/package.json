@@ -7,8 +7,7 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "@google-cloud/vertexai": "^1.10.3",
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^1.0.0",
     "hono": "^4.7.0",
     "jsforce": "^3.10.14",
     "pg": "^8.13.0",
