@@ -611,8 +611,12 @@ export function SlidePanel() {
     await new Promise<void>((resolve) => {
       iframe.onload = () => resolve();
     });
-    // Wait for Tailwind CSS to process + Google Fonts to load + Lucide icons to render
-    await new Promise((r) => setTimeout(r, 2500));
+    // Wait for fonts to fully load inside iframe
+    try {
+      await iframe.contentDocument!.fonts.ready;
+    } catch { /* fonts API not available */ }
+    // Additional wait for Tailwind CSS processing + Lucide icons rendering
+    await new Promise((r) => setTimeout(r, 1500));
 
     let png: string;
     try {

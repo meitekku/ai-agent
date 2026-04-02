@@ -111,6 +111,17 @@ export async function POST(req: Request) {
     let fallback = false;
     const textElements = extractDisplayTexts(slide_plan_section);
 
+    // Map colorStyle to fallback preset
+    const colorPresetMap: Record<string, string> = {
+      "ブルー": "corporate",
+      "グリーン": "corporate",
+      "ピンク": "bold-editorial",
+      "パープル": "dark-atmospheric",
+      "ダーク": "blueprint",
+      "モノクロ": "minimal",
+    };
+    const fallbackPreset = colorPresetMap[style_options?.colorStyle || ""] || "corporate";
+
     const generateHtml = async (retry = false) => {
       const result = await generateText({
         model,
@@ -146,6 +157,7 @@ export async function POST(req: Request) {
           slide_type,
           textElements,
           deck_title,
+          fallbackPreset,
         );
         fallback = true;
       }

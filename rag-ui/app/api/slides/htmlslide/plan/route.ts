@@ -5,6 +5,7 @@ import {
   buildPlanPrompt,
   parsePlanMarkdown,
   generateFallbackPlan,
+  calcMaxSlides,
 } from "@/lib/slide-prompts";
 import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import type { StyleOptions } from "@/lib/slide-types";
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     const {
       question,
       answer,
-      max_slides = 12,
+      max_slides,
       style_options,
       instructions,
     } = body as {
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
       instructions?: string | null;
       backend?: "ollama" | "gemini" | "mlx";
     };
+
+    // Use calcMaxSlides() when not explicitly provided
+    const maxSlides = max_slides ?? calcMaxSlides(answer);
 
     if (!question || !answer) {
       return Response.json(
@@ -67,7 +71,7 @@ export async function POST(req: Request) {
     let prompt = buildPlanPrompt(
       question,
       answer,
-      max_slides,
+      maxSlides,
       style_options,
       instructions,
     );
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
         planMd = generateFallbackPlan(
           question,
           answer,
-          max_slides,
+          maxSlides,
           style_options,
         );
         source = "fallback";
@@ -103,7 +107,7 @@ export async function POST(req: Request) {
       planMd = generateFallbackPlan(
         question,
         answer,
-        max_slides,
+        maxSlides,
         style_options,
       );
       source = "fallback";

@@ -790,10 +790,15 @@ export function buildRenderPrompt(
     visualDirective = VISUAL_DIRECTIVE_MAP.list;
   }
 
-  // Select example HTML
+  // Select example HTML — override cover colors if styleOptions.colorStyle is set
   let exampleHtml = "";
   if (slideType === "cover") {
-    exampleHtml = COVER_EXAMPLE;
+    if (styleOptions?.colorStyle) {
+      // Don't show the hardcoded blue cover example — let styleOptions guide the LLM
+      exampleHtml = `\n■ カバースライドのデザイン指針\nwidth:1280px, height:720px。${styleOptions.colorStyle}系のグラデーション背景（暗→明）に白文字。中央揃え、タイトル48px、サブタイトル20px、日付14px。`;
+    } else {
+      exampleHtml = COVER_EXAMPLE;
+    }
   } else if (
     contentHints.includes("statistics") ||
     /テーブル|table/i.test(visualLower)
