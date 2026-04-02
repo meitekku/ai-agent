@@ -29,9 +29,11 @@ import {
   PlusIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  GlobeIcon,
 } from "lucide-react";
 
 import { SLIDE_W, SLIDE_H, PLAN_TIMEOUT_MS, RENDER_TIMEOUT_MS, FONT_PRESETS } from "./constants";
+import { buildPresentationHtml } from "./html-presentation";
 import type { SlideSection, GeneratedSlide, Phase } from "./types";
 import {
   slideSrcDoc,
@@ -726,6 +728,33 @@ export function SlidePanel() {
       setExportingPdf(false);
     }
   }, [generatedSlides, deckTitle, captureSlideAsPng]);
+
+  // ============================================================
+  // HTML Presentation Export
+  // ============================================================
+
+  const handleHtmlExport = useCallback(() => {
+    const validSlides = generatedSlides.filter((s) => !s.failed);
+    if (validSlides.length === 0) return;
+
+    const html = buildPresentationHtml(
+      validSlides.map((s) => ({ title: s.title, html: s.html })),
+      deckTitle || "slides",
+    );
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeName = (deckTitle || "slides").replace(
+      /[^a-zA-Z0-9\u3040-\u30ff\u4e00-\u9fff _-]/g,
+      "_",
+    );
+    a.download = `${safeName}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }, [generatedSlides, deckTitle]);
 
   // ============================================================
   // Editing: full drag/resize/font system (operates on iframe contentDocument)
@@ -1668,6 +1697,14 @@ export function SlidePanel() {
             ) : (
               <FileDownIcon className="size-3.5" />
             )}
+          </button>
+          <button
+            onClick={handleHtmlExport}
+            disabled={exporting || exportingPdf}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+            title="HTML プレゼンテーション"
+          >
+            <GlobeIcon className="size-3.5" />
           </button>
         </div>
       )}
