@@ -1190,10 +1190,25 @@ export async function POST(req: Request) {
                 Name: manualInput.dealName,
                 Amount: manualInput.budget,
                 Description: `${manualInput.challenges || ""}\n${manualInput.details || ""}`.trim(),
-                StageName: "商談中",
+                StageName: "提案中",
+                Probability: 50,
+                NextStep: "提案書提出・ヒアリング",
               },
-              activities: [],
-              contacts: [],
+              activities: [
+                {
+                  Subject: "初回ヒアリング実施済み",
+                  Status: "Completed",
+                  ActivityDate: new Date().toISOString().slice(0, 10),
+                },
+              ],
+              contacts: [
+                {
+                  Name: "担当者（手動入力）",
+                  Title: "担当者",
+                  Email: "",
+                },
+              ],
+              _manualInput: true,
             };
           } else {
             const endpoint =
