@@ -1440,6 +1440,10 @@ export async function POST(req: Request) {
         "画像を生成・編集します。ユーザーが「描いて」「画像を作って」「イラスト」「この画像を編集して」等を依頼した場合に即座に呼び出す。プロンプトの書き換えや翻訳は不要 — ユーザーの原文がそのまま画像モデルに渡される。",
       inputSchema: z.object({
         prompt: z.string().describe("ユーザーの原文をそのまま渡す（書き換え・翻訳不要）"),
+        aspectRatio: z
+          .enum(["1:1", "3:4", "4:3", "9:16", "16:9"])
+          .optional()
+          .describe("画像のアスペクト比（デフォルト 1:1）"),
       }),
       execute: async ({ prompt: toolPrompt }) => {
         // Use original user message (with images) for best Nano Banana quality

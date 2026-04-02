@@ -166,22 +166,34 @@ _cleanAnims();
 var tmp=document.createElement('div');
 tmp.innerHTML=html;
 var ss=tmp.querySelectorAll('script');
-var scripts=[];
+var cdn=[],inl=[];
 for(var i=0;i<ss.length;i++){
-scripts.push({src:ss[i].src||'',text:ss[i].textContent||'',attrs:[]});
+var info={src:ss[i].src||'',text:ss[i].textContent||'',attrs:[]};
 for(var j=0;j<ss[i].attributes.length;j++){
 var a=ss[i].attributes[j];
-if(a.name!=='src')scripts[scripts.length-1].attrs.push({name:a.name,value:a.value});
+if(a.name!=='src')info.attrs.push({name:a.name,value:a.value});
 }
+if(info.src)cdn.push(info);else inl.push(info);
 ss[i].remove();
 }
 try{morphdom(root,tmp,{childrenOnly:true});}catch(e){root.innerHTML=tmp.innerHTML;}
 _prevLen=root.textContent?root.textContent.length:0;
-for(var i=0;i<scripts.length;i++){
+function runInline(){
+for(var i=0;i<inl.length;i++){
 var n=document.createElement('script');
-if(scripts[i].src)n.src=scripts[i].src;
-else if(scripts[i].text)n.textContent=scripts[i].text;
-for(var j=0;j<scripts[i].attrs.length;j++)n.setAttribute(scripts[i].attrs[j].name,scripts[i].attrs[j].value);
+n.textContent=inl[i].text;
+for(var j=0;j<inl[i].attrs.length;j++)n.setAttribute(inl[i].attrs[j].name,inl[i].attrs[j].value);
+root.appendChild(n);
+}
+_h();
+}
+if(!cdn.length){runInline();return;}
+var rem=cdn.length;
+for(var i=0;i<cdn.length;i++){
+var n=document.createElement('script');
+n.src=cdn[i].src;
+for(var j=0;j<cdn[i].attrs.length;j++)n.setAttribute(cdn[i].attrs[j].name,cdn[i].attrs[j].value);
+n.onload=n.onerror=function(){if(--rem===0)runInline();};
 root.appendChild(n);
 }
 _h();
@@ -226,7 +238,7 @@ parent.postMessage({type:'widget:ready'},'*');
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" as="script" crossorigin>
+<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" as="script">
 <style>
 ${styleBlock}
 @keyframes sd-show{to{opacity:1}}

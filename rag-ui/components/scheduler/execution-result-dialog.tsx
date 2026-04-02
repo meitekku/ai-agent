@@ -3,9 +3,7 @@
 import { memo, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
-  MaximizeIcon,
   CopyIcon,
   DownloadIcon,
   WrenchIcon,
@@ -81,21 +79,6 @@ const ExecutionResultContent = memo(function ExecutionResultContent({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => {
-                  if (document.fullscreenElement) document.exitFullscreen();
-                  else document.documentElement.requestFullscreen();
-                }}
-              >
-                <MaximizeIcon className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>全画面 (F11)</TooltipContent>
-          </Tooltip>
           <Button variant="ghost" size="icon-sm" onClick={closeResult}>
             <span className="text-lg leading-none">&times;</span>
           </Button>
