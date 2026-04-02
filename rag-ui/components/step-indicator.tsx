@@ -3,6 +3,12 @@
 import { memo, useEffect, useRef, useState, type ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { CheckIcon } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // StepIndicator — shows an active or completed processing step with elapsed time
@@ -13,6 +19,7 @@ interface StepIndicatorProps {
   activeLabel: string;
   completedLabel: string;
   active: boolean;
+  tooltip?: string;
 }
 
 export const StepIndicator = memo(function StepIndicator({
@@ -20,6 +27,7 @@ export const StepIndicator = memo(function StepIndicator({
   activeLabel,
   completedLabel,
   active,
+  tooltip,
 }: StepIndicatorProps) {
   const startRef = useRef(Date.now());
   const frozenRef = useRef<number | null>(null);
@@ -42,12 +50,12 @@ export const StepIndicator = memo(function StepIndicator({
   const elapsed =
     frozenRef.current ?? Math.floor((Date.now() - startRef.current) / 1000);
 
-  return (
+  const indicator = (
     <div
-      className={`inline-flex w-fit items-center gap-2.5 rounded-lg px-3 py-2 text-xs transition-all duration-300 ${
+      className={`inline-flex w-fit items-center gap-2.5 rounded-lg py-2 text-xs transition-all duration-300 ${
         active
-          ? "border border-primary/30 bg-primary/10 text-foreground/70 animate-shimmer"
-          : "text-muted-foreground/60"
+          ? "px-3 border border-primary/30 bg-primary/10 text-foreground/70 animate-shimmer"
+          : "pr-3 text-muted-foreground/60"
       }`}
       role="status"
       aria-live="polite"
@@ -66,5 +74,16 @@ export const StepIndicator = memo(function StepIndicator({
         </span>
       )}
     </div>
+  );
+
+  if (!tooltip) return indicator;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{indicator}</TooltipTrigger>
+        <TooltipContent side="top">{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 });

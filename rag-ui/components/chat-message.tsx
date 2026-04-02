@@ -262,6 +262,7 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
           query ? `ウェブ検索完了 — 「${query}」` : "ウェブ検索完了"
         }
         active={!isComplete}
+        tooltip={query || undefined}
       />
     );
   }

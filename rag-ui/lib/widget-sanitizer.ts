@@ -226,6 +226,7 @@ parent.postMessage({type:'widget:ready'},'*');
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
+<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" as="script" crossorigin>
 <style>
 ${styleBlock}
 @keyframes sd-show{to{opacity:1}}
