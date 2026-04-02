@@ -80,13 +80,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/system-error", request.url));
   }
 
+  // OG image routes return branded PNG cards only — no sensitive data, open to all.
+  if (/opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   // Bots get a minimal HTML with OG meta tags only — no real page content exposed.
-  // OG image routes (/*/opengraph-image, /*/twitter-image) pass through to generate PNG.
   const { isBot } = userAgent(request);
   if (isBot) {
-    if (/opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
-      return NextResponse.next();
-    }
     return buildBotHtml(request);
   }
 
