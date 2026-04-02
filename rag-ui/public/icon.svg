@@ -8,5 +8,5 @@
   <circle cx="336" cy="220" r="24" fill="#ffffff"/>
   <circle cx="256" cy="280" r="24" fill="#ffffff"/>
   <!-- AI 核心节点 -->
-  <circle cx="256" cy="160" r="36" fill="#00c589"/>
+  <circle cx="256" cy="160" r="36" fill="#2563eb"/>
 </svg>

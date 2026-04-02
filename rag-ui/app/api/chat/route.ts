@@ -1227,7 +1227,7 @@ export async function POST(req: Request) {
             try {
               const allKbs = await listKBs();
               const kbsWithDocs = allKbs.filter((k) => k.doc_count > 0);
-              const searchQuery = [account?.Name, opp?.Name, account?.Industry]
+              const searchQuery = [account?.Name, opp?.Name, account?.Industry, opp?.Description]
                 .filter(Boolean)
                 .join(" ");
               if (!searchQuery || kbsWithDocs.length === 0) return [];
@@ -1261,7 +1261,7 @@ export async function POST(req: Request) {
           const webSearchPromise = (async (): Promise<string[]> => {
             if (!hasTavily) return [];
             try {
-              const webQuery = [account?.Name, account?.Industry]
+              const webQuery = [account?.Name, opp?.Name, account?.Industry]
                 .filter(Boolean)
                 .join(" ");
               if (!webQuery) return [];

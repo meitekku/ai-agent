@@ -212,12 +212,14 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
   toolName,
   state,
   args,
+  stopped,
 }: {
   toolName: string;
   state: string;
   args?: Record<string, unknown>;
+  stopped?: boolean;
 }) {
-  const isComplete = state === "output-available";
+  const isComplete = state === "output-available" || !!stopped;
 
   const { data: kbs = [] } = useQuery<{ slug: string; name: string }[]>({
     queryKey: ["kbs"],
@@ -514,12 +516,14 @@ const ToolCallGroup = memo(function ToolCallGroup({
   messageId,
   tools,
   isStreaming,
+  stopped,
 }: {
   messageId: string;
   tools: ToolEntry[];
   isStreaming?: boolean;
+  stopped?: boolean;
 }) {
-  const allComplete = tools.every((t) => t.part.state === "output-available");
+  const allComplete = tools.every((t) => t.part.state === "output-available") || !!stopped;
   // Start collapsed only when loaded from history (not streaming)
   const [collapsed, setCollapsed] = useState(
     () => !isStreaming && allComplete && tools.length >= 2,
@@ -543,6 +547,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
         toolName={t.toolName}
         state={t.part.state}
         args={t.part.input as Record<string, unknown> | undefined}
+        stopped={stopped}
       />
     );
     if (!isStreaming) return indicator;
@@ -572,6 +577,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
               toolName={t.toolName}
               state={t.part.state}
               args={t.part.input as Record<string, unknown> | undefined}
+              stopped={stopped}
             />
           </motion.div>
         ))}
@@ -612,6 +618,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
                 toolName={t.toolName}
                 state={t.part.state}
                 args={t.part.input as Record<string, unknown> | undefined}
+                stopped={stopped}
               />
             </div>
           ))}
@@ -874,7 +881,7 @@ export const ChatMessage = memo(function ChatMessage({
             const genImageTools = segment.tools.filter(
               (t) => t.toolName === "generateImage",
             );
-            const isGeneratingImage = genImageTools.some(
+            const isGeneratingImage = !stopped && genImageTools.some(
               (t) => t.part.state !== "output-available",
             );
             // Collect completed images with their aspect ratio
@@ -917,6 +924,7 @@ export const ChatMessage = memo(function ChatMessage({
                   messageId={message.id}
                   tools={segment.tools}
                   isStreaming={isActiveStreaming}
+                  stopped={stopped}
                 />
                 {/* Skeleton placeholder while image is generating */}
                 {isGeneratingImage && (

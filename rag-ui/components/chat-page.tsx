@@ -284,7 +284,8 @@ export function ChatPage({
 
   // Refs for slide tool detection (must be before both effects that use them)
   const sessionActiveRef = useRef(false);
-  const justFinishedRef = useRef(false);
+  // Track processed tool call IDs to avoid re-triggering auto-open
+  const processedToolCallIdsRef = useRef(new Set<string>());
 
   // Sync tree store & UI when streaming finishes (DB save is now server-side)
   const prevStatusRef = useRef(status);
@@ -295,9 +296,6 @@ export function ChatPage({
     prevStatusRef.current = status;
 
     if (!wasLoading || status !== "ready") return;
-
-    // Signal the slide tool detection effect
-    justFinishedRef.current = true;
 
     if (messages.length === 0) return;
 
@@ -411,19 +409,19 @@ export function ChatPage({
   const triggerRefresh = useSlidePanelStore((s) => s.triggerRefresh);
   useEffect(() => {
     if (!sessionActiveRef.current) return;
-    if (!justFinishedRef.current) return;
-    justFinishedRef.current = false;
+    if (status !== "ready") return;
 
     // Scan all assistant messages for tool results.
-    // fetchAndAnalyze takes priority over generateSlides (mutually exclusive).
+    // Uses processedToolCallIdsRef to deduplicate — resilient to throttle delays
+    // where status and messages may update in separate render batches.
     const assistants = messages.filter((m) => m.role === "assistant");
-    let foundProposal = false;
-    let foundSlides = false;
-    let foundRevise = false;
 
-    for (let ai = assistants.length - 1; ai >= 0 && !foundProposal && !foundSlides && !foundRevise; ai--) {
+    for (let ai = assistants.length - 1; ai >= 0; ai--) {
       for (const part of assistants[ai].parts) {
         if (!isToolUIPart(part) || part.state !== "output-available") continue;
+        const callId = "toolCallId" in part ? (part as Record<string, unknown>).toolCallId as string : "";
+        if (callId && processedToolCallIdsRef.current.has(callId)) continue;
+
         const toolName = getToolName(part);
         const result = (("result" in part ? part.result : part.output) ??
           {}) as Record<string, unknown>;
@@ -434,32 +432,32 @@ export function ChatPage({
           typeof result?.sessionKey === "string" &&
           !result?.error
         ) {
-          foundProposal = true;
+          if (callId) processedToolCallIdsRef.current.add(callId);
           const sk = result.sessionKey as string;
           if (slidePanelOpen) closeSlidePanelFn();
           openProposal(sk);
-          break;
+          return;
         }
 
         if (toolName === "generateSlides" && result?.triggered) {
-          foundSlides = true;
+          if (callId) processedToolCallIdsRef.current.add(callId);
           setWizardData({
             topic: (result.topic as string) ?? "",
             content: (result.content as string) ?? "",
             instructions: (result.instructions as string | null) ?? null,
           });
-          break;
+          return;
         }
 
         // reviseSlides: trigger panel refresh
         if (toolName === "reviseSlides" && result?.success) {
-          foundRevise = true;
+          if (callId) processedToolCallIdsRef.current.add(callId);
           triggerRefresh();
           // Open slide panel if it's not already open
           if (!slidePanelOpen && typeof result.deckId === "number") {
             openDeck(result.deckId as number);
           }
-          break;
+          return;
         }
       }
     }
