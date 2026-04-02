@@ -108,7 +108,7 @@ export const SkillsPage = memo(function SkillsPage() {
   const enabledCount = skills.filter((s) => s.enabled).length;
 
   // Registry search
-  const { data: registryData, isPending: registryLoading } = useQuery({
+  const { data: registryData, isLoading: registryLoading } = useQuery({
     queryKey: ["skills-registry", registryQuery],
     queryFn: async () => {
       const res = await fetch(
