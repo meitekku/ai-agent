@@ -9,11 +9,12 @@ app.get("/templates", async (c) => {
   try {
     const pool = getPool();
     const result = await pool.query(
-      "SELECT id, name, service_name, file_size, updated_at FROM proposal_templates ORDER BY updated_at DESC",
+      "SELECT id, name, service_name, file_size, content_text, updated_at FROM proposal_templates ORDER BY updated_at DESC",
     );
     const templates = result.rows.map((r) => ({
       id: r.id, name: r.name, serviceName: r.service_name || "",
       size: r.file_size, modified: r.updated_at?.toISOString() || "",
+      contentText: r.content_text || "",
     }));
     return c.json({ templates });
   } catch (err: unknown) {

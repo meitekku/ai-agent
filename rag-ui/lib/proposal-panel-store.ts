@@ -3,6 +3,16 @@ import type { StyleOptions } from "@/components/style-options-panel";
 
 type Phase = "analysis" | "templateCheck" | "styleSetup";
 
+/** Fire-and-forget persist phase + styleOptions to DB */
+function persistUI(sessionKey: string | null, phase: string, styleOptions: StyleOptions) {
+  if (!sessionKey) return;
+  fetch(`/api/crm/proposal-session/${sessionKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phase, styleOptions }),
+  }).catch(() => {});
+}
+
 interface ProposalPanelState {
   isOpen: boolean;
   sessionKey: string | null;
@@ -21,9 +31,11 @@ interface ProposalPanelState {
   ) => void;
   setPhase: (phase: Phase) => void;
   setStyleOptions: (opts: StyleOptions) => void;
+  /** Restore phase + styleOptions from server (no DB write-back) */
+  restoreUI: (phase: Phase, styleOptions: StyleOptions) => void;
 }
 
-export const useProposalPanelStore = create<ProposalPanelState>((set) => ({
+export const useProposalPanelStore = create<ProposalPanelState>((set, get) => ({
   isOpen: false,
   sessionKey: null,
   phase: "analysis",
@@ -48,6 +60,15 @@ export const useProposalPanelStore = create<ProposalPanelState>((set) => ({
       styleOptions: {},
     }),
   setSessionData: (data, analysis) => set({ data, analysis }),
-  setPhase: (phase) => set({ phase }),
-  setStyleOptions: (opts) => set({ styleOptions: opts }),
+  setPhase: (phase) => {
+    const { sessionKey, styleOptions } = get();
+    set({ phase });
+    persistUI(sessionKey, phase, styleOptions);
+  },
+  setStyleOptions: (opts) => {
+    const { sessionKey, phase } = get();
+    set({ styleOptions: opts });
+    persistUI(sessionKey, phase, opts);
+  },
+  restoreUI: (phase, styleOptions) => set({ phase, styleOptions }),
 }));

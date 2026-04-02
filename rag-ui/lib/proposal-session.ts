@@ -15,15 +15,25 @@ function getPool(): pg.Pool {
 let tableReady = false;
 async function ensureTable() {
   if (tableReady) return;
-  await getPool().query(`
+  const p = getPool();
+  await p.query(`
     CREATE TABLE IF NOT EXISTS proposal_sessions (
       key TEXT PRIMARY KEY,
       data JSONB NOT NULL,
       analysis JSONB NOT NULL,
       additional_context TEXT NOT NULL DEFAULT '',
+      phase TEXT NOT NULL DEFAULT 'analysis',
+      style_options JSONB NOT NULL DEFAULT '{}',
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Add columns for existing tables (idempotent)
+  await p
+    .query(`ALTER TABLE proposal_sessions ADD COLUMN IF NOT EXISTS phase TEXT NOT NULL DEFAULT 'analysis'`)
+    .catch(() => {});
+  await p
+    .query(`ALTER TABLE proposal_sessions ADD COLUMN IF NOT EXISTS style_options JSONB NOT NULL DEFAULT '{}'`)
+    .catch(() => {});
   tableReady = true;
 }
 
@@ -31,6 +41,8 @@ interface ProposalSession {
   data: Record<string, unknown>;
   analysis: Record<string, unknown>;
   additionalContext: string;
+  phase: string;
+  styleOptions: Record<string, unknown>;
   createdAt: number;
 }
 
@@ -43,7 +55,11 @@ export function storeSession(
   additionalContext: string,
 ): string {
   const key = nanoid(12);
-  const session: ProposalSession = { data, analysis, additionalContext, createdAt: Date.now() };
+  const session: ProposalSession = {
+    data, analysis, additionalContext,
+    phase: "analysis", styleOptions: {},
+    createdAt: Date.now(),
+  };
   cache.set(key, session);
 
   // Persist to DB (fire-and-forget)
@@ -70,7 +86,7 @@ export async function getSession(key: string): Promise<ProposalSession | null> {
   try {
     await ensureTable();
     const res = await getPool().query(
-      `SELECT data, analysis, additional_context, created_at FROM proposal_sessions WHERE key = $1`,
+      `SELECT data, analysis, additional_context, phase, style_options, created_at FROM proposal_sessions WHERE key = $1`,
       [key],
     );
     if (res.rows.length === 0) return null;
@@ -79,6 +95,8 @@ export async function getSession(key: string): Promise<ProposalSession | null> {
       data: row.data,
       analysis: row.analysis,
       additionalContext: row.additional_context || "",
+      phase: row.phase || "analysis",
+      styleOptions: row.style_options || {},
       createdAt: new Date(row.created_at).getTime(),
     };
     // Warm cache
@@ -110,4 +128,26 @@ export function updateSessionAnalysis(
     .catch((err) => console.error("[proposal-session] DB update failed:", err));
 
   return !!session;
+}
+
+export function updateSessionUI(
+  key: string,
+  phase: string,
+  styleOptions: Record<string, unknown>,
+): void {
+  const session = cache.get(key);
+  if (session) {
+    session.phase = phase;
+    session.styleOptions = styleOptions;
+  }
+
+  // Persist to DB (fire-and-forget)
+  ensureTable()
+    .then(() =>
+      getPool().query(
+        `UPDATE proposal_sessions SET phase = $2, style_options = $3::jsonb WHERE key = $1`,
+        [key, phase, JSON.stringify(styleOptions)],
+      ),
+    )
+    .catch((err) => console.error("[proposal-session] DB UI update failed:", err));
 }

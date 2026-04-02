@@ -34,6 +34,7 @@ interface TemplateInfo {
   serviceName: string;
   size: number;
   modified: string;
+  contentText: string;
 }
 
 interface ServiceCoverage {
@@ -143,12 +144,41 @@ function buildTemplateInstructions(
   templates: TemplateInfo[],
 ): string | null {
   const matched = coverages.filter((c) => c.hasTemplate);
-  if (matched.length === 0) return null;
-  const lines = ["以下のサービステンプレートを参考にしてください："];
+  if (matched.length === 0) {
+    // Even without matched templates, include any templates with content as reference
+    const withContent = templates.filter((t) => t.contentText);
+    if (withContent.length === 0) return null;
+    const lines = [
+      "## 既存の参考資料（サービス紹介資料）",
+      "以下の資料のサービス特徴・機能・メリットを抽出し、顧客の課題解決にどう貢献するかの観点で提案書に組み込んでください：",
+      "",
+    ];
+    for (const tpl of withContent.slice(0, 5)) {
+      const svc = tpl.serviceName || "（サービス未設定）";
+      lines.push(`### 【${svc}】 ${tpl.name}`);
+      lines.push(tpl.contentText.slice(0, 3000));
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+
+  const lines = [
+    "## 既存の参考資料（提案テンプレート）",
+    "### 資料活用ルール",
+    "- **提案書テンプレートの場合**: 構成・トーン・論理展開を参考にし、顧客固有の課題・データを組み込んで提案書に仕上げる",
+    "- **サービス紹介資料の場合**: サービスの特徴・機能・メリットを抽出し、顧客の課題解決にどう貢献するかの観点で提案書として再構成する",
+    "",
+  ];
   for (const c of matched) {
     const tpl = templates.find((t) => t.name === c.templateName);
     if (tpl) {
-      lines.push(`- ${c.service}: テンプレート「${tpl.name}」`);
+      lines.push(`### 【${c.service}】 ${tpl.name}`);
+      if (tpl.contentText) {
+        lines.push(tpl.contentText.slice(0, 3000));
+      } else {
+        lines.push(`[バイナリファイル — 構成・トーンを参考にしてください]`);
+      }
+      lines.push("");
     }
   }
   return lines.join("\n");
@@ -206,6 +236,48 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  const { restoreUI } = useProposalPanelStore();
+
+  // Helper: fetch templates and compute coverage using provided analysis
+  const loadTemplates = useCallback(
+    async (analysisData: Record<string, unknown>) => {
+      setTemplateLoading(true);
+      try {
+        const res = await fetch("/api/crm/templates");
+        const result = await res.json();
+        const tpls: TemplateInfo[] = result.templates ?? [];
+        setTemplates(tpls);
+
+        const rat = analysisData?.rationale as Record<string, unknown> | undefined;
+        const recs = (rat?.serviceRecommendations ?? []) as Array<{
+          service: string;
+          relevance: string;
+        }>;
+        const coverageList: ServiceCoverage[] = recs.map((rec) => {
+          const match = tpls.find(
+            (t) =>
+              t.serviceName &&
+              (t.serviceName.includes(rec.service) ||
+                rec.service.includes(t.serviceName)),
+          );
+          return {
+            service: rec.service,
+            relevance: rec.relevance,
+            hasTemplate: !!match,
+            templateName: match?.name,
+          };
+        });
+        setCoverages(coverageList);
+      } catch (err) {
+        console.error("[ProposalPanel] template fetch failed:", err);
+        setCoverages([]);
+      } finally {
+        setTemplateLoading(false);
+      }
+    },
+    [],
+  );
+
   // Fetch session data when sessionKey changes
   useEffect(() => {
     if (!isOpen || !sessionKey || fetchedRef.current === sessionKey) return;
@@ -220,13 +292,22 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
         const result = await res.json();
         setSessionExpired(false);
         setSessionData(result.data, result.analysis);
+        // Restore saved phase + styleOptions from DB
+        const savedPhase = result.phase as "analysis" | "templateCheck" | "styleSetup" | undefined;
+        if (savedPhase && savedPhase !== "analysis") {
+          restoreUI(savedPhase, result.styleOptions ?? {});
+          // Pre-load templates if restoring to templateCheck or styleSetup
+          if (savedPhase === "templateCheck" || savedPhase === "styleSetup") {
+            loadTemplates(result.analysis);
+          }
+        }
       })
       .catch((err) => {
         console.error("[ProposalPanel] session fetch failed:", err);
         fetchedRef.current = null;
         setSessionExpired(true);
       });
-  }, [isOpen, sessionKey, setSessionData]);
+  }, [isOpen, sessionKey, setSessionData, restoreUI, loadTemplates]);
 
   // Reset local state when panel closes
   useEffect(() => {
@@ -244,43 +325,9 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
 
   // Enter template check phase: fetch templates and compute coverage
   const handleStartTemplateCheck = useCallback(async () => {
-    setTemplateLoading(true);
     setPhase("templateCheck");
-    try {
-      const res = await fetch("/api/crm/templates");
-      const result = await res.json();
-      const tpls: TemplateInfo[] = result.templates ?? [];
-      setTemplates(tpls);
-
-      // Compute coverage: match recommended services to templates
-      const rationale = analysis?.rationale as Record<string, unknown> | undefined;
-      const recs = (rationale?.serviceRecommendations ?? []) as Array<{
-        service: string;
-        relevance: string;
-      }>;
-
-      const coverageList: ServiceCoverage[] = recs.map((rec) => {
-        const match = tpls.find(
-          (t) =>
-            t.serviceName &&
-            (t.serviceName.includes(rec.service) ||
-              rec.service.includes(t.serviceName)),
-        );
-        return {
-          service: rec.service,
-          relevance: rec.relevance,
-          hasTemplate: !!match,
-          templateName: match?.name,
-        };
-      });
-      setCoverages(coverageList);
-    } catch (err) {
-      console.error("[ProposalPanel] template fetch failed:", err);
-      setCoverages([]);
-    } finally {
-      setTemplateLoading(false);
-    }
-  }, [analysis, setPhase]);
+    if (analysis) loadTemplates(analysis);
+  }, [analysis, setPhase, loadTemplates]);
 
   // Upload template file and refresh coverage
   const handleTemplateUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,7 +338,7 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
     try {
       for (const file of files) {
         const form = new FormData();
-        form.append("file", file);
+        form.append("files", file);
         const res = await fetch("/api/crm/templates", { method: "POST", body: form });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Upload failed" }));
@@ -299,37 +346,13 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
         }
       }
       // Re-fetch templates and recompute coverage
-      const res = await fetch("/api/crm/templates");
-      const result = await res.json();
-      const tpls: TemplateInfo[] = result.templates ?? [];
-      setTemplates(tpls);
-
-      const rationale = analysis?.rationale as Record<string, unknown> | undefined;
-      const recs = (rationale?.serviceRecommendations ?? []) as Array<{
-        service: string;
-        relevance: string;
-      }>;
-      const coverageList: ServiceCoverage[] = recs.map((rec) => {
-        const match = tpls.find(
-          (t) =>
-            t.serviceName &&
-            (t.serviceName.includes(rec.service) ||
-              rec.service.includes(t.serviceName)),
-        );
-        return {
-          service: rec.service,
-          relevance: rec.relevance,
-          hasTemplate: !!match,
-          templateName: match?.name,
-        };
-      });
-      setCoverages(coverageList);
+      if (analysis) await loadTemplates(analysis);
     } catch (err) {
       console.error("[ProposalPanel] template upload error:", err);
     } finally {
       setUploading(false);
     }
-  }, [analysis]);
+  }, [analysis, loadTemplates]);
 
   // Enter style setup phase: auto-infer style from CRM data
   const handleStartStyleSetup = useCallback(() => {
