@@ -233,11 +233,11 @@ export function ChatPage({
       if (initialData.conversation.chat_model) {
         useChatSettingsStore.getState().setChatModel(initialData.conversation.chat_model);
       }
-      useChatSettingsStore.getState().setThinking(initialData.conversation.thinking ?? false);
+      useChatSettingsStore.getState().setThinking(initialData.conversation.thinking ?? true);
     } else {
       treeStore.clear();
       useChatSettingsStore.getState().setChatModel("gemini-3-flash-preview");
-      useChatSettingsStore.getState().setThinking(false);
+      useChatSettingsStore.getState().setThinking(true);
     }
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 

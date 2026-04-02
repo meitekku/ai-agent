@@ -115,7 +115,7 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   },
 
   // Sidebar
-  sidebarOpen: false,
+  sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
@@ -124,7 +124,7 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   setImageGenerating: (v) => set({ imageGenerating: v }),
 
   // Thinking mode
-  thinking: false,
+  thinking: true,
   setThinking: (v) => set({ thinking: v }),
 
   // Chat title
