@@ -142,7 +142,7 @@ const ExecutionResultContent = memo(function ExecutionResultContent({
               className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <WrenchIcon className="size-3.5" />
-              <span className="font-medium">ツールコール ({toolCalls.length})</span>
+              <span className="font-medium">AIアクション ({toolCalls.length})</span>
               <ChevronRightIcon className={`size-3.5 transition-transform ${toolsOpen ? "rotate-90" : ""}`} />
             </button>
             {toolsOpen && (

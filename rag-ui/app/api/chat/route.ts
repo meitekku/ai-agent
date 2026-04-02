@@ -257,7 +257,8 @@ function buildSystemPrompt(
   // generateImage ツール説明
   if (useGemini) {
     prompt += `
-- **generateImage**: ユーザーが画像生成・編集を依頼した場合に使用。ユーザーが画像を添付している場合はその画像を編集できる。
+- **generateImage**: ユーザーが画像生成・編集を依頼した場合に**即座に呼び出す**。ユーザーが画像を添付している場合はその画像を編集できる。
+  **重要**: プロンプトの書き換え・翻訳・最適化は一切不要。ユーザーの原文がそのまま画像モデルに渡されるため、prompt にはユーザーの言葉をそのままコピーすること。
   画像はツール結果として自動表示されるため、マークダウンへの埋め込みは不要。`;
   }
 
@@ -1436,9 +1437,9 @@ export async function POST(req: Request) {
 
     tools.generateImage = tool({
       description:
-        "画像を生成・編集します。ユーザーが「描いて」「画像を作って」「イラスト」「この画像を編集して」等を依頼した場合に使用。ユーザーが画像を添付している場合はその画像を編集します。",
+        "画像を生成・編集します。ユーザーが「描いて」「画像を作って」「イラスト」「この画像を編集して」等を依頼した場合に即座に呼び出す。プロンプトの書き換えや翻訳は不要 — ユーザーの原文がそのまま画像モデルに渡される。",
       inputSchema: z.object({
-        prompt: z.string().describe("画像生成・編集の指示（ユーザーの要望を忠実に伝える）"),
+        prompt: z.string().describe("ユーザーの原文をそのまま渡す（書き換え・翻訳不要）"),
       }),
       execute: async ({ prompt: toolPrompt }) => {
         // Use original user message (with images) for best Nano Banana quality
