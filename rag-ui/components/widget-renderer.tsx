@@ -53,6 +53,7 @@ function WidgetRendererInner({
     () => _heightCache.get(cacheKey(widgetCode)) || 0,
   );
   const finalizedRef = useRef(false);
+  const heightLockedRef = useRef(false);
   const hasFirstHeight = useRef(
     (_heightCache.get(cacheKey(widgetCode)) || 0) > 0,
   );
@@ -81,6 +82,8 @@ function WidgetRendererInner({
         case "widget:resize": {
           if (typeof e.data.height !== "number" || e.data.height <= 0) break;
           const newH = Math.min(e.data.height + 2, MAX_IFRAME_HEIGHT);
+          // During finalize, lock height — only allow growth, not shrink
+          if (heightLockedRef.current && newH < iframeHeight) break;
           const key = cacheKey(widgetCode);
 
           _heightCache.set(key, newH);
@@ -146,11 +149,16 @@ function WidgetRendererInner({
     // Cancel any pending streaming RAF
     cancelAnimationFrame(rafRef.current);
     finalizedRef.current = true;
+    heightLockedRef.current = true;
     lastSentRef.current = sanitized;
     iframe.contentWindow.postMessage(
       { type: "widget:finalize", html: sanitized },
       "*",
     );
+    // Unlock after finalize settles — prevents height collapse during DOM swap
+    setTimeout(() => {
+      heightLockedRef.current = false;
+    }, 400);
   }, [isStreaming, iframeReady, widgetCode]);
 
   // ── Theme sync ─────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, userAgent } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyToken, generateToken } from "./lib/auth-token";
 
@@ -22,6 +22,12 @@ export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     if (pathname === "/system-error") return NextResponse.next();
     return NextResponse.redirect(new URL("/system-error", request.url));
+  }
+
+  // Allow bots to access OG image routes only (no sensitive data in generated images)
+  const { isBot } = userAgent(request);
+  if (isBot && /opengraph-image|twitter-image/.test(request.nextUrl.pathname)) {
+    return NextResponse.next();
   }
 
   const url = request.nextUrl.clone();

@@ -42,6 +42,12 @@ export const metadata: Metadata = {
     locale: "ja_JP",
     siteName: "FleGrowth Stella",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "FleGrowth Stella — 統合 AI アシスタント",
+    description:
+      "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
