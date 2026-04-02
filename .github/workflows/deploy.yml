@@ -17,7 +17,8 @@ jobs:
 
       - name: Build images
         run: |
-          docker compose --profile prod build
+          COMMIT_SHA=${{ github.sha }}
+          docker compose --profile prod build --build-arg COMMIT_SHA=$COMMIT_SHA
           docker build -f opensandbox/Dockerfile.sandbox-python -t sandbox-python:latest opensandbox/
 
       - name: Save images
@@ -98,7 +99,8 @@ jobs:
 
       - name: Build images
         run: |
-          docker compose --profile prod build
+          COMMIT_SHA=${{ github.sha }}
+          docker compose --profile prod build --build-arg COMMIT_SHA=$COMMIT_SHA
           docker build -f opensandbox/Dockerfile.sandbox-python -t sandbox-python:latest opensandbox/
 
       - name: Save images

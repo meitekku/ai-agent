@@ -11,6 +11,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+ARG COMMIT_SHA
 COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
