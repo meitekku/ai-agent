@@ -211,7 +211,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
           <AppLogo className="size-4 text-foreground" />
         </div>
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
-          Stella
+          FleGrowth Stella
         </h2>
         {onClose && (
           <button

@@ -3,7 +3,6 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   generateText,
-  generateImage,
   smoothStream,
   stepCountIs,
   tool,
@@ -18,8 +17,6 @@ import {
   backendName,
   geminiGoogleSearch,
   ALLOWED_GEMINI_MODELS,
-  isImageModel,
-  geminiImageModel,
   providerOptionsKey,
 } from "@/lib/ollama-provider";
 import {
@@ -258,9 +255,9 @@ function buildSystemPrompt(
 - **queryDatabase**: PostgreSQLに対してSELECTクエリを実行（読取専用）。チャット統計、タスク実行履歴、スライド情報等の集計・分析に使用`;
 
   // generateImage ツール説明
-  if (geminiImageModel) {
+  if (useGemini) {
     prompt += `
-- **generateImage**: ユーザーが画像生成を依頼した場合に使用。プロンプトは英語で具体的に記述すると高品質な結果が得られる。
+- **generateImage**: ユーザーが画像生成・編集を依頼した場合に使用。ユーザーが画像を添付している場合はその画像を編集できる。
   画像はツール結果として自動表示されるため、マークダウンへの埋め込みは不要。`;
   }
 
@@ -1191,24 +1188,9 @@ export async function POST(req: Request) {
                 Amount: manualInput.budget,
                 Description: `${manualInput.challenges || ""}\n${manualInput.details || ""}`.trim(),
                 StageName: "提案中",
-                Probability: 50,
-                NextStep: "提案書提出・ヒアリング",
               },
-              activities: [
-                {
-                  Subject: "初回ヒアリング実施済み",
-                  Status: "Completed",
-                  ActivityDate: new Date().toISOString().slice(0, 10),
-                },
-              ],
-              contacts: [
-                {
-                  Name: "担当者（手動入力）",
-                  Title: "担当者",
-                  Email: "",
-                },
-              ],
-              _manualInput: true,
+              activities: [],
+              contacts: [],
             };
           } else {
             const endpoint =
@@ -1437,49 +1419,60 @@ export async function POST(req: Request) {
   }
 
   // Image generation tool — uses native Gemini generateContent + responseModalities
-  // (same path as the Gemini website for Nano Banana quality)
-  if (geminiImageModel) {
-    // Capture the last user message for native image generation
-    const lastUserText = [...messages]
-      .reverse()
-      .find((m) => m.role === "user")
-      ?.parts?.filter(
-        (p): p is { type: "text"; text: string } => p.type === "text",
-      )
-      .map((p) => p.text)
-      .join("") ?? "";
+  // Sends user's original prompt + attached images together to Nano Banana
+  if (useGemini) {
+    // Build model messages from the last user message (text + images)
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastUserParts = lastUserMsg?.parts ?? [];
+    // Convert last user message to model format and resolve file URLs → binary
+    const lastUserModelMessages = lastUserMsg
+      ? await convertToModelMessages([
+          { ...lastUserMsg, role: "user" } as UIMessage,
+        ])
+      : [];
+    if (lastUserModelMessages.length > 0) {
+      await resolveServerFiles(lastUserModelMessages);
+    }
 
     tools.generateImage = tool({
       description:
-        "テキストの説明から画像を生成します。ユーザーが「描いて」「画像を作って」「イラスト」等を依頼した場合に使用。",
+        "画像を生成・編集します。ユーザーが「描いて」「画像を作って」「イラスト」「この画像を編集して」等を依頼した場合に使用。ユーザーが画像を添付している場合はその画像を編集します。",
       inputSchema: z.object({
-        prompt: z.string().describe("画像生成の指示（ユーザーの要望を忠実に伝える）"),
-        aspectRatio: z
-          .enum(["1:1", "3:4", "4:3", "9:16", "16:9"])
-          .optional()
-          .describe("画像のアスペクト比"),
+        prompt: z.string().describe("画像生成・編集の指示（ユーザーの要望を忠実に伝える）"),
       }),
-      execute: async ({ prompt, aspectRatio }) => {
-        // Prefer the user's original message for native generation quality
-        const imagePrompt = lastUserText || prompt;
+      execute: async ({ prompt: toolPrompt }) => {
+        // Use original user message (with images) for best Nano Banana quality
+        const userText = lastUserParts
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("");
+        const imagePrompt = userText || toolPrompt;
         console.log(
           `[chat] 🎨 generateImage (native): "${imagePrompt.slice(0, 50)}..."`,
         );
         const t0 = Date.now();
         try {
           const imageModel = getChatModel("gemini-3.1-flash-image-preview");
-          const result = await generateText({
-            model: imageModel,
-            prompt: imagePrompt,
+          const genOpts = {
             providerOptions: {
               [providerOptionsKey]: {
                 responseModalities: ["TEXT", "IMAGE"],
                 personGeneration: "allow_adult",
               },
             },
-          });
+          };
+          const result = lastUserModelMessages.length > 0
+            ? await generateText({
+                model: imageModel,
+                messages: lastUserModelMessages,
+                ...genOpts,
+              })
+            : await generateText({
+                model: imageModel,
+                prompt: imagePrompt,
+                ...genOpts,
+              });
           const savedUrls: string[] = [];
-          // Gemini sometimes returns multiple images; keep only the first
           for (const file of (result.files ?? []).slice(0, 1)) {
             const ext =
               file.mediaType === "image/png"
@@ -1852,134 +1845,7 @@ ${op.instruction}
     const modelMessages = await convertToModelMessages(messages);
     await resolveServerFiles(modelMessages);
 
-    // === IMAGE MODEL PATH ===
-    if (isImageModel(selectedModel)) {
-      console.log(`[chat] 🎨 Image model path: ${selectedModel}`);
-      const chatModel = getChatModel(modelOverride);
-
-      const result = await generateText({
-        model: chatModel,
-        messages: modelMessages,
-        system: `あなたは画像生成・編集が可能な AI アシスタントです。
-ユーザーの指示に基づいて画像を生成・編集します。
-- ユーザーが画像を添付した場合、指示に従って編集してください
-- テキストでの説明も併せて提供してください
-- ユーザーの質問と同じ言語で回答してください`,
-        providerOptions: {
-          [providerOptionsKey]: { responseModalities: ["TEXT", "IMAGE"] },
-        },
-        // No abortSignal — let image generation complete even if client disconnects
-      });
-
-      // Save generated images to disk + DB
-      // Gemini sometimes returns multiple images; keep only the first
-      const savedFiles: { url: string; mediaType: string }[] = [];
-      for (const file of (result.files ?? []).slice(0, 1)) {
-        const ext =
-          file.mediaType === "image/png"
-            ? ".png"
-            : file.mediaType === "image/jpeg"
-              ? ".jpg"
-              : file.mediaType === "image/webp"
-                ? ".webp"
-                : ".png";
-        const name = `generated-${Date.now()}${ext}`;
-        const { id, storedPath } = await saveFile(
-          Buffer.from(file.uint8Array),
-          name,
-        );
-        await insertChatFile({
-          id,
-          originalName: name,
-          storedPath,
-          mediaType: file.mediaType,
-          sizeBytes: file.uint8Array.length,
-        });
-        savedFiles.push({ url: `/api/files/${id}`, mediaType: file.mediaType });
-      }
-
-      console.log(
-        `[chat] 🎨 Image result: text=${result.text?.length ?? 0} chars, files=${savedFiles.length}`,
-      );
-
-      // Build UIMessageStream manually
-      const stream = createUIMessageStream({
-        originalMessages: messages,
-        execute: async ({ writer }) => {
-          writer.write({ type: "start-step" });
-
-          // Strip markdown/HTML image refs from text — images are already sent as file parts
-          const cleanText = result.text
-            ?.replace(/!\[[^\]]*\]\([^)]+\)/g, "")
-            .replace(/<img\s[^>]*\/?>/gi, "")
-            .trim();
-          if (cleanText) {
-            const textId = nanoid();
-            writer.write({ type: "text-start", id: textId });
-            writer.write({
-              type: "text-delta",
-              id: textId,
-              delta: cleanText,
-            });
-            writer.write({ type: "text-end", id: textId });
-          }
-
-          for (const f of savedFiles) {
-            writer.write({ type: "file", url: f.url, mediaType: f.mediaType });
-          }
-
-          if (!result.text && savedFiles.length === 0) {
-            const errId = nanoid();
-            writer.write({ type: "text-start", id: errId });
-            writer.write({
-              type: "text-delta",
-              id: errId,
-              delta:
-                "画像の生成に失敗しました。別のプロンプトをお試しください。",
-            });
-            writer.write({ type: "text-end", id: errId });
-          }
-
-          writer.write({ type: "finish-step" });
-          writer.write({ type: "finish", finishReason: "stop" });
-        },
-        onFinish: async ({ responseMessage }) => {
-          if (!chatId) return;
-          try {
-            const lastUserMsg = [...messages]
-              .reverse()
-              .find((m) => m.role === "user");
-            if (!lastUserMsg) return;
-            const toSave = [
-              {
-                id: lastUserMsg.id,
-                parent_id: parentId,
-                role: "user",
-                parts: lastUserMsg.parts as unknown[],
-              },
-              {
-                id: responseMessage.id,
-                parent_id: lastUserMsg.id,
-                role: "assistant",
-                parts: responseMessage.parts as unknown[],
-              },
-            ];
-            await saveMessages(chatId, toSave);
-            await updateConversation(chatId, {
-              active_leaf_id: responseMessage.id,
-            });
-            console.log(
-              `[chat] 💾 Image path: saved ${toSave.length} messages for conv=${chatId}`,
-            );
-          } catch (e) {
-            console.error("[chat] image path save failed:", e);
-          }
-        },
-      });
-      return createUIMessageStreamResponse({ stream });
-    }
-
-    // === EXISTING TEXT MODEL PATH ===
+    // === TEXT MODEL PATH ===
     let firstTokenTime = 0;
 
     let systemPrompt = buildSystemPrompt(

@@ -1,10 +1,10 @@
-import { generateImage as aiGenerateImage, generateText, tool } from "ai";
+import { generateText, tool } from "ai";
 import { z } from "zod";
 import pg from "pg";
 import { Resend } from "resend";
 import { executeCode } from "./sandbox";
 import { AiEmail } from "./emails/ai-email";
-import { getImageModel, getModel, providerOptionsKey } from "./ai-provider";
+import { getModel, providerOptionsKey } from "./ai-provider";
 import { type SkillSummary, getSkillByName } from "./skills-db";
 import { guessMimeType } from "./mime";
 
@@ -213,26 +213,24 @@ export function buildTools({
     execute: async ({ to, subject, body }) => sendEmail(to, subject, body),
   });
 
-  // ---- generateImage (optional — only when image model available) --
-  const imageModel = getImageModel();
-  if (imageModel) {
+  // ---- generateImage (Nano Banana native via generateText + responseModalities) --
+  try {
+    getModel("gemini-3.1-flash-image-preview"); // check availability
     tools.generateImage = tool({
       description:
-        "Generate an image from a text prompt using Gemini Imagen. The image is automatically uploaded and made available as a downloadable file. Use when: the task requires creating an illustration, diagram image, chart visual, or any custom image. Write the prompt in English for best quality. Do not use when: the image can be generated via executeCode (e.g., matplotlib charts) — prefer executeCode for data-driven visuals.",
+        "Generate an image from a text prompt using Gemini Nano Banana. The image is automatically uploaded and made available as a downloadable file. Use when: the task requires creating an illustration, diagram image, chart visual, or any custom image. Write the prompt in English for best quality. Do not use when: the image can be generated via executeCode (e.g., matplotlib charts) — prefer executeCode for data-driven visuals.",
       inputSchema: z.object({
         prompt: z
           .string()
           .describe(
             "Image generation prompt in English. Be specific about style, subject, composition.",
           ),
-        aspectRatio: z
-          .enum(["1:1", "16:9", "9:16", "4:3", "3:4"])
-          .optional()
-          .describe("Aspect ratio (default: 1:1)"),
       }),
-      execute: async ({ prompt, aspectRatio }) =>
-        runGenerateImage(prompt, aspectRatio ?? "1:1", executionId),
+      execute: async ({ prompt }) =>
+        runGenerateImage(prompt, executionId),
     });
+  } catch {
+    // No AI provider available — skip generateImage tool
   }
 
   // ---- analyzeImage -----------------------------------------------
@@ -587,29 +585,40 @@ async function sendEmail(
 
 async function runGenerateImage(
   prompt: string,
-  aspectRatio: string,
   executionId: number,
 ): Promise<string> {
-  const imageModel = getImageModel();
-  if (!imageModel) {
-    return JSON.stringify({ error: "Image generation not available" });
-  }
   try {
-    const { image } = await aiGenerateImage({
+    const imageModel = getModel("gemini-3.1-flash-image-preview");
+    const result = await generateText({
       model: imageModel,
       prompt,
-      aspectRatio: aspectRatio as "1:1" | "16:9" | "9:16" | "4:3" | "3:4",
+      providerOptions: {
+        [providerOptionsKey]: {
+          responseModalities: ["TEXT", "IMAGE"],
+          personGeneration: "allow_adult",
+        },
+      },
     });
 
-    const filename = `generated-${Date.now()}.png`;
+    const files = result.files ?? [];
+    if (files.length === 0) {
+      return JSON.stringify({ error: "No image generated" });
+    }
+
+    const file = files[0];
+    const ext =
+      file.mediaType === "image/jpeg" ? ".jpg"
+        : file.mediaType === "image/webp" ? ".webp"
+        : ".png";
+    const filename = `generated-${Date.now()}${ext}`;
     const form = new FormData();
     form.append(
       "file",
-      new Blob([image.uint8Array.buffer as ArrayBuffer], { type: "image/png" }),
+      new Blob([file.uint8Array.buffer as ArrayBuffer], { type: file.mediaType }),
       filename,
     );
     form.append("filename", filename);
-    form.append("mediaType", "image/png");
+    form.append("mediaType", file.mediaType);
     form.append("executionId", String(executionId));
 
     const res = await fetch(`${RAG_UI_URL}/api/task-files`, {

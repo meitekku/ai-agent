@@ -22,12 +22,12 @@ const VIEW_CONFIG: Record<
 > = {
   "/chat": {
     icon: MessageSquareIcon,
-    title: "Stella",
+    title: "FleGrowth Stella",
     subtitle: "ナレッジベースに基づいて回答します",
   },
   "/new": {
     icon: BotIcon,
-    title: "Stella",
+    title: "FleGrowth Stella",
     subtitle: "ナレッジベースに基づいて回答します",
   },
   "/documents": {

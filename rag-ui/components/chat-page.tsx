@@ -28,7 +28,6 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   BookOpenIcon,
   AlertCircleIcon,
-  ImageIcon,
   FactoryIcon,
   BriefcaseIcon,
   ShoppingCartIcon,
@@ -41,7 +40,7 @@ import {
   SuggestionCard,
   SuggestionCards,
 } from "@/components/ai-elements/suggestion";
-import { useChatSettingsStore, isImageModel } from "@/lib/store";
+import { useChatSettingsStore } from "@/lib/store";
 import { useSlideStore } from "@/lib/slide-store";
 import { useSlidePanelStore } from "@/lib/slide-panel-store";
 import { useChatTreeStore } from "@/lib/chat-tree";
@@ -183,9 +182,9 @@ export function ChatPage({
 
   // Sync document.title
   useEffect(() => {
-    document.title = chatTitle ? `${chatTitle} | Stella` : "Stella";
+    document.title = chatTitle ? `${chatTitle} | FleGrowth Stella` : "FleGrowth Stella";
     return () => {
-      document.title = "Stella";
+      document.title = "FleGrowth Stella";
     };
   }, [chatTitle]);
 
@@ -253,24 +252,6 @@ export function ChatPage({
   }, [chatModel, thinking]);
 
   const isLoading = status === "submitted" || status === "streaming";
-  const setImageGenerating = useChatSettingsStore((s) => s.setImageGenerating);
-
-  // Track imageGenerating state for navigation guard
-  useEffect(() => {
-    const generating = isLoading && isImageModel(chatModel);
-    setImageGenerating(generating);
-    return () => setImageGenerating(false);
-  }, [isLoading, chatModel, setImageGenerating]);
-
-  // Prevent browser navigation during image generation
-  useEffect(() => {
-    if (!isLoading || !isImageModel(chatModel)) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isLoading, chatModel]);
 
   const handleStop = useCallback(() => {
     stoppedRef.current = true;
@@ -946,21 +927,11 @@ export function ChatPage({
               messages[messages.length - 1].role === "user" ? (
                 <Message from="assistant">
                   <MessageContent>
-                    {isImageModel(chatModel) ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <ImageIcon className="size-3.5 animate-pulse" />
-                          <span className="animate-pulse">画像を生成中...</span>
-                        </div>
-                        <div className="h-64 w-80 animate-pulse rounded-xl bg-muted/40 border border-border/30" />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 py-1">
-                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-                        <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1 py-1">
+                      <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+                      <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+                      <span className="size-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+                    </div>
                   </MessageContent>
                 </Message>
               ) : null}

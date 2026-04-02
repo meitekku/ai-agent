@@ -70,10 +70,10 @@ export function TaskResultEmail({
                   src={`${appUrl}/icon.png`}
                   width="32"
                   height="32"
-                  alt="Stella"
+                  alt="FleGrowth Stella"
                   style={{ ...logoImg, display: "inline-block", verticalAlign: "middle" }}
                 />
-                <Text style={appName}>Stella</Text>
+                <Text style={appName}>FleGrowth Stella</Text>
               </Column>
             </Row>
           </Section>

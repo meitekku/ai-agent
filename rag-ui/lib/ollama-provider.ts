@@ -38,24 +38,11 @@ export const providerOptionsKey: "vertex" | "google" = USE_VERTEX_AI
 /** Allowed Gemini model IDs (whitelist to prevent abuse) */
 export const ALLOWED_GEMINI_MODELS = new Set([
   "gemini-2.5-flash",
-  "gemini-2.5-flash-image",
   "gemini-2.5-pro",
   "gemini-2.5-flash-lite",
   "gemini-3-flash-preview",
   "gemini-3.1-pro-preview",
-  "gemini-3.1-flash-image-preview",
 ]);
-
-/** Check if a model ID is an image generation model */
-export function isImageModel(modelId: string): boolean {
-  return modelId.includes("-image");
-}
-
-/** Gemini image model for generateImage() tool */
-export const geminiImageModel =
-  vertex?.image("gemini-3.1-flash-image-preview") ??
-  gemini?.image("gemini-3.1-flash-image-preview") ??
-  null;
 
 /** Auto-select: Vertex AI > AI Studio > MLX. Accepts optional model override. */
 export function getChatModel(modelOverride?: string | null) {

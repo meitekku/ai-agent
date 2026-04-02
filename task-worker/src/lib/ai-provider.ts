@@ -29,18 +29,6 @@ export function getModel(modelOverride?: string) {
   );
 }
 
-// Image generation model — follows the same provider as getModel().
-// Matches rag-ui/lib/ollama-provider.ts: gemini-3.1-flash-image-preview via image() on both providers.
-export function getImageModel() {
-  try {
-    if (vertex) return vertex.image("gemini-3.1-flash-image-preview");
-    if (gemini) return gemini.image("gemini-3.1-flash-image-preview");
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 // Google Search grounding — AI Studio only (Vertex AI doesn't expose this tool via SDK)
 export const googleSearchTool =
   !USE_VERTEX_AI && gemini

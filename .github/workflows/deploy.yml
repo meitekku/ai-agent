@@ -28,11 +28,11 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          # Write deploy key
+          # Write deploy key (unique path to avoid race with EC2 runner)
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key
-          chmod 600 ~/.ssh/rag-deploy-key
-          SSH_OPTS="-i ~/.ssh/rag-deploy-key -o StrictHostKeyChecking=no"
+          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key-opi
+          chmod 600 ~/.ssh/rag-deploy-key-opi
+          SSH_OPTS="-i ~/.ssh/rag-deploy-key-opi -o StrictHostKeyChecking=no"
           REMOTE="${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
           REMOTE_DIR="/home/${{ secrets.SSH_USER }}/rag-deploy"
 
@@ -85,7 +85,7 @@ jobs:
           "
 
           # Cleanup
-          rm -f /tmp/rag-images.tar ~/.ssh/rag-deploy-key
+          rm -f /tmp/rag-images.tar ~/.ssh/rag-deploy-key-opi
 
   # ── EC2（会社 fg: FGjp-techdes/ai-agent-v2） ──
   deploy-ec2:
@@ -109,11 +109,11 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          # Write deploy key
+          # Write deploy key (unique path to avoid race with Orange Pi runner)
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key
-          chmod 600 ~/.ssh/rag-deploy-key
-          SSH_OPTS="-i ~/.ssh/rag-deploy-key -o StrictHostKeyChecking=no"
+          echo "$SSH_KEY" > ~/.ssh/rag-deploy-key-ec2
+          chmod 600 ~/.ssh/rag-deploy-key-ec2
+          SSH_OPTS="-i ~/.ssh/rag-deploy-key-ec2 -o StrictHostKeyChecking=no"
           REMOTE="ec2-user@${{ secrets.EC2_HOST }}"
           REMOTE_DIR="/home/ec2-user/rag-deploy"
 
@@ -166,4 +166,4 @@ jobs:
           "
 
           # Cleanup
-          rm -f /tmp/rag-images-ec2.tar ~/.ssh/rag-deploy-key
+          rm -f /tmp/rag-images-ec2.tar ~/.ssh/rag-deploy-key-ec2

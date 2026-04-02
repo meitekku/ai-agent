@@ -39,10 +39,6 @@ export const GEMINI_MODELS: ModelOption[] = [
   { id: "gemini-3.1-pro-preview", label: "3.1 Pro", description: "最上位" },
 ];
 
-export function isImageModel(modelId: string | null): boolean {
-  return !!modelId && modelId.includes("-image");
-}
-
 // ---------------------------------------------------------------------------
 // Chat Settings Store
 // ---------------------------------------------------------------------------

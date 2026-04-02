@@ -39,10 +39,10 @@ export function AiEmail({
                   src={`${appUrl}/icon.png`}
                   width="32"
                   height="32"
-                  alt="Stella"
+                  alt="FleGrowth Stella"
                   style={{ ...logoImg, display: "inline-block", verticalAlign: "middle" }}
                 />
-                <Text style={appName}>Stella</Text>
+                <Text style={appName}>FleGrowth Stella</Text>
               </Column>
             </Row>
           </Section>
@@ -80,7 +80,7 @@ export function AiEmail({
           <Hr style={divider} />
           <Section style={footer}>
             <Text style={footerText}>
-              Stella AI &middot;{" "}
+              FleGrowth Stella &middot;{" "}
               {appUrl?.replace(/^https?:\/\//, "") ?? ""}
             </Text>
           </Section>
