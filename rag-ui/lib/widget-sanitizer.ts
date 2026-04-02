@@ -185,6 +185,8 @@ n.textContent=inl[i].text;
 for(var j=0;j<inl[i].attrs.length;j++)n.setAttribute(inl[i].attrs[j].name,inl[i].attrs[j].value);
 root.appendChild(n);
 }
+var cs=root.querySelectorAll('canvas');
+for(var k=0;k<cs.length;k++)cs[k].classList.add('_charted');
 _h();
 }
 if(!cdn.length){runInline();return;}
@@ -243,6 +245,10 @@ parent.postMessage({type:'widget:ready'},'*');
 ${styleBlock}
 @keyframes sd-show{to{opacity:1}}
 [data-wa]{opacity:0;animation:sd-show 0s step-end var(--d,0ms) forwards}
+canvas{border-radius:8px;background:linear-gradient(110deg,rgba(150,150,150,0.06) 30%,rgba(150,150,150,0.12) 50%,rgba(150,150,150,0.06) 70%);background-size:200% 100%;animation:_cshim 1.5s linear infinite}
+canvas._charted{background:none!important;animation:_cfade .3s ease-out}
+@keyframes _cshim{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes _cfade{from{opacity:.5}to{opacity:1}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <style type="text/tailwindcss">
