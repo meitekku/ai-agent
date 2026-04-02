@@ -180,7 +180,7 @@ services:
       GCP_LOCATION: ${GCP_LOCATION:-global}
       GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
     ports:
-      - "4002:3000"
+      - "127.0.0.1:4002:3000"
     volumes:
       - chat-files:/app/data/chat-files
       - kb-files:/app/data/kb-files
