@@ -23,7 +23,7 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 6. CDN スクリプト: \`onload="initFn()"\` + \`if(window.Lib) initFn();\` フォールバック
 7. テキスト説明はコードフェンスの**外**に書く
 8. 複数 widget: テキストを挟み、それぞれ別のフェンスに
-9. Chart.js: canvas は hex カラー使用（CSS 変数不可）。responsive:true, maintainAspectRatio:false
+9. Chart.js: canvas は hex カラー使用（CSS 変数不可）。responsive:true, **maintainAspectRatio:true**。正方形チャート（radar 等）は \`aspectRatio:1\` を追加。**maintainAspectRatio:false は使用禁止**（iframe 内で高さが無限ループする）
 10. SVG: \`<svg width="100%" viewBox="0 0 680 H">\` 形式
 
 ### スタイリング（Tailwind CSS 優先）
@@ -88,7 +88,7 @@ function update(v){
 
 #### Chart.js
 \`\`\`
-<div style="position:relative;width:100%;height:300px"><canvas id="c"></canvas></div>
+<canvas id="c"></canvas>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" onload="init()"></script>
 <script>
 var chart;
@@ -96,7 +96,7 @@ function init(){
   chart=new Chart(document.getElementById('c'),{
     type:'bar',
     data:{labels:[...],datasets:[{data:[...],backgroundColor:['#818CF8','#34D399','#FBBF24','#FB7185','#38BDF8'],borderRadius:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{color:'rgba(150,150,150,0.15)'}},x:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{display:false}}}}
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{color:'rgba(150,150,150,0.15)'}},x:{ticks:{color:'rgba(150,150,150,0.7)'},grid:{display:false}}}}
   });
 }
 if(window.Chart)init();

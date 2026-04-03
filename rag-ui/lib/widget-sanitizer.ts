@@ -110,12 +110,16 @@ export function buildReceiverSrcdoc(
 
   const receiverScript = `(function(){
 var root=document.getElementById('__root');
-var _t=null,_first=true,_prevLen=0;
+var _t=null,_first=true,_prevLen=0,_lastH=0,_growN=0;
 function _h(){
 if(_t)clearTimeout(_t);
 _t=setTimeout(function(){
 var h=document.body.scrollHeight;
-if(h>0)parent.postMessage({type:'widget:resize',height:h,first:_first},'*');
+if(h<=0)return;
+if(h>_lastH+2&&_lastH>0){if(++_growN>3)return;}
+else{_growN=0;}
+_lastH=h;
+parent.postMessage({type:'widget:resize',height:h,first:_first},'*');
 _first=false;
 },60);
 }

@@ -335,6 +335,7 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
 
 const math = createMathPlugin({ singleDollarTextMath: true });
 const streamdownPlugins = { cjk, code, math, mermaid } as PluginConfig;
+const noLinkSafety = { enabled: false } as const;
 
 const sdClassName =
   "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:pl-5 [&_ol]:pl-5";
@@ -360,6 +361,7 @@ export const MessageResponse = memo(
         <Streamdown
           className={cn(sdClassName, className)}
           plugins={streamdownPlugins}
+          linkSafety={noLinkSafety}
           animated={!!isActiveStreaming}
           isAnimating={!!isActiveStreaming}
           {...props}
@@ -426,6 +428,7 @@ export const MessageResponse = memo(
               <Streamdown
                 key={`t-${i}`}
                 plugins={streamdownPlugins}
+                linkSafety={noLinkSafety}
                 animated={shouldAnimate}
                 isAnimating={shouldAnimate}
               >

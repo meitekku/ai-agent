@@ -205,6 +205,7 @@ export type ReasoningContentProps = ComponentProps<
 };
 
 const streamdownPlugins = { cjk, code, math, mermaid };
+const noLinkSafety = { enabled: false } as const;
 
 export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
@@ -216,7 +217,7 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+      <Streamdown plugins={streamdownPlugins} linkSafety={noLinkSafety}>{children}</Streamdown>
     </CollapsibleContent>
   ),
 );

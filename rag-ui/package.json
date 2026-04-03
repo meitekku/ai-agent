@@ -13,10 +13,10 @@
     "mlx:stop": "pm2 stop qwen3.5-mlx"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.43",
-    "@ai-sdk/google-vertex": "^4.0.95",
-    "@ai-sdk/openai": "^3.0.31",
-    "@ai-sdk/react": "^3.0.99",
+    "@ai-sdk/google": "^3.0.57",
+    "@ai-sdk/google-vertex": "^4.0.101",
+    "@ai-sdk/openai": "^3.0.50",
+    "@ai-sdk/react": "^3.0.147",
     "@base-ui/react": "^1.2.0",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@react-three/drei": "^10.7.7",
@@ -30,7 +30,7 @@
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-virtual": "^3.13.23",
     "@xyflow/react": "^12.10.1",
-    "ai": "^6.0.116",
+    "ai": "^6.0.145",
     "ansi-to-react": "^6.2.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

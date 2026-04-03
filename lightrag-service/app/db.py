@@ -58,7 +58,7 @@ async def list_kbs() -> list[dict]:
                COUNT(ij.doc_id)::int AS doc_count
         FROM knowledge_bases kb
         LEFT JOIN ingest_jobs ij ON ij.kb_slug = kb.slug
-        GROUP BY kb.slug
+        GROUP BY kb.slug, kb.name, kb.title, kb.description, kb.created_at, kb.updated_at
         ORDER BY kb.created_at DESC
     """)
     return [dict(r) for r in rows]
