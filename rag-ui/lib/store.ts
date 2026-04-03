@@ -120,7 +120,7 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   setImageGenerating: (v) => set({ imageGenerating: v }),
 
   // Thinking mode
-  thinking: true,
+  thinking: false,
   setThinking: (v) => set({ thinking: v }),
 
   // Chat title
