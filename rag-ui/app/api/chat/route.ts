@@ -1915,11 +1915,12 @@ ${op.instruction}
     return result.toUIMessageStreamResponse({
       sendReasoning: true,
       originalMessages: messages,
-      onFinish: async ({ responseMessage, usage }) => {
+      onFinish: async ({ responseMessage }) => {
         if (!firstTokenTime) firstTokenTime = Date.now();
         t.stream = Date.now() - t.start;
+        const usage = await result.totalUsage.catch(() => null);
         console.log(
-          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
+          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? (usage as Record<string, unknown>)?.outputTokens ?? "?"}`,
         );
         // Server-side persistence — fires even on client disconnect (via TransformStream cancel handler)
         if (!chatId) return;
