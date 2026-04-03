@@ -1905,13 +1905,6 @@ ${op.instruction}
         delayInMs: 20,
         chunking: new Intl.Segmenter("ja", { granularity: "word" }),
       }),
-      async onFinish({ usage }) {
-        if (!firstTokenTime) firstTokenTime = Date.now();
-        t.stream = Date.now() - t.start;
-        console.log(
-          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
-        );
-      },
     });
 
     // Ensure agent runs to completion even if client disconnects
@@ -1922,7 +1915,12 @@ ${op.instruction}
     return result.toUIMessageStreamResponse({
       sendReasoning: true,
       originalMessages: messages,
-      onFinish: async ({ responseMessage }) => {
+      onFinish: async ({ responseMessage, usage }) => {
+        if (!firstTokenTime) firstTokenTime = Date.now();
+        t.stream = Date.now() - t.start;
+        console.log(
+          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
+        );
         // Server-side persistence — fires even on client disconnect (via TransformStream cancel handler)
         if (!chatId) return;
         try {
