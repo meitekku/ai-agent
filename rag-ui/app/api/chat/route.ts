@@ -1905,14 +1905,8 @@ ${op.instruction}
         delayInMs: 20,
         chunking: new Intl.Segmenter("ja", { granularity: "word" }),
       }),
-      experimental_onStepStart() {
-        if (!firstTokenTime) {
-          firstTokenTime = Date.now();
-          const ttft = firstTokenTime - t1;
-          console.log(`[chat] 🚀 TTFT (${backendName} prefill): ${ttft}ms`);
-        }
-      },
       async onFinish({ usage }) {
+        if (!firstTokenTime) firstTokenTime = Date.now();
         t.stream = Date.now() - t.start;
         console.log(
           `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${(usage as Record<string, unknown>)?.completionTokens ?? usage?.outputTokens ?? "?"}`,
