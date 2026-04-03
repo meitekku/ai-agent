@@ -6,7 +6,7 @@ import type { AnalysisRationale, SFData, R, ProposalJudgment } from "../lib/type
 
 const app = new Hono();
 
-async function generateRationale(data: SFData, availableTemplateServices: string[], additionalContext?: string, model?: string): Promise<AnalysisRationale> {
+async function generateRationale(data: SFData, availableTemplateServices: string[], additionalContext?: string, model?: string, scores?: { winProbability: number; dealHealthScore: number; proposalReadiness: number }): Promise<AnalysisRationale> {
   const fallback: AnalysisRationale = {
     customerChallenges: ["顧客課題の詳細分析にはより多くの情報が必要です"],
     serviceRecommendations: [
@@ -20,7 +20,7 @@ async function generateRationale(data: SFData, availableTemplateServices: string
   };
 
   try {
-    const prompt = buildRationalePrompt(data, availableTemplateServices, additionalContext);
+    const prompt = buildRationalePrompt(data, availableTemplateServices, additionalContext, scores);
     const text = await generateText(prompt, 4000, model);
 
     try {
@@ -38,6 +38,9 @@ async function generateRationale(data: SFData, availableTemplateServices: string
         existingProposalHints: parsed.existingProposalHints || [],
         proposalJudgment: judgment,
         proposalJudgmentReason: parsed.proposalJudgmentReason || "",
+        keyDrivers: Array.isArray(parsed.keyDrivers) ? parsed.keyDrivers : undefined,
+        riskFactors: Array.isArray(parsed.riskFactors) ? parsed.riskFactors : undefined,
+        recommendedActions: Array.isArray(parsed.recommendedActions) ? parsed.recommendedActions : undefined,
       };
     } catch {
       console.error("[analyze] JSON parse failed, using fallback rationale");
@@ -61,7 +64,8 @@ app.post("/deals/analyze", async (c) => {
 
     let rationale: AnalysisRationale;
     if (process.env.GEMINI_API_KEY) {
-      rationale = await generateRationale(data, templateServices, additionalContext, model);
+      const scores = { winProbability: analysis.winProbability, dealHealthScore: analysis.dealHealthScore, proposalReadiness: analysis.proposalReadiness };
+      rationale = await generateRationale(data, templateServices, additionalContext, model, scores);
     } else {
       rationale = {
         customerChallenges: ["AI分析にはGemini APIキーが必要です"],
@@ -72,6 +76,11 @@ app.post("/deals/analyze", async (c) => {
         proposalJudgmentReason: "APIキー未設定のため判定できません。",
       };
     }
+
+    // AI-generated fields override algorithmic defaults
+    if (rationale.keyDrivers?.length) analysis.keyDrivers = rationale.keyDrivers;
+    if (rationale.riskFactors?.length) analysis.riskFactors = rationale.riskFactors;
+    if (rationale.recommendedActions?.length) analysis.recommendedActions = rationale.recommendedActions;
 
     return c.json({ analysis: { ...analysis, rationale } });
   } catch (err: unknown) {

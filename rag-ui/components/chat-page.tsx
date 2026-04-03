@@ -192,6 +192,10 @@ export function ChatPage({
   const treeStore = useChatTreeStore();
   const convIdRef = useRef<string | null>(initialConvId);
   const initializedRef = useRef(false);
+  // The model/thinking values last written to DB — persist effect only fires
+  // when the closure values diverge from these (prevents stale writes on load)
+  const dbModelRef = useRef<string | null>(null);
+  const dbThinkingRef = useRef<boolean | null>(null);
   // Track the parent ID for new user messages (set before sendMessage)
   const pendingParentRef = useRef<string | null>(null);
   // Track count of messages known before sending, to find new ones
@@ -228,22 +232,37 @@ export function ChatPage({
       if (initialData.conversation.kb_slug) {
         setActiveKb(initialData.conversation.kb_slug);
       }
-      // Restore model / thinking from conversation
-      if (initialData.conversation.chat_model) {
-        useChatSettingsStore.getState().setChatModel(initialData.conversation.chat_model);
-      }
-      useChatSettingsStore.getState().setThinking(initialData.conversation.thinking ?? true);
+      // Restore model / thinking from conversation — record the DB values
+      // so the persist effect knows not to write them back
+      const restoredModel = initialData.conversation.chat_model || "gemini-3-flash-preview";
+      const restoredThinking = initialData.conversation.thinking ?? true;
+      dbModelRef.current = restoredModel;
+      dbThinkingRef.current = restoredThinking;
+      useChatSettingsStore.getState().setChatModel(restoredModel);
+      useChatSettingsStore.getState().setThinking(restoredThinking);
     } else {
       treeStore.clear();
+      dbModelRef.current = "gemini-3-flash-preview";
+      dbThinkingRef.current = true;
       useChatSettingsStore.getState().setChatModel("gemini-3-flash-preview");
       useChatSettingsStore.getState().setThinking(true);
     }
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 
-  // Persist model / thinking changes to DB
+  // Persist model / thinking changes to DB — only for genuine user changes.
+  // After init restore, the closure may hold stale values from the previous
+  // render while the store already has the restored values. Guard against
+  // this by comparing with both the DB snapshot and the live store.
   useEffect(() => {
     const convId = convIdRef.current;
     if (!convId || !initializedRef.current) return;
+    // Already in DB — nothing to persist
+    if (chatModel === dbModelRef.current && thinking === dbThinkingRef.current) return;
+    // Closure is stale (store was updated by init but component hasn't re-rendered)
+    const store = useChatSettingsStore.getState();
+    if (chatModel !== store.chatModel || thinking !== store.thinking) return;
+    dbModelRef.current = chatModel;
+    dbThinkingRef.current = thinking;
     fetch(`/api/history/chats/${convId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

@@ -60,6 +60,10 @@ export interface AnalysisRationale {
   existingProposalHints: string[];
   proposalJudgment: ProposalJudgment;
   proposalJudgmentReason: string;
+  // AI-generated overrides for algorithmic defaults
+  keyDrivers?: string[];
+  riskFactors?: string[];
+  recommendedActions?: string[];
 }
 
 export interface AnalysisResult {

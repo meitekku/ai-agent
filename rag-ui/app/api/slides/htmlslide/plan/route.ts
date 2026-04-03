@@ -43,25 +43,53 @@ export async function POST(req: Request) {
 
     const model = getSlideModel();
 
-    // Load relevant skills for slide generation
+    // Progressive skill loading: summaries → AI selects → load full content
     let skillContext = "";
     try {
       const skills = await getEnabledSkillSummaries();
-      const slideSkills = skills.filter(
-        (s) =>
-          /スライド|提案|プレゼン|slide|proposal|present/i.test(s.name) ||
-          /スライド|提案|プレゼン|slide|proposal|present/i.test(s.description),
-      );
-      if (slideSkills.length > 0) {
-        const loaded = await Promise.all(
-          slideSkills.slice(0, 3).map((s) => getSkillByName(s.name)),
-        );
-        const contents = loaded
-          .filter(Boolean)
-          .map((s) => `### ${s!.name}\n${s!.content}`)
-          .join("\n\n");
-        if (contents) {
-          skillContext = `\n\n## 参考スキル（スライド作成ガイドライン）\n${contents}`;
+      if (skills.length > 0) {
+        const summaryList = skills
+          .map((s) => `- ${s.name}: ${s.description}`)
+          .join("\n");
+
+        // Step 1: AI selects relevant skills from summaries
+        const selectionResult = await generateText({
+          model,
+          prompt: `以下はシステムに登録されたスキル一覧です。プレゼンテーション構成・スライド設計に役立つスキルを選んでください。
+
+${summaryList}
+
+関連するスキル名だけをJSON配列で返してください（例: ["skill-a", "skill-b"]）。該当なしなら [] を返してください。JSON以外は不要です。`,
+          temperature: 0,
+          maxOutputTokens: 200,
+        });
+
+        let selectedNames: string[] = [];
+        try {
+          const match = selectionResult.text.match(/\[[\s\S]*\]/);
+          if (match) selectedNames = JSON.parse(match[0]);
+        } catch {
+          // Parse failed
+        }
+
+        // Step 2: Load full content of selected skills only
+        if (selectedNames.length > 0) {
+          const loaded = await Promise.all(
+            selectedNames.slice(0, 5).map((n) => getSkillByName(n)),
+          );
+          const available = loaded.filter(Boolean) as NonNullable<(typeof loaded)[0]>[];
+          if (available.length > 0) {
+            const MAX_CHARS = 8000;
+            let contentParts: string[] = [];
+            let totalChars = 0;
+            for (const s of available) {
+              const part = `### ${s.name}\n${s.content}`;
+              if (totalChars + part.length > MAX_CHARS) break;
+              contentParts.push(part);
+              totalChars += part.length;
+            }
+            skillContext = `\n\n## 参考スキル（AI が選択）\n以下のスキルのガイドラインに従ってスライドを構成してください。\n\n${contentParts.join("\n\n")}`;
+          }
         }
       }
     } catch {

@@ -1,6 +1,6 @@
 import type { SFData, AnalysisResult, R } from "./types";
 
-export function buildRationalePrompt(data: SFData, availableTemplateServices: string[], additionalContext?: string): string {
+export function buildRationalePrompt(data: SFData, availableTemplateServices: string[], additionalContext?: string, scores?: { winProbability: number; dealHealthScore: number; proposalReadiness: number }): string {
   const parts: string[] = [`顧客情報:
 - 会社名: ${data.account.Name || "不明"}
 - 業界: ${data.account.Industry || "未設定"}
@@ -26,9 +26,45 @@ export function buildRationalePrompt(data: SFData, availableTemplateServices: st
     ? `## 社内にアップロード済みの紹介資料・提案書テンプレート\n${availableTemplateServices.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
     : `## 社内にアップロード済みの紹介資料・提案書テンプレート\n（現在アップロードなし）`;
 
+  const scoresSection = scores
+    ? `\n## アルゴリズム分析結果（参考値）\n- 受注確率: ${scores.winProbability}%\n- 商談健全度: ${scores.dealHealthScore}/100\n- 提案準備度: ${scores.proposalReadiness}/100\n`
+    : "";
+
   return `以下の顧客データを分析し、JSON形式で回答してください。
 
 ${parts.join("\n")}
+${scoresSection}
+
+## 分析ガイドライン（この基準に従って判定すること）
+
+### 成功要因（keyDrivers）の判定基準
+以下に該当する項目のうち、**この商談に実際に当てはまるもののみ**を挙げること。当てはまらないものは含めない。
+- **予算規模**: 500万以上→中規模案件、1000万以上→大型案件（戦略的優先度が高い）
+- **意思決定者**: 役員・部長クラスのコンタクトがいる場合、意思決定が早い可能性
+- **課題の明確度**: Description に具体的な課題・要件が記載されている場合
+- **業界知見**: 業界が明記されており、弊社に当該業界の実績がある場合
+- **商談進捗**: ステージが「提案中」以降、または確度50%以上の場合
+- **エンゲージメント**: 直近30日以内にアクティビティがある場合
+- **リードソース**: 紹介・既存顧客からのリードは信頼性が高い
+上記に該当しない場合は、成功要因を2個以下に抑えること。無理に3個以上並べない。
+
+### リスク要因（riskFactors）の判定基準
+以下に該当する項目のうち、**この商談に実際に当てはまるもののみ**を挙げること。
+- **期限切迫**: クローズ予定日まで14日以内
+- **期限超過**: クローズ予定日が過ぎている
+- **長期停滞**: 商談作成から180日以上経過しステージが進んでいない
+- **低確度**: 確度30%未満
+- **予算未確定**: 金額が未設定、または予算承認プロセスが不明
+- **競合**: Description やアクティビティに競合他社の言及がある場合
+- **コンタクト不足**: 意思決定者が未特定（コンタクト0名）
+- **エンゲージメント低下**: 直近60日以上アクティビティなし
+該当なしの場合は「現時点で顕著なリスクなし」とだけ書くこと。汎用的なリスク（例:「競合の存在」）を根拠なく追加しない。
+
+### 推奨アクション（recommendedActions）の判定基準
+上記の成功要因・リスク要因を踏まえ、**次の1〜2週間で実行すべき具体的なアクション**を挙げること。
+- リスクがあれば、そのリスクを軽減するアクション
+- 成功要因を活かすための次のステップ
+- 汎用的な文言（例:「ROI試算資料の作成」）ではなく、この商談の状況に合わせた具体的な内容にする
 
 ## 弊社の製品・サービス
 1. **DX開発サービス**: カスタムDXソリューション設計・開発、レガシーシステム刷新、業務プロセス自動化、API連携、Web/モバイルアプリ開発、データ基盤構築
@@ -74,7 +110,10 @@ ${additionalContext ? `\n## 追加コンテキスト（ナレッジベース・�
   "combinedSolution": "複数サービスを組み合わせた包括的なソリューションの説明（2〜3文）",
   "existingProposalHints": ["提案書に含めるべきポイント1", "ポイント2", "ポイント3"],
   "proposalJudgment": "existing_service または dx_development または not_proposable",
-  "proposalJudgmentReason": "判定の根拠を1〜2文で説明"
+  "proposalJudgmentReason": "判定の根拠を1〜2文で説明",
+  "keyDrivers": ["この商談固有の成功要因（商談内容・顧客特性に基づく具体的な記述）", "要因2", "要因3"],
+  "riskFactors": ["この商談固有のリスク要因（具体的かつ商談データに基づく記述）", "リスク2"],
+  "recommendedActions": ["次に取るべき具体的なアクション1", "アクション2", "アクション3"]
 }`;
 }
 

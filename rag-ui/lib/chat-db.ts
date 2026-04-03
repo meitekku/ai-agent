@@ -266,7 +266,12 @@ export async function updateConversation(
 
   if (fields.length === 0) return;
 
-  fields.push(`updated_at = NOW()`);
+  // Only bump updated_at when title changes (content-level change).
+  // Model/thinking/active_leaf_id are view-state — saveMessages() handles
+  // the timestamp update when actual messages are added.
+  if (data.title !== undefined) {
+    fields.push(`updated_at = NOW()`);
+  }
   values.push(id);
 
   await getPool().query(

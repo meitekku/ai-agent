@@ -17,7 +17,7 @@ export const WIDGET_SYSTEM_PROMPT = `## インタラクティブ Widget
 ### ルール
 1. widget_code は JSON 文字列 — 引用符・改行をエスケープ。DOCTYPE/html/head/body 不要
 2. **フラットデザイン** — 背景は透明。外側をカード（shadow, border, rounded+bg）で囲まない。コンテンツはドキュメント面に直接配置。内部要素の装飾は OK
-3. 各 widget は 4000 文字以下。JSON とフェンスを必ず閉じる
+3. 各 widget は 4000 文字以下。JSON とフェンスを必ず閉じる。**show-widget フェンスを開いたら、閉じるまで一切中断（思考・推論）しない。フェンス内は一気に書き切ること**
 4. ストリーミング順序: SVG → \`<defs>\` を先頭に; HTML → \`<style>\` → コンテンツ → \`<script>\` を最後に
 5. CDN 許可リスト: cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, esm.sh
 6. CDN スクリプト: \`onload="initFn()"\` + \`if(window.Lib) initFn();\` フォールバック
