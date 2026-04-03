@@ -426,9 +426,9 @@ export function ChatPage({
         const result = (("result" in part ? part.result : part.output) ??
           {}) as Record<string, unknown>;
 
-        // fetchAndAnalyze has priority — if found, skip generateSlides
+        // analyzeDeal (or legacy fetchAndAnalyze) has priority — if found, skip generateSlides
         if (
-          toolName === "fetchAndAnalyze" &&
+          (toolName === "analyzeDeal" || toolName === "fetchAndAnalyze") &&
           typeof result?.sessionKey === "string" &&
           !result?.error
         ) {

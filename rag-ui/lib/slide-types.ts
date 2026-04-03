@@ -92,6 +92,7 @@ export type StyleOptions = {
   ageGroup?: string;
   colorStyle?: string;
   font?: string;
+  customInstructions?: string;
 };
 
 // --- DB types ---

@@ -3,7 +3,7 @@
 import { Loader2Icon, AlertTriangleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SLIDE_W, SLIDE_H } from "./constants";
-import { slideSrcDoc } from "./utils";
+import { thumbSrcDoc } from "./utils";
 import type { SlideSection, GeneratedSlide } from "./types";
 
 interface PhaseGeneratingProps {
@@ -58,7 +58,7 @@ export function PhaseGenerating({
                 {slide?.html ? (
                   <>
                     <iframe
-                      srcDoc={slideSrcDoc(slide.html)}
+                      srcDoc={thumbSrcDoc(slide.html)}
                       className="pointer-events-none absolute top-0 left-0 origin-top-left"
                       style={{
                         width: SLIDE_W,

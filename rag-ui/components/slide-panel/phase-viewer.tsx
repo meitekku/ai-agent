@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SLIDE_W, SLIDE_H } from "./constants";
-import { slideSrcDoc } from "./utils";
+import { slideSrcDoc, thumbSrcDoc } from "./utils";
 import type { GeneratedSlide } from "./types";
 
 interface PhaseViewerProps {
@@ -70,7 +70,7 @@ export function PhaseViewer({
           <iframe
             ref={iframeRef}
             key={`slide-${activeIndex}-${activeSlide.html.length}`}
-            srcDoc={slideSrcDoc(activeSlide.html)}
+            srcDoc={slideSrcDoc(activeSlide.html, activeIndex + 1, generatedSlides.length)}
             className={editing ? "" : "pointer-events-none"}
             style={{
               width: SLIDE_W,
@@ -127,7 +127,7 @@ export function PhaseViewer({
               style={{ width: 96, height: 54 }}
             >
               <iframe
-                srcDoc={slideSrcDoc(slide.html)}
+                srcDoc={thumbSrcDoc(slide.html)}
                 className="pointer-events-none"
                 style={{
                   width: SLIDE_W,
@@ -136,6 +136,7 @@ export function PhaseViewer({
                   transformOrigin: "top left",
                 }}
                 tabIndex={-1}
+                loading="lazy"
               />
               {slide.failed && (
                 <div className="absolute top-0.5 right-0.5">

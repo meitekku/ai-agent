@@ -86,7 +86,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'No
 <body>
 <div class="progress" id="progress"></div>
 <div class="deck" id="deck">
-${escapedSlides.map((html, i) => `  <div class="slide${i === 0 ? " active" : ""}" data-index="${i}"><div class="slide-inner">${html}</div></div>`).join("\n")}
+${escapedSlides.map((html, i) => `  <div class="slide${i === 0 ? " active" : ""}" data-index="${i}"><div class="slide-inner">${html}<div style="position:absolute;bottom:12px;right:20px;font-size:11px;color:rgba(100,116,139,0.7);font-family:'Noto Sans JP','Inter',sans-serif;pointer-events:none;z-index:99;">${i + 1} / ${slides.length}</div></div></div>`).join("\n")}
 
   <div class="controls" id="controls">
     <div style="display:flex;align-items:center;gap:12px">

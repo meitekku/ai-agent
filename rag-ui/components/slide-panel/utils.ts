@@ -12,13 +12,25 @@ import type { SlideSection } from "./types";
 // slideSrcDoc / failedSlideHtml
 // ============================================================
 
-export function slideSrcDoc(html: string) {
+export function slideSrcDoc(html: string, pageNum?: number, totalPages?: number) {
+  const pageTag = pageNum != null && totalPages != null
+    ? `<div style="position:fixed;bottom:12px;right:20px;font-size:11px;color:rgba(100,116,139,0.7);font-family:'Noto Sans JP','Inter',sans-serif;pointer-events:none;z-index:999;">${pageNum} / ${totalPages}</div>`
+    : "";
   return `<!DOCTYPE html>
 <html><head>${SLIDE_CDN_HEAD}</head>
 <body style="margin:0;padding:0;overflow:hidden;">
 ${html}
+${pageTag}
 <script>lucide.createIcons();<\/script>
 </body></html>`;
+}
+
+/** Lightweight srcDoc for thumbnails — no external fonts/CDN to avoid N×120 woff2 requests */
+export function thumbSrcDoc(html: string) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>body{font-family:'Segoe UI','Hiragino Sans',system-ui,sans-serif;margin:0;overflow:hidden;}svg{display:none;}</style>
+</head><body>${html}</body></html>`;
 }
 
 export function failedSlideHtml(title: string, errorMsg: string) {

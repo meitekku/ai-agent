@@ -649,7 +649,7 @@ export function ProposalPanel({ onOpenSlidePanel }: ProposalPanelProps) {
             <div>
               <h3 className="mb-2 font-medium text-sm">スライドスタイル設定</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                提案書のスタイルを選択してください。CRM データから自動推定されています。
+                色・フォントを選択し、必要に応じてカスタム指示を追加してください。
               </p>
             </div>
             <StyleOptionsPanel

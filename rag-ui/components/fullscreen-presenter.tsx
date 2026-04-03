@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface FullscreenPresenterProps {
@@ -21,6 +21,15 @@ export function FullscreenPresenter({
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const total = slides.length;
+
+  // Responsive scale that updates on resize
+  const [windowSize, setWindowSize] = useState({ w: typeof window !== "undefined" ? window.innerWidth : 1280, h: typeof window !== "undefined" ? window.innerHeight : 720 });
+  useEffect(() => {
+    const onResize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const slideScale = useMemo(() => Math.min(windowSize.w / 1280, windowSize.h / 720), [windowSize]);
 
   const resetHideTimer = useCallback(() => {
     setShowHud(true);
@@ -129,9 +138,7 @@ export function FullscreenPresenter({
           style={{
             width: 1280,
             height: 720,
-            maxWidth: "100vw",
-            maxHeight: "100vh",
-            transform: `scale(${Math.min(window.innerWidth / 1280, window.innerHeight / 720)})`,
+            transform: `scale(${slideScale})`,
             transformOrigin: "center center",
           }}
           tabIndex={-1}

@@ -130,6 +130,27 @@ export function updateSessionAnalysis(
   return !!session;
 }
 
+export function updateSessionFull(
+  key: string,
+  analysis: Record<string, unknown>,
+  additionalContext: string,
+): void {
+  const session = cache.get(key);
+  if (session) {
+    session.analysis = analysis;
+    session.additionalContext = additionalContext;
+  }
+
+  ensureTable()
+    .then(() =>
+      getPool().query(
+        `UPDATE proposal_sessions SET analysis = $2::jsonb, additional_context = $3 WHERE key = $1`,
+        [key, JSON.stringify(analysis), additionalContext],
+      ),
+    )
+    .catch((err) => console.error("[proposal-session] DB update failed:", err));
+}
+
 export function updateSessionUI(
   key: string,
   phase: string,

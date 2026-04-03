@@ -1019,12 +1019,12 @@ export const ChatMessage = memo(function ChatMessage({
               return null;
           }
         })}
-        {/* Inline proposal button after fetchAndAnalyze result */}
+        {/* Inline proposal button after analyzeDeal / fetchAndAnalyze result */}
         {message.role === "assistant" && !isActiveStreaming && onOpenProposal && (() => {
           for (const part of message.parts) {
             if (!isToolUIPart(part) || part.state !== "output-available") continue;
             const tn = getToolName(part);
-            if (tn !== "fetchAndAnalyze") continue;
+            if (tn !== "analyzeDeal" && tn !== "fetchAndAnalyze") continue;
             const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
             if (typeof result?.sessionKey === "string" && !result?.error) {
               const sk = result.sessionKey as string;

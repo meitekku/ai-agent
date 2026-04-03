@@ -567,6 +567,10 @@ export function buildPlanPrompt(
       parts.push(
         `- フォント: ${styleOptions.font}（デザイン指示にこのフォントファミリーを指定）`,
       );
+    if (styleOptions.customInstructions)
+      parts.push(
+        `- カスタム指示: ${styleOptions.customInstructions}`,
+      );
     if (parts.length > 0)
       styleInstruction = `\n## スタイル指定（必ず全スライドに反映すること）\n${parts.join("\n")}\n`;
   }
@@ -737,6 +741,17 @@ const VISUAL_DIRECTIVE_MAP: Record<string, string> = {
   list: "必ずCSS Grid カードレイアウト（各カードにSVGアイコン＋色付きボーダー＋タイトル＋説明）を使用すること。単純な箇条書きは禁止。",
 };
 
+const RENDER_COLOR_MAP: Record<string, { dark: string; light: string; bg: string }> = {
+  ブルー: { dark: "#1E3A5F", light: "#3B82F6", bg: "#F0F7FF" },
+  グリーン: { dark: "#064E3B", light: "#10B981", bg: "#ECFDF5" },
+  ピンク: { dark: "#831843", light: "#EC4899", bg: "#FDF2F8" },
+  イエロー: { dark: "#713F12", light: "#F59E0B", bg: "#FFFBEB" },
+  パープル: { dark: "#4C1D95", light: "#8B5CF6", bg: "#F5F3FF" },
+  レッド: { dark: "#7F1D1D", light: "#EF4444", bg: "#FEF2F2" },
+  モノクロ: { dark: "#1F2937", light: "#6B7280", bg: "#F9FAFB" },
+  ダーク: { dark: "#0F172A", light: "#334155", bg: "#1E293B" },
+};
+
 export function buildRenderPrompt(
   slideSection: string,
   slideTitle: string,
@@ -750,6 +765,7 @@ export function buildRenderPrompt(
   const layout = extractPlanField(slideSection, "レイアウト") || "split-screen";
   const design = extractPlanField(slideSection, "デザイン");
   const visual = extractPlanField(slideSection, "ビジュアル要素");
+  const colors = RENDER_COLOR_MAP[styleOptions?.colorStyle || ""] || RENDER_COLOR_MAP["ブルー"];
 
   // If no text elements, use non-metadata lines
   const effectiveTexts =
@@ -831,6 +847,8 @@ export function buildRenderPrompt(
       );
     if (styleOptions.font)
       parts.push(`- フォント: ${styleOptions.font}（font-familyに指定）`);
+    if (styleOptions.customInstructions)
+      parts.push(`- カスタム指示: ${styleOptions.customInstructions}`);
     if (parts.length > 0)
       styleSection = `\n【スタイル指定】\n${parts.join("\n")}\n`;
   }
@@ -849,10 +867,10 @@ export function buildRenderPrompt(
 【デッキ全体のデザイン統一ルール（最重要）】
 このスライドは ${totalSlides} 枚のデッキの ${slideIndex + 1} 枚目です。
 デッキ全体で以下を統一してください：
-- **配色**: ${design || (styleOptions?.colorStyle ? `メインカラー #${styleOptions.colorStyle}` : "白背景、アクセント#3B82F6")} — 全スライドで同じ配色を使用
-- **ヘッダー**: 全ページ同じ位置・同じスタイルのヘッダー帯を使用${styleOptions?.colorStyle ? `（背景色: #${styleOptions.colorStyle}）` : ""}
+- **配色**: ${design || `メインカラー ${colors.light}、ダーク ${colors.dark}、背景 ${colors.bg}`} — 全スライドでこの配色を厳守
+- **ヘッダー**: 全ページ同じ位置・同じスタイルのヘッダー帯を使用（背景色: ${colors.dark}、文字: #FFFFFF）
 - **フォント**: ${styleOptions?.font || "'Noto Sans JP', 'Inter', sans-serif"} — 全スライド共通
-- **レイアウト基盤**: ヘッダー帯（上部）+ コンテンツ領域（中央）+ ページ番号（右下 ${slideIndex + 1}/${totalSlides}）
+- **レイアウト基盤**: ヘッダー帯（上部）+ コンテンツ領域（中央）。ページ番号は自動付与されるので生成しないこと
 - **ステップ/番号表記**: 「Step3」のように途中の番号だけを使わないこと。このスライドで連番を使う場合は、このスライド内で完結する連番にする（例: 1, 2, 3）
 ${styleSection}
 【ビジュアルデザイン指示】（CSS/HTMLに反映。テキストとして表示しないこと）
@@ -870,7 +888,7 @@ ${textList}
 5. SVGアイコン、CSSグラデーション、カード、テーブル等のビジュアル要素を積極的に使う
 6. 単にテキストを羅列するだけのスライドは絶対に作らない
 7. 全タグを閉じ、出力の最後は必ず </div> にする
-8. ページ番号を右下に小さく表示: ${slideIndex + 1} / ${totalSlides}
+8. ページ番号は生成しないこと（システムが自動付与する）
 ${exampleHtml}
 ━━━ 出力（<div>のみ） ━━━`;
 }

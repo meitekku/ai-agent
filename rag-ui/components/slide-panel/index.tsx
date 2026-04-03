@@ -867,12 +867,13 @@ export function SlidePanel() {
   // Fullscreen presenter (shared between expanded and panel modes)
   const fullscreenPresenter = fullscreen && phase === "done" && (
     <FullscreenPresenter
-      slides={generatedSlides
-        .filter((s) => !s.failed)
-        .map((s) => ({
-          html: slideSrcDoc(s.html),
+      slides={(() => {
+        const valid = generatedSlides.filter((s) => !s.failed);
+        return valid.map((s, i) => ({
+          html: slideSrcDoc(s.html, i + 1, valid.length),
           title: s.title,
-        }))}
+        }));
+      })()}
       initialIndex={Math.min(
         activeIndex,
         generatedSlides.filter((s) => !s.failed).length - 1,

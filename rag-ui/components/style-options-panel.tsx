@@ -10,6 +10,7 @@ export interface StyleOptions {
   ageGroup?: string;
   colorStyle?: string;
   font?: string;
+  customInstructions?: string;
 }
 
 // ============================================================
@@ -479,6 +480,11 @@ export function inferStyleFromContent(
 // Component
 // ============================================================
 
+// Visible categories in the simplified panel (color + font only)
+const VISIBLE_CATEGORIES: CategoryDef[] = CATEGORIES.filter(
+  (c) => c.key === "colorStyle" || c.key === "font",
+);
+
 interface StyleOptionsPanelProps {
   value: StyleOptions;
   onChange: (value: StyleOptions) => void;
@@ -493,47 +499,16 @@ export function StyleOptionsPanel({
   defaultExpanded = false,
 }: StyleOptionsPanelProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  // Track which categories have "その他" selected (by key)
-  const [otherTexts, setOtherTexts] = useState<Record<string, string>>({});
 
-  const hasValues = !!(
-    value.industry ||
-    value.profession ||
-    value.ageGroup ||
-    value.colorStyle ||
-    value.font
-  );
-
-  const isOtherSelected = (cat: CategoryDef): boolean => {
-    const v = value[cat.key];
-    if (!v) return false;
-    return !cat.options.includes(v);
-  };
+  const hasValues = !!(value.colorStyle || value.font || value.customInstructions);
 
   const handleSelect = (cat: CategoryDef, option: string) => {
     const current = value[cat.key];
-    // Toggle off if already selected
     if (current === option) {
       onChange({ ...value, [cat.key]: undefined });
     } else {
       onChange({ ...value, [cat.key]: option });
     }
-  };
-
-  const handleOtherToggle = (cat: CategoryDef) => {
-    if (isOtherSelected(cat)) {
-      // Deselect other
-      onChange({ ...value, [cat.key]: undefined });
-    } else {
-      // Select other with existing text or empty
-      const text = otherTexts[cat.key] || "";
-      onChange({ ...value, [cat.key]: text || undefined });
-    }
-  };
-
-  const handleOtherTextChange = (cat: CategoryDef, text: string) => {
-    setOtherTexts((prev) => ({ ...prev, [cat.key]: text }));
-    onChange({ ...value, [cat.key]: text || undefined });
   };
 
   return (
@@ -554,10 +529,8 @@ export function StyleOptionsPanel({
 
       {expanded && (
         <div className="mt-2 p-3 bg-secondary/30 border border-border/50 rounded-lg space-y-3 animate-fade-in">
-          {CATEGORIES.map((cat) => {
+          {VISIBLE_CATEGORIES.map((cat) => {
             const selected = value[cat.key];
-            const otherActive = isOtherSelected(cat);
-
             return (
               <div key={cat.key} className="space-y-1">
                 <span className="text-[10px] text-muted-foreground font-medium">
@@ -578,44 +551,29 @@ export function StyleOptionsPanel({
                       {opt}
                     </button>
                   ))}
-                  {cat.hasOther && (
-                    <>
-                      <button
-                        onClick={() => handleOtherToggle(cat)}
-                        className={cn(
-                          "px-2 py-0.5 text-[11px] rounded-md border transition-colors whitespace-nowrap",
-                          otherActive
-                            ? "bg-primary/15 text-primary border-primary/30 font-medium"
-                            : "bg-card text-foreground/85 border-border hover:border-primary/30 hover:text-foreground",
-                        )}
-                      >
-                        その他
-                      </button>
-                      <input
-                        type="text"
-                        disabled={!otherActive}
-                        value={
-                          otherActive
-                            ? (otherTexts[cat.key] ?? selected ?? "")
-                            : ""
-                        }
-                        onChange={(e) =>
-                          handleOtherTextChange(cat, e.target.value)
-                        }
-                        placeholder="入力..."
-                        className={cn(
-                          "w-24 px-1.5 py-0.5 text-[11px] border rounded-md transition-colors",
-                          otherActive
-                            ? "bg-card border-primary/30 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-                            : "bg-secondary/50 border-border text-foreground/25 cursor-not-allowed",
-                        )}
-                      />
-                    </>
-                  )}
                 </div>
               </div>
             );
           })}
+
+          {/* Free-text custom instructions */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-muted-foreground font-medium">
+              カスタム指示（任意）
+            </span>
+            <textarea
+              value={value.customInstructions || ""}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  customInstructions: e.target.value || undefined,
+                })
+              }
+              placeholder="例: シンプルで洗練されたデザイン、グラフを多めに、競合比較スライドを入れて..."
+              rows={3}
+              className="w-full px-2 py-1.5 text-[11px] border border-border rounded-md bg-card text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+            />
+          </div>
         </div>
       )}
     </div>

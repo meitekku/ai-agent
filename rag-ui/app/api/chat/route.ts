@@ -2,6 +2,7 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  generateObject,
   generateText,
   smoothStream,
   stepCountIs,
@@ -34,7 +35,8 @@ import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
 import { saveMessages, updateConversation } from "@/lib/chat-db";
-import { storeSession, getSession, updateSessionAnalysis } from "@/lib/proposal-session";
+import { storeSession, getSession, updateSessionAnalysis, updateSessionFull } from "@/lib/proposal-session";
+import { DealAnalysisSchema, buildAnalysisPrompt } from "@/lib/analysis-schema";
 import {
   getSlideDeckDetail,
   updateSlideAndVersion,
@@ -243,7 +245,7 @@ function buildSystemPrompt(
 
   // generateSlides ツール説明
   prompt += `
-- **generateSlides**: 商談・提案書・CRM に関係ない一般的なスライド作成依頼の場合のみ使用（例: 「機械学習の解説スライドを作って」「チーム紹介スライドを作って」）。CRM の商談データや提案書が関係する場合は必ず fetchAndAnalyze ワークフローを使うこと。
+- **generateSlides**: 商談・提案書・CRM に関係ない一般的なスライド作成依頼の場合のみ使用（例: 「機械学習の解説スライドを作って」「チーム紹介スライドを作って」）。CRM の商談データや提案書が関係する場合は必ず fetchDealData → analyzeDeal ワークフローを使うこと。
   ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。
 - **suggestSlides**: 回答がスライド化に適している場合（解説・分析・比較・手順など構造化された内容）に呼び出す。短い挨拶・雑談・簡単な回答では不要。テキスト回答と同じステップで呼び出すこと。`;
 
@@ -270,26 +272,29 @@ function buildSystemPrompt(
 
 ### ツール一覧
 - **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得
-- **fetchAndAnalyze**: 商談データ取得 + KB全検索 + Web検索 + AI分析を一括実行。CRM指定時は dealId、手動入力時は manualInput を渡す。完了すると提案書パネルが自動的に開く
+- **fetchDealData**: CRM から商談データを取得（取得のみ、分析は別ステップ）。dataKey を返す
+- **analyzeDeal**: 商談データを AI で分析。fetchDealData の dataKey + 追加コンテキストを渡す。完了すると提案書パネルが自動で開く
 - **reviseRationale**: ユーザーのフィードバックで分析根拠を修正。sessionKey + feedback を渡す
 
-### ワークフロー（必須遵守）
+### ワークフロー
 「商談」「案件」「CRM」「提案」「分析」等のキーワードでこのワークフローを開始する。
 
-**パターン A: CRM データ源あり**
-1. listDeals で商談一覧を取得・表形式で表示。「どの商談を分析しますか？」と聞く
-2. ユーザーが選択したら fetchAndAnalyze(source, dealId) を呼ぶ（KB/Web検索・分析は自動実行）
-3. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
+**基本フロー**: fetchDealData → **情報収集** → analyzeDeal
+- CRM データ源あり: listDeals で一覧表示 → ユーザーが選択 → fetchDealData(source, dealId)
+- 手動入力: fetchDealData(source:"manual", manualInput:{...})
 
-**パターン B: 手動入力**
-ユーザーが「山田製造の商談を分析して」等と直接説明した場合：
-1. fetchAndAnalyze(source:"manual", manualInput:{ companyName, industry, dealName, challenges, ... }) を呼ぶ
-2. 分析結果の要点を簡潔に提示（提案書パネルは自動で開く）
+**情報収集（fetchDealData と analyzeDeal の間）**:
+fetchDealData でデータを取得したら、analyzeDeal を呼ぶ前に**あらゆるツールを駆使して情報を集める**こと。集めた情報が多いほど分析と提案の質が上がる。遠慮せず何度でもツールを呼ぶ:
+- searchKnowledgeBase: 会社名・業界・案件名・課題キーワードで社内 KB を検索。複数の KB があれば複数検索する
+- webSearch + readPage: 顧客企業の最新ニュース・DX 戦略・競合情報・業界動向を調査。サマリーで終わらず、関連性の高い URL は readPage で全文取得する
+- loadSkill: 顧客の業界や課題に関連するスキルがあれば読み込んで活用する
+- 複数ラウンド: 1回の検索で足りなければキーワードや言語を変えて追加検索する。検索回数に制限はない
 
-**重要ルール**:
-- fetchAndAnalyze 完了後も、追加で searchKnowledgeBase / webSearch を呼んで情報を補強してよい。多くの情報源を活用するほど分析の質が上がる
-- fetchAndAnalyze 完了後、提案書スライドは右側の ProposalPanel で生成される（自動で開く）。**generateSlides は絶対に呼ばない**こと（ProposalPanel と機能が重複するため）
-- ユーザーが「提案書を作って」「スライドを作って」「プレゼン資料を作って」等と依頼した場合も、**generateSlides ではなく fetchAndAnalyze ワークフロー**（listDeals → fetchAndAnalyze）を使う。提案書・スライド生成は常にこのワークフロー経由で行う
+analyzeDeal の additionalContext には、収集した情報の要点をまとめて渡す。
+
+**禁止事項**:
+- analyzeDeal 完了後、提案書スライドは ProposalPanel で自動生成される。**generateSlides は絶対に呼ばない**
+- 「提案書を作って」「スライドを作って」等の依頼も fetchDealData → analyzeDeal ワークフローを使う
 
 **データソース分離（必須）**:
 - Salesforce の商談を分析する場合、Kintone のデータ（モックデータ含む）を混ぜてはいけない。逆も同様
@@ -298,11 +303,11 @@ function buildSystemPrompt(
 - ユーザーが明示的に「Kintone のデータも見て」「Salesforce も参照して」等と指示した場合のみ、両方を併用してよい
 
 ### 分析結果の提示方法
-fetchAndAnalyze 完了後、分析結果をユーザーに提示する際は以下を心がける：
+analyzeDeal 完了後、分析結果をユーザーに提示する際は以下を心がける：
 - **KPI（受注確率・健全度・推薦サービス比較など）は show-widget を使って視覚的に表示**する。例: ゲージチャート、レーダーチャート、比較カード
 - テキストによる要点解説（課題分析・推奨アクション・ROI 試算）は通常の Markdown で記述
 - 「提案書パネルが右側に開いています」と案内し、スライド生成を促す
-- **fetchAndAnalyze 完了後にユーザーが「スライド生成して」「詳細なスライドを」等と依頼した場合**: suggestSlides や generateSlides を呼ばないこと。「右側の提案書パネルからスライドを生成できます。パネルの『次へ』ボタンを進めてください」とテキストで案内するだけでよい`;
+- **analyzeDeal 完了後にユーザーが「スライド生成して」「詳細なスライドを」等と依頼した場合**: suggestSlides や generateSlides を呼ばないこと。「右側の提案書パネルからスライドを生成できます。パネルの『次へ』ボタンを進めてください」とテキストで案内するだけでよい`;
   }
 
   // 情報の信頼度ヒエラルキー
@@ -796,7 +801,7 @@ export async function POST(req: Request) {
   tools.generateSlides = tool({
     description:
       "商談・提案書・CRM に関係ない一般的なプレゼンテーションスライドを生成します。" +
-      "提案書やCRM関連のスライドには使用しないでください（fetchAndAnalyze ワークフローを使うこと）。",
+      "提案書やCRM関連のスライドには使用しないでください（fetchDealData → analyzeDeal ワークフローを使うこと）。",
     inputSchema: z.object({
       topic: z.string().describe("スライドのテーマ/タイトル"),
       content: z
@@ -1137,9 +1142,9 @@ export async function POST(req: Request) {
       },
     });
 
-    tools.fetchAndAnalyze = tool({
+    tools.fetchDealData = tool({
       description:
-        "商談データ取得 + KB全検索 + Web検索 + AI分析を一括実行します。CRM指定時は source + dealId、手動入力時は source:'manual' + manualInput を渡してください。",
+        "CRM から商談データを取得します（取得のみ、分析は analyzeDeal で別途実行）。CRM指定時は source + dealId、手動入力時は source:'manual' + manualInput を渡してください。",
       inputSchema: z.object({
         source: z
           .enum(["salesforce", "kintone", "manual"])
@@ -1167,11 +1172,10 @@ export async function POST(req: Request) {
       }),
       execute: async ({ source, dealId, objectType, manualInput }) => {
         console.log(
-          `[chat] 📊 fetchAndAnalyze: source=${source} dealId=${dealId || "manual"}`,
+          `[chat] 📊 fetchDealData: source=${source} dealId=${dealId || "manual"}`,
         );
         const t0 = Date.now();
         try {
-          // 1. SFData 取得
           let sfData: Record<string, unknown>;
           if (source === "manual") {
             if (!manualInput) {
@@ -1208,163 +1212,114 @@ export async function POST(req: Request) {
             const fetchResult = await fetchRes.json();
             if (fetchResult.error) return { error: fetchResult.error };
             sfData = fetchResult.data || fetchResult;
-            // Truncate large arrays
+            // Truncate large arrays for LLM context (full data preserved in session)
             const d = sfData as Record<string, unknown[]>;
             for (const key of ["activities", "emails", "feedItems", "events"]) {
               if (Array.isArray(d[key]) && d[key].length > 5)
                 d[key] = d[key].slice(0, 5);
             }
           }
-          console.log(`[chat] 📊 fetchAndAnalyze: data fetched (${Date.now() - t0}ms)`);
+          console.log(`[chat] 📊 fetchDealData: done (${Date.now() - t0}ms)`);
 
-          // 2+3. KB 全検索 + Web 検索を並列実行
-          const account = sfData.account as Record<string, unknown> | undefined;
-          const opp = sfData.opportunity as Record<string, unknown> | undefined;
+          // Store full data in session (analysis will be filled by analyzeDeal)
+          const dataKey = storeSession(sfData, {}, "");
 
-          const kbSearchPromise = (async (): Promise<string[]> => {
-            try {
-              const allKbs = await listKBs();
-              const kbsWithDocs = allKbs.filter((k) => k.doc_count > 0);
-              const searchQuery = [account?.Name, opp?.Name, account?.Industry, opp?.Description]
-                .filter(Boolean)
-                .join(" ");
-              if (!searchQuery || kbsWithDocs.length === 0) return [];
-              const kbResults = await Promise.allSettled(
-                kbsWithDocs.map((kb) =>
-                  searchOnly(searchQuery, { topK: 5, kb: kb.slug }),
-                ),
-              );
-              const parts: string[] = [];
-              for (let i = 0; i < kbResults.length; i++) {
-                const r = kbResults[i];
-                if (r.status === "fulfilled" && r.value.results?.length > 0) {
-                  const kbName = kbsWithDocs[i].name;
-                  const texts = r.value.results
-                    .map((doc: SearchResult) => doc.content)
-                    .filter(Boolean)
-                    .join("\n");
-                  if (texts) parts.push(`【${kbName}】\n${texts}`);
-                }
-              }
-              console.log(
-                `[chat] 📊 fetchAndAnalyze: KB search done, ${parts.length} KBs with results`,
-              );
-              return parts;
-            } catch (e) {
-              console.error("[chat] KB search failed:", e);
-              return [];
+          return { dataKey, data: sfData };
+        } catch (err) {
+          console.error(`[chat] ❌ fetchDealData failed:`, err);
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
+
+    tools.analyzeDeal = tool({
+      description:
+        "商談データを AI で分析します。fetchDealData で返された dataKey と、KB/Web 検索で得た追加コンテキストを渡してください。完了すると提案書パネルが自動で開きます。",
+      inputSchema: z.object({
+        dataKey: z.string().describe("fetchDealData で返された dataKey"),
+        additionalContext: z
+          .string()
+          .optional()
+          .describe("KB検索やウェブ検索で得た追加情報のサマリー"),
+      }),
+      execute: async ({ dataKey, additionalContext }) => {
+        console.log(`[chat] 📊 analyzeDeal: dataKey=${dataKey}`);
+        const t0 = Date.now();
+        try {
+          // 1. Retrieve full CRM data from session
+          const session = await getSession(dataKey);
+          if (!session) {
+            return { error: "データが見つかりません。fetchDealData を先に実行してください。" };
+          }
+          const sfData = session.data;
+
+          // 2. Fetch template service names (for proposal judgment)
+          let templateServices: string[] = [];
+          try {
+            const tplRes = await fetch(`${CRM_SERVICE_URL}/templates`);
+            if (tplRes.ok) {
+              const tpls = await tplRes.json();
+              templateServices = (Array.isArray(tpls) ? tpls : tpls.templates || [])
+                .map((t: { serviceName?: string }) => t.serviceName)
+                .filter(Boolean);
             }
-          })();
+          } catch {
+            // Templates are optional
+          }
 
-          const webSearchPromise = (async (): Promise<string[]> => {
-            if (!hasTavily) return [];
-            try {
-              const webQuery = [account?.Name, opp?.Name, account?.Industry]
-                .filter(Boolean)
-                .join(" ");
-              if (!webQuery) return [];
-              const webRes = await fetch("https://api.tavily.com/search", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${TAVILY_API_KEY}`,
-                },
-                body: JSON.stringify({
-                  query: webQuery,
-                  max_results: 3,
-                  search_depth: "basic",
-                  topic: "general",
-                  include_answer: true,
-                }),
-              });
-              if (!webRes.ok) return [];
-              const webData = await webRes.json();
-              const webTexts = (webData.results ?? [])
-                .map(
-                  (r: { title: string; url: string; content: string }) =>
-                    `${r.title}: ${r.content}`,
-                )
-                .join("\n");
-              console.log("[chat] 📊 fetchAndAnalyze: Web search done");
-              return webTexts ? [`【ウェブ検索】\n${webTexts}`] : [];
-            } catch (e) {
-              console.error("[chat] Web search failed:", e);
-              return [];
-            }
-          })();
-
-          const [kbParts, webParts] = await Promise.all([kbSearchPromise, webSearchPromise]);
-
-          // 4. additionalContext 結合
-          const additionalContext = [...kbParts, ...webParts].join("\n\n");
-
-          // 5. analyzeDeal (with fallback — never block proposal panel)
+          // 3. AI analysis via generateObject
           let analysisData: Record<string, unknown>;
           try {
-            const analyzeRes = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                data: sfData,
-                additionalContext: additionalContext || undefined,
-                model: modelOverride || undefined,
-              }),
+            const prompt = buildAnalysisPrompt(
+              sfData as unknown as Parameters<typeof buildAnalysisPrompt>[0],
+              additionalContext || undefined,
+              templateServices.length > 0 ? templateServices : undefined,
+            );
+            const result = await generateObject({
+              model: getChatModel(modelOverride),
+              schema: DealAnalysisSchema,
+              prompt,
+              temperature: 0.3,
             });
-            const analyzeRaw = await analyzeRes.json();
-            if (analyzeRaw.error) {
-              console.error(`[chat] ⚠️ fetchAndAnalyze: analyze returned error, using fallback:`, analyzeRaw.error);
-              analysisData = {
-                winProbability: 50,
-                dealHealthScore: 50,
-                proposalReadiness: 50,
-                keyDrivers: ["分析サービスに一時的な問題が発生しました"],
-                riskFactors: [],
-                rationale: {
-                  customerChallenges: [],
-                  serviceRecommendations: [],
-                  combinedSolution: "",
-                  existingProposalHints: [],
-                },
-              };
-            } else {
-              // crm-service returns { analysis: { ...scores, rationale } } — unwrap
-              analysisData = (analyzeRaw.analysis ?? analyzeRaw) as Record<string, unknown>;
-            }
+            analysisData = result.object as unknown as Record<string, unknown>;
           } catch (analyzeErr) {
-            console.error(`[chat] ⚠️ fetchAndAnalyze: analyze call failed, using fallback:`, analyzeErr);
+            console.error(`[chat] ⚠️ analyzeDeal: generateObject failed, using fallback:`, analyzeErr);
             analysisData = {
               winProbability: 50,
               dealHealthScore: 50,
               proposalReadiness: 50,
-              keyDrivers: ["分析サービスに接続できませんでした"],
-              riskFactors: [],
+              activityScore: 0,
+              engagementLevel: "—",
+              keyDrivers: ["AI分析に一時的な問題が発生しました"],
+              riskFactors: ["分析データが不完全な可能性があります"],
+              recommendedActions: ["再度分析を実行してください"],
+              scenarios: {
+                optimistic: { label: "楽観シナリオ", probability: 70, expectedRevenue: 0, timeline: "未定", conditions: [] },
+                base: { label: "標準シナリオ", probability: 50, expectedRevenue: 0, timeline: "未定", conditions: [] },
+                pessimistic: { label: "悲観シナリオ", probability: 25, expectedRevenue: 0, timeline: "未定", conditions: [] },
+              },
               rationale: {
                 customerChallenges: [],
                 serviceRecommendations: [],
                 combinedSolution: "",
                 existingProposalHints: [],
+                proposalJudgment: "dx_development",
+                proposalJudgmentReason: "AI分析の実行に失敗したため、デフォルト判定です。",
               },
             };
           }
-          console.log(
-            `[chat] 📊 fetchAndAnalyze: analysis done (total ${Date.now() - t0}ms)`,
-          );
 
-          // 6. セッション保存
-          const sessionKey = storeSession(
-            sfData,
-            analysisData,
-            additionalContext,
-          );
+          // 4. Update session with analysis
+          updateSessionFull(dataKey, analysisData, additionalContext || "");
+          console.log(`[chat] 📊 analyzeDeal: done (${Date.now() - t0}ms)`);
 
-          // 7. 全量返却
+          // 5. Return sessionKey to trigger ProposalPanel
           return {
-            sessionKey,
-            data: sfData,
+            sessionKey: dataKey,
             analysis: analysisData,
           };
         } catch (err) {
-          console.error(`[chat] ❌ fetchAndAnalyze failed:`, err);
+          console.error(`[chat] ❌ analyzeDeal failed:`, err);
           return { error: err instanceof Error ? err.message : String(err) };
         }
       },
@@ -1372,9 +1327,9 @@ export async function POST(req: Request) {
 
     tools.reviseRationale = tool({
       description:
-        "ユーザーのフィードバックに基づいて分析根拠を修正します。fetchAndAnalyze の sessionKey + フィードバックを渡してください。",
+        "ユーザーのフィードバックに基づいて分析根拠を修正します。analyzeDeal の sessionKey + フィードバックを渡してください。",
       inputSchema: z.object({
-        sessionKey: z.string().describe("fetchAndAnalyze で返された sessionKey"),
+        sessionKey: z.string().describe("analyzeDeal で返された sessionKey"),
         feedback: z.string().describe("ユーザーからの修正フィードバック"),
       }),
       execute: async ({ sessionKey, feedback }) => {
@@ -1875,7 +1830,7 @@ ${op.instruction}
       model: chatModel,
       instructions: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
       tools,
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(15),
       maxOutputTokens: 8192,
       callOptionsSchema: skillCallOptionsSchema,
       prepareCall: ({ options, ...settings }) => ({
