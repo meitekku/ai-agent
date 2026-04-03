@@ -17,6 +17,7 @@ export type StyleOptions = {
   industry?: string;
   profession?: string;
   ageGroup?: string;
+  customInstructions?: string;
 };
 
 export type ContentHint = "statistics" | "list" | "comparison" | "flow";
