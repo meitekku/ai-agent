@@ -9,32 +9,49 @@
 - ローカル Docker (OrbStack): `localhost:4002` で動作確認可能
 - CRM: Salesforce のみ接続済み、Kintone は未設定
 
-## 未テスト項目
+## テスト済み項目
 
-### 1. Artifact サイドパネルの滑動アニメーション
+### 1. Artifact サイドパネルの滑動アニメーション — 確認済み (2026-04-05)
 - `components/artifact-panel.tsx` に `motion/react` の `AnimatePresence` + `motion.div` を追加済み
 - `AnimatedArtifactPanel` コンポーネントで slide-in/slide-out（width: 0→560px）
-- **要テスト**: 実際にアニメーションが動作するか確認。開く・閉じる両方
+- 面板は正常に開閉する。アニメーションは動作確認済み
 
-### 2. 提案書が artifact に入るか
+### 2. 提案書が artifact に入るか — 確認済み (2026-04-05)
 - system prompt に「提案書は必ず artifact(kind:"html") で作成、チャットに直接書くのは禁止」を追加済み
-- **要テスト**: 「山田製造株式会社の提案書を作って」等で artifact 侧边栏に HTML が生成されるか
-- 前回テスト時は AI が prompt を無視してチャットに直接書いた。prompt を強化したが未確認
+- テスト:「山田製造株式会社の提案書を作って」→ artifact 侧面パネルに HTML 提案書が正常生成
+- AI が CRM tool（Salesforce 商談一覧、KB 検索、Web 検索）を呼出し → artifact create で提案書 HTML 生成
 
-### 3. Kintone 未接続時の応答
+### 4. ファイル一覧ボタン — 修正済み (2026-04-05)
+
+**発見した 2 つのバグを修正:**
+
+**Bug 1: 多 tool グループで ArtifactCard が表示されない**
+- 原因: `chat-message.tsx` の `ToolGroup` で `ArtifactCard` は `tools.length === 1` の場合のみ表示。artifact tool が他の tool（searchKnowledgeBase、webSearch 等）と同じメッセージにある場合、summary + collapsible 表示になり `ToolCallIndicator` のみ表示
+- 追加の原因: tool result データが `result` ではなく `output` フィールドに格納されていた（`t.part.result ?? t.part.output` が必要）
+- 修正: 多 tool グループで artifact tool を分離し、折り畳み区域の外に `ArtifactCard` として常時表示
+
+**Bug 2: ファイル一覧で切替後 iframe 内容が更新されない**
+- 原因: `WidgetRendererInner` の `finalizedRef.current` が finalize 後 `true` のまま。artifact 切替で新 content が来ても `sendUpdate` と finalize `useEffect` が両方スキップ
+- 修正: `PanelContent` に `key={id}` を追加。artifact 切替時に React がコンポーネントを再マウントし、全 ref が自動リセット
+
+**変更ファイル:**
+- `components/chat-message.tsx`: 多 tool グループで ArtifactCard を分離表示 + `output` fallback
+- `components/artifact-panel.tsx`: `PanelContent` に `key={id}` 追加
+
+**テスト結果:**
+- 同一会話で複数 artifact 生成 → Files ボタンが表示 → クリックで一覧 → 切替で iframe 内容が正常更新
+- 会話復元時も ArtifactCard が正常表示、クリックで面板開放
+- 双方向切替（提案書 ↔ ダッシュボード）正常動作
+
+## 未対応項目
+
+### 3. Kintone 未接続時の応答 — 部分的に動作 (要 prompt 強化)
 - system prompt に「利用不可の CRM: Kintone — ツールを呼び出さないこと。別の CRM で代用してはいけない」を動的注入済み
 - `crm-service/src/routes/health.ts` に `/capabilities` エンドポイント追加済み
-- **要テスト**: 「Kintoneの商談一覧を見せて」→ AI がツールを呼ばずに「接続されていません」と返すか
-- 前回テスト時は AI が Salesforce にすり替えた。prompt をさらに強化したが未確認
+- テスト結果: AI は「Kintone は接続されていません」と正しく回答するが、続けて「Salesforce であれば接続されており…確認されますか？」と代替を提案してしまう
+- **要対応**: prompt をさらに強化し、代替 CRM の提案も禁止する
 
-### 4. ファイル一覧ボタン
-- `artifact-store.ts` に `artifactList` + `upsertArtifactListItem` を追加済み
-- `artifact-panel.tsx` に `ArtifactListDropdown`（Files アイコン）追加済み
-- `app/api/artifacts/route.ts` に `?list=true` パラメータ追加済み
-- `lib/artifact-db.ts` に `listArtifactsByConversation` 追加済み
-- **要テスト**: 同一会話で複数 artifact 生成 → Files ボタンが表示 → クリックで一覧 → 切替
-
-### 5. Starter prompt の更新
+### 5. Starter prompt の更新 — 未対応
 - トップ画面の「Kintone 商談デモ」ボタンが残っている
 - Kintone は未接続なのでこのボタンを押すと失敗する
 - **要対応**: ボタンを削除するか、Salesforce 版に変更するか、Kintone 接続時のみ表示する
@@ -68,6 +85,7 @@
 | `lib/artifact-db.ts` | DB schema + CRUD |
 | `lib/artifact-tool.ts` | Tool 工場（writer 経由で streaming） |
 | `lib/artifact-store.ts` | Zustand store（streaming + artifact list） |
-| `components/artifact-panel.tsx` | サイドパネル（アニメーション + ファイル一覧） |
+| `components/artifact-panel.tsx` | サイドパネル（アニメーション + ファイル一覧 + `key={id}` で切替対応） |
+| `components/chat-message.tsx` | ArtifactCard（多 tool グループ対応 + `output` fallback） |
 | `app/api/chat/route.ts` | streamText + CRM tools + artifact context injection |
 | `crm-service/src/routes/health.ts` | /capabilities エンドポイント |
