@@ -17,6 +17,7 @@ lightrag-service/data/
 # GCP Service Account keys
 *.sa.json
 gen-lang-client-*.json
+gcp-sa.json
 
 # OS
 .DS_Store

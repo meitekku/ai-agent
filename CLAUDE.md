@@ -112,5 +112,5 @@ git push origin main   # → Orange Pi へ自動デプロイ
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, slide_decks, slide_pages, slide_page_versions, slide_templates, skills, chat_conversations, chat_messages, chat_files, proposal_templates, crm_deal_cache, proposal_history, proposal_sessions, scheduled_tasks, task_executions, task_notifications）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, skills, chat_conversations, chat_messages, chat_files, artifacts, artifact_versions, scheduled_tasks, task_executions, task_notifications, ui_config）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。

@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { FileUIPart } from "ai";
 import { isToolUIPart, getToolName } from "ai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { nanoid } from "nanoid";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,17 +14,6 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
-import { SlideViewer } from "@/components/slide-viewer";
-import { VisualSlideViewer } from "@/components/visual-slide-viewer";
-import { HtmlSlideViewer } from "@/components/html-slide-viewer";
-import { SlideStudio } from "@/components/slide-studio";
-import { SlidePanel } from "@/components/slide-panel";
-import {
-  SlideSetupWizard,
-  type WizardConfig,
-} from "@/components/slide-setup-wizard";
-import type { SlideDeck } from "@/lib/slide-types";
-import { AnimatePresence, motion } from "motion/react";
 import {
   BookOpenIcon,
   AlertCircleIcon,
@@ -41,12 +30,16 @@ import {
   SuggestionCards,
 } from "@/components/ai-elements/suggestion";
 import { useChatSettingsStore } from "@/lib/store";
-import { useSlideStore } from "@/lib/slide-store";
-import { useSlidePanelStore } from "@/lib/slide-panel-store";
 import { useChatTreeStore } from "@/lib/chat-tree";
-import { useProposalPanelStore } from "@/lib/proposal-panel-store";
-import { ProposalPanel } from "@/components/proposal-panel";
+import { useArtifactStore } from "@/lib/artifact-store";
+import dynamic from "next/dynamic";
 import type { MessageRow, ConversationRow } from "@/lib/chat-db";
+
+const AnimatedArtifactPanel = dynamic(
+  () =>
+    import("@/components/artifact-panel").then((m) => m.AnimatedArtifactPanel),
+  { ssr: false },
+);
 
 // ---------------------------------------------------------------------------
 // Hoisted static elements
@@ -134,6 +127,10 @@ export interface ChatPageProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function ArtifactPanelWrapper() {
+  return <AnimatedArtifactPanel />;
+}
+
 function getClientTime(): string {
   return new Date().toLocaleString(undefined, {
     year: "numeric",
@@ -211,7 +208,86 @@ export function ChatPage({
   } = useChat({
     id: initialConvId ?? "new-chat",
     experimental_throttle: 50,
+    onData: (part: any) => {
+      if (part?.type === "data-artifact") {
+        const { event, ...data } = part.data ?? {};
+        if (event === "create") {
+          useArtifactStore.getState().openArtifact(data);
+          useArtifactStore.getState().upsertArtifactListItem({
+            id: data.id,
+            title: data.title,
+            kind: data.kind,
+            currentVersion: data.version,
+          });
+        } else if (event === "update" || event === "rewrite") {
+          useArtifactStore.getState().updateArtifact({ ...data, command: event });
+          if (data.id) {
+            useArtifactStore.getState().upsertArtifactListItem({
+              id: data.id,
+              title: data.title || useArtifactStore.getState().title,
+              kind: data.kind || useArtifactStore.getState().kind,
+              currentVersion: data.version,
+            });
+          }
+        }
+      }
+    },
   });
+
+  // Restore artifact panel + artifact list for existing conversations
+  useEffect(() => {
+    useArtifactStore.getState().reset();
+    if (!initialConvId) return;
+    const controller = new AbortController();
+    // Fetch latest artifact (for panel restore) and all artifacts (for list)
+    Promise.all([
+      fetch(`/api/artifacts?conversationId=${initialConvId}`, {
+        signal: controller.signal,
+      }).then((r) => (r.ok ? r.json() : null)),
+      fetch(
+        `/api/artifacts?conversationId=${initialConvId}&list=true`,
+        { signal: controller.signal },
+      ).then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([latest, list]) => {
+        if (controller.signal.aborted) return;
+        if (Array.isArray(list) && list.length > 0) {
+          useArtifactStore.getState().setArtifactList(list);
+        }
+        // Don't auto-open panel on conversation restore — just load the list
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [initialConvId]);
+
+  // Stream artifact content progressively as the LLM generates tool input
+  useEffect(() => {
+    if (status !== "streaming") {
+      // When streaming ends, finalize
+      if (useArtifactStore.getState().isStreaming) {
+        useArtifactStore.getState().finalizeStreaming();
+      }
+      return;
+    }
+    // Scan the last assistant message for artifact tool in partial-call state
+    const lastMsg = messages.findLast((m) => m.role === "assistant");
+    if (!lastMsg) return;
+    for (const part of lastMsg.parts) {
+      if (!isToolUIPart(part)) continue;
+      if (getToolName(part) !== "artifact") continue;
+      if (part.state === "input-streaming") {
+        const input = (part as any).input as Record<string, unknown> | undefined;
+        if (input?.content && typeof input.content === "string" && input.content.length > 20) {
+          useArtifactStore.getState().setStreaming({
+            title: typeof input.title === "string" ? input.title : undefined,
+            kind: typeof input.kind === "string" ? input.kind : undefined,
+            language: typeof input.language === "string" ? input.language : undefined,
+            content: input.content,
+          });
+        }
+      }
+    }
+  }, [messages, status]);
 
   // Load initial data into tree AND sync to useChat
   useEffect(() => {
@@ -275,16 +351,6 @@ export function ChatPage({
     stoppedRef.current = true;
     stop();
   }, [stop]);
-
-  // Slide panel (declared early so effects can reference it)
-  const openSlidePanel = useSlidePanelStore((s) => s.openPanel);
-  const openDeck = useSlidePanelStore((s) => s.openDeck);
-  const conversationDeckId = useSlidePanelStore((s) => s.conversationDeckId);
-
-  // Refs for slide tool detection (must be before both effects that use them)
-  const sessionActiveRef = useRef(false);
-  // Track processed tool call IDs to avoid re-triggering auto-open
-  const processedToolCallIdsRef = useRef(new Set<string>());
 
   // Sync tree store & UI when streaming finishes (DB save is now server-side)
   const prevStatusRef = useRef(status);
@@ -373,106 +439,6 @@ export function ChatPage({
       .catch((e) => console.error("[chat-page] save failed:", e));
   }, [status, messages, treeStore, queryClient]);
 
-  // Close panels and save/restore slide state on chat navigation (remount)
-  useEffect(() => {
-    useSlidePanelStore.getState().closePanel();
-    useProposalPanelStore.getState().close();
-    if (initialConvId) {
-      useSlidePanelStore.getState().restoreForConversation(initialConvId);
-      // If no in-memory state was restored, check DB for associated deck
-      const restored = useSlidePanelStore.getState();
-      if (!restored.conversationDeckId && !restored.deckId) {
-        import("@/lib/slide-api").then(({ fetchDeckIdForConversation }) =>
-          fetchDeckIdForConversation(initialConvId).then((deckId) => {
-            if (deckId) {
-              useSlidePanelStore.getState().setConversationDeckId(deckId);
-            }
-          }),
-        );
-      }
-    } else {
-      useSlidePanelStore.getState().resetPanel();
-    }
-    return () => {
-      const convId = convIdRef.current;
-      if (convId) useSlidePanelStore.getState().saveForConversation(convId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Detect generateSlides / fetchAndAnalyze / reviseSlides tool results
-  const openProposal = useProposalPanelStore((s) => s.open);
-  const proposalOpen = useProposalPanelStore((s) => s.isOpen);
-  const slidePanelOpen = useSlidePanelStore((s) => s.open);
-  const closeSlidePanelFn = useSlidePanelStore((s) => s.closePanel);
-  const triggerRefresh = useSlidePanelStore((s) => s.triggerRefresh);
-  useEffect(() => {
-    if (!sessionActiveRef.current) return;
-    if (status !== "ready") return;
-
-    // Scan all assistant messages for tool results.
-    // Uses processedToolCallIdsRef to deduplicate — resilient to throttle delays
-    // where status and messages may update in separate render batches.
-    const assistants = messages.filter((m) => m.role === "assistant");
-
-    for (let ai = assistants.length - 1; ai >= 0; ai--) {
-      for (const part of assistants[ai].parts) {
-        if (!isToolUIPart(part) || part.state !== "output-available") continue;
-        const callId =
-          "toolCallId" in part
-            ? ((part as Record<string, unknown>).toolCallId as string)
-            : "";
-        if (callId && processedToolCallIdsRef.current.has(callId)) continue;
-
-        const toolName = getToolName(part);
-        const result = (("result" in part ? part.result : part.output) ??
-          {}) as Record<string, unknown>;
-
-        // analyzeDeal (or legacy fetchAndAnalyze) has priority — if found, skip generateSlides
-        if (
-          (toolName === "analyzeDeal" || toolName === "fetchAndAnalyze") &&
-          typeof result?.sessionKey === "string" &&
-          !result?.error
-        ) {
-          if (callId) processedToolCallIdsRef.current.add(callId);
-          const sk = result.sessionKey as string;
-          if (slidePanelOpen) closeSlidePanelFn();
-          openProposal(sk);
-          return;
-        }
-
-        if (toolName === "generateSlides" && result?.triggered) {
-          if (callId) processedToolCallIdsRef.current.add(callId);
-          setWizardData({
-            topic: (result.topic as string) ?? "",
-            content: (result.content as string) ?? "",
-            instructions: (result.instructions as string | null) ?? null,
-          });
-          return;
-        }
-
-        // reviseSlides: trigger panel refresh
-        if (toolName === "reviseSlides" && result?.success) {
-          if (callId) processedToolCallIdsRef.current.add(callId);
-          triggerRefresh();
-          // Open slide panel if it's not already open
-          if (!slidePanelOpen && typeof result.deckId === "number") {
-            openDeck(result.deckId as number);
-          }
-          return;
-        }
-      }
-    }
-  }, [
-    status,
-    messages,
-    openProposal,
-    slidePanelOpen,
-    closeSlidePanelFn,
-    triggerRefresh,
-    openDeck,
-  ]);
-
   // Create conversation on first send
   const ensureConversation = useCallback(
     async (firstText: string) => {
@@ -508,33 +474,14 @@ export function ChatPage({
     [queryClient, activeKb, chatModel, thinking],
   );
 
-  // Build slides summary for context injection
-  const cachedSlides = useSlidePanelStore((s) => s.cachedSlides);
-  const cachedDeckTitle = useSlidePanelStore((s) => s.cachedDeckTitle);
-
   const handleSend = useCallback(
     async (text: string, files?: FileUIPart[]) => {
-      sessionActiveRef.current = true;
-
       await ensureConversation(text || "ファイル添付");
 
       // Track parent for the new user message
       const currentLeaf = treeStore.activeLeafId;
       pendingParentRef.current = currentLeaf;
       knownCountRef.current = messages.length;
-
-      // Build slide context if deck is active
-      let deckId: number | undefined;
-      let slidesSummary: string | undefined;
-      if (conversationDeckId && cachedSlides && cachedSlides.length > 0) {
-        deckId = conversationDeckId;
-        slidesSummary = cachedSlides
-          .map((s, i) => `- [${i}] ${s.title || `スライド${i + 1}`}`)
-          .join("\n");
-        if (cachedDeckTitle) {
-          slidesSummary = `デッキ: 「${cachedDeckTitle}」\n${slidesSummary}`;
-        }
-      }
 
       const body = {
         service,
@@ -544,7 +491,6 @@ export function ChatPage({
         chatId: convIdRef.current,
         parentId: currentLeaf,
         thinking,
-        ...(deckId ? { deckId, slidesSummary } : {}),
       };
       if (files && files.length > 0) {
         sendMessage({ text, files }, { body });
@@ -574,19 +520,6 @@ export function ChatPage({
     knownCountRef.current = messages.length - 1;
     const regenParentId = lastUserIdx >= 0 ? messages[lastUserIdx].id : null;
 
-    // Build slide context if deck is active
-    let deckIdBody: number | undefined;
-    let slidesSummaryBody: string | undefined;
-    if (conversationDeckId && cachedSlides && cachedSlides.length > 0) {
-      deckIdBody = conversationDeckId;
-      slidesSummaryBody = cachedSlides
-        .map((s, i) => `- [${i}] ${s.title || `スライド${i + 1}`}`)
-        .join("\n");
-      if (cachedDeckTitle) {
-        slidesSummaryBody = `デッキ: 「${cachedDeckTitle}」\n${slidesSummaryBody}`;
-      }
-    }
-
     regenerate({
       body: {
         service,
@@ -596,9 +529,6 @@ export function ChatPage({
         chatId: convIdRef.current,
         parentId: regenParentId,
         thinking,
-        ...(deckIdBody
-          ? { deckId: deckIdBody, slidesSummary: slidesSummaryBody }
-          : {}),
       },
     });
   }, [
@@ -608,9 +538,6 @@ export function ChatPage({
     chatModel,
     thinking,
     messages,
-    conversationDeckId,
-    cachedSlides,
-    cachedDeckTitle,
   ]);
 
   // Edit message: create new branch
@@ -698,217 +625,6 @@ export function ChatPage({
     navigator.clipboard.writeText(text).catch(() => {});
   }, []);
 
-  // --- Simple SlideViewer (existing) ---
-  const openSlideViewer = useSlideStore((s) => s.openSlideViewer);
-
-  // --- Slide Setup Wizard ---
-  const [wizardData, setWizardData] = useState<{
-    topic: string;
-    content: string;
-    instructions: string | null;
-  } | null>(null);
-
-  const handleWizardComplete = useCallback(
-    (config: WizardConfig) => {
-      const styleOptions: import("@/components/style-options-panel").StyleOptions =
-        {};
-      if (config.industries.length > 0)
-        styleOptions.industry = config.industries[0];
-      if (config.audience.length > 0) {
-        // Check if it's a profession or age group
-        const professions = config.audience.filter((a) =>
-          [
-            "人事",
-            "営業",
-            "経営企画",
-            "マーケティング",
-            "管理・経理",
-            "設計・開発",
-            "研究・R&D",
-            "カスタマーサポート",
-            "コンサルティング",
-          ].includes(a),
-        );
-        const ages = config.audience.filter((a) =>
-          ["10代〜20代", "30代〜40代", "50代以上", "全年代"].includes(a),
-        );
-        if (professions.length > 0) styleOptions.profession = professions[0];
-        if (ages.length > 0) styleOptions.ageGroup = ages[0];
-      }
-      if (config.colorStyle) styleOptions.colorStyle = config.colorStyle;
-
-      // Build instructions with wizard selections
-      const parts: string[] = [];
-      if (config.industries.length > 0)
-        parts.push(`産業: ${config.industries.join(", ")}`);
-      if (config.audience.length > 0)
-        parts.push(`対象者: ${config.audience.join(", ")}`);
-      if (config.colorStyle) parts.push(`配色: ${config.colorStyle}`);
-      if (config.slideCount) parts.push(`枚数: ${config.slideCount}枚`);
-      if (config.additionalNotes) parts.push(config.additionalNotes);
-
-      const mergedInstructions = [wizardData?.instructions, ...parts]
-        .filter(Boolean)
-        .join("\n");
-
-      openSlidePanel(
-        config.topic || wizardData?.topic || "",
-        wizardData?.content || "",
-        mergedInstructions || null,
-        Object.keys(styleOptions).length > 0 ? styleOptions : null,
-      );
-      setWizardData(null);
-    },
-    [wizardData, openSlidePanel],
-  );
-
-  const handleWizardCancel = useCallback(() => {
-    setWizardData(null);
-  }, []);
-
-  // --- SlidePanel (right panel for HTML slides) ---
-  const slidePanelSourceId = useSlidePanelStore((s) => s.sourceMessageId);
-  const reopenSlidePanel = useSlidePanelStore((s) => s.reopenPanel);
-
-  // --- VisualSlideViewer state ---
-  const [visualOpen, setVisualOpen] = useState(false);
-  const [visualQuestion, setVisualQuestion] = useState("");
-  const [visualAnswer, setVisualAnswer] = useState("");
-
-  // --- HtmlSlideViewer state ---
-  const [htmlSlideOpen, setHtmlSlideOpen] = useState(false);
-  const [htmlSlideQuestion] = useState("");
-  const [htmlSlideAnswer] = useState("");
-
-  // --- SlideStudio state ---
-  const [studioOpen, setStudioOpen] = useState(false);
-  const [studioDeck, setStudioDeck] = useState<SlideDeck>({
-    title: "",
-    slides: [],
-  });
-  const [studioBusy, setStudioBusy] = useState(false);
-  const [studioError, setStudioError] = useState<string | null>(null);
-
-  // Helper: extract question from messages
-  const getQuestion = useCallback(() => {
-    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
-    return lastUserMsg
-      ? lastUserMsg.parts
-          .filter((p): p is { type: "text"; text: string } => p.type === "text")
-          .map((p) => p.text)
-          .join("")
-      : "";
-  }, [messages]);
-
-  const handleGenerateSlides = useCallback(
-    (
-      answerText: string,
-      mode: "html" | "visual" | "studio" | "simple",
-      messageId?: string,
-    ) => {
-      const question = getQuestion();
-      switch (mode) {
-        case "simple":
-          openSlideViewer(question, answerText);
-          break;
-        case "visual":
-          setVisualQuestion(question);
-          setVisualAnswer(answerText);
-          setVisualOpen(true);
-          break;
-        case "html":
-          openSlidePanel(question, answerText, null, null, messageId ?? null);
-          break;
-        case "studio": {
-          setStudioBusy(true);
-          setStudioError(null);
-          setStudioOpen(true);
-          setStudioDeck({ title: "生成中...", slides: [] });
-          fetch("/api/slides/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              question,
-              answer: answerText,
-              max_slides: 10,
-            }),
-          })
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              const data = await res.json();
-              setStudioDeck(data.deck);
-            })
-            .catch((err) => {
-              setStudioError(
-                err instanceof Error ? err.message : "Failed to generate deck",
-              );
-            })
-            .finally(() => {
-              setStudioBusy(false);
-            });
-          break;
-        }
-      }
-    },
-    [getQuestion, openSlideViewer, openSlidePanel],
-  );
-
-  const handleStudioRefine = useCallback(
-    async (instruction: string) => {
-      setStudioBusy(true);
-      setStudioError(null);
-      try {
-        const res = await fetch("/api/slides/refine", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deck: studioDeck, instruction }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setStudioDeck(data.deck);
-      } catch (err) {
-        setStudioError(err instanceof Error ? err.message : "Refine failed");
-      } finally {
-        setStudioBusy(false);
-      }
-    },
-    [studioDeck],
-  );
-
-  // Inline proposal button handler (from ChatMessage)
-  const handleOpenProposal = useCallback(
-    (sk: string) => {
-      // If we already have a generated deck for this conversation, open it directly
-      if (conversationDeckId) {
-        openDeck(conversationDeckId);
-        return;
-      }
-      // Mutual exclusion: close SlidePanel when opening ProposalPanel
-      if (slidePanelOpen) closeSlidePanelFn();
-      openProposal(sk);
-    },
-    [
-      openProposal,
-      slidePanelOpen,
-      closeSlidePanelFn,
-      conversationDeckId,
-      openDeck,
-    ],
-  );
-
-  // ProposalPanel → SlidePanel transition
-  const handleProposalOpenSlidePanel = useCallback(
-    (
-      question: string,
-      answer: string,
-      instructions: string | null,
-      styleOpts: import("@/components/style-options-panel").StyleOptions | null,
-    ) => {
-      openSlidePanel(question, answer, instructions, styleOpts);
-    },
-    [openSlidePanel],
-  );
-
   // Branch helpers for ChatMessage
   const getBranchInfo = useCallback(
     (messageId: string) => {
@@ -958,16 +674,9 @@ export function ChatPage({
                     stopped={treeStore.nodes[message.id]?.stopped}
                     onCopy={handleCopy}
                     onRegenerate={handleRegenerate}
-                    onGenerateSlides={(text, mode) =>
-                      handleGenerateSlides(text, mode, message.id)
-                    }
                     onEdit={message.role === "user" ? handleEdit : undefined}
                     branchInfo={branchInfo}
                     onSwitchBranch={handleSwitchBranch}
-                    slidePanelSourceId={slidePanelSourceId}
-                    onReopenSlides={reopenSlidePanel}
-                    onOpenProposal={handleOpenProposal}
-                    hasConversationDeck={!!conversationDeckId}
                   />
                 );
               })}
@@ -995,17 +704,6 @@ export function ChatPage({
           <div className="sticky bottom-0 z-30 mt-auto">
             <div className="pointer-events-none h-8 bg-gradient-to-t from-background to-transparent" />
             <div className="bg-background">
-              <AnimatePresence>
-                {wizardData && (
-                  <SlideSetupWizard
-                    topic={wizardData.topic}
-                    content={wizardData.content}
-                    instructions={wizardData.instructions}
-                    onComplete={handleWizardComplete}
-                    onCancel={handleWizardCancel}
-                  />
-                )}
-              </AnimatePresence>
               <ChatInput
                 status={status}
                 onSend={handleSend}
@@ -1016,61 +714,7 @@ export function ChatPage({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-
-      {/* Slide Panel (right side, animated) */}
-      <AnimatePresence>
-        {slidePanelOpen && (
-          <motion.div
-            key="slide-panel"
-            initial={{ width: 0 }}
-            animate={{ width: "auto" }}
-            exit={{ width: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="h-full shrink-0 overflow-hidden"
-          >
-            <SlidePanel />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal Slide Viewers (non-html modes) */}
-      <SlideViewer />
-      <VisualSlideViewer
-        open={visualOpen}
-        question={visualQuestion}
-        answer={visualAnswer}
-        onClose={() => setVisualOpen(false)}
-      />
-      <HtmlSlideViewer
-        open={htmlSlideOpen}
-        question={htmlSlideQuestion}
-        answer={htmlSlideAnswer}
-        onClose={() => setHtmlSlideOpen(false)}
-      />
-      <SlideStudio
-        open={studioOpen}
-        deck={studioDeck}
-        busy={studioBusy}
-        error={studioError}
-        onClose={() => setStudioOpen(false)}
-        onDeckChange={setStudioDeck}
-        onRequestRefine={handleStudioRefine}
-      />
-      {/* Proposal Panel (right side, animated, mutually exclusive with SlidePanel) */}
-      <AnimatePresence>
-        {proposalOpen && !slidePanelOpen && (
-          <motion.div
-            key="proposal-panel"
-            initial={{ width: 0 }}
-            animate={{ width: "auto" }}
-            exit={{ width: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="h-full shrink-0 overflow-hidden"
-          >
-            <ProposalPanel onOpenSlidePanel={handleProposalOpenSlidePanel} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ArtifactPanelWrapper />
     </div>
   );
 }
