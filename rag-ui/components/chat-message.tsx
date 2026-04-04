@@ -646,6 +646,15 @@ const ToolCallGroup = memo(function ToolCallGroup({
   }
 
   // Not streaming (history or finished): summary row + collapsible
+  // Extract completed artifact tools to show as always-visible cards
+  const isCompletedArtifact = (t: (typeof tools)[number]) =>
+    t.toolName === "artifact" &&
+    t.part.state === "output-available" &&
+    ((t.part.result ?? t.part.output) as Record<string, unknown> | undefined)
+      ?.id;
+  const artifactTools = tools.filter(isCompletedArtifact);
+  const nonArtifactTools = tools.filter((t) => !isCompletedArtifact(t));
+
   return (
     <div>
       <button
@@ -672,7 +681,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
         style={{ overflow: "hidden" }}
       >
         <div className="space-y-1 py-0.5">
-          {tools.map((t) => (
+          {nonArtifactTools.map((t) => (
             <div key={`${messageId}-${t.index}`}>
               <ToolCallIndicator
                 toolName={t.toolName}
@@ -684,6 +693,15 @@ const ToolCallGroup = memo(function ToolCallGroup({
           ))}
         </div>
       </motion.div>
+      {/* Artifact cards always visible outside collapsible */}
+      {artifactTools.map((t) => (
+        <ArtifactCard
+          key={`${messageId}-${t.index}`}
+          result={
+            (t.part.result ?? t.part.output) as Record<string, unknown>
+          }
+        />
+      ))}
     </div>
   );
 });

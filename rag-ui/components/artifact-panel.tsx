@@ -322,9 +322,10 @@ export function ArtifactPanel() {
         )}
       </div>
 
-      {/* Content */}
+      {/* Content — key on artifact id forces remount when switching artifacts */}
       <div className="flex-1 overflow-auto">
         <PanelContent
+          key={id}
           kind={kind}
           language={language}
           content={content}
