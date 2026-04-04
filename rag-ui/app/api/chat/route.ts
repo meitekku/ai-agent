@@ -29,13 +29,23 @@ import {
 } from "@/lib/rag-client";
 
 import pg from "pg";
-import { TAVILY_API_KEY, CRM_SERVICE_URL, TASK_WORKER_URL, GEMINI_MODEL } from "@/lib/constants";
+import {
+  TAVILY_API_KEY,
+  CRM_SERVICE_URL,
+  TASK_WORKER_URL,
+  GEMINI_MODEL,
+} from "@/lib/constants";
 import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
 import { saveMessages, updateConversation } from "@/lib/chat-db";
-import { storeSession, getSession, updateSessionAnalysis, updateSessionFull } from "@/lib/proposal-session";
+import {
+  storeSession,
+  getSession,
+  updateSessionAnalysis,
+  updateSessionFull,
+} from "@/lib/proposal-session";
 import { DealAnalysisSchema, buildAnalysisPrompt } from "@/lib/analysis-schema";
 import {
   getSlideDeckDetail,
@@ -55,7 +65,8 @@ const hasGoogleSearch = !hasTavily && !!geminiGoogleSearch;
 const hasCrm = !!CRM_SERVICE_URL;
 const hasScheduler = !!TASK_WORKER_URL;
 
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
+const DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
 let roPool: pg.Pool | null = null;
 function getReadOnlyPool(): pg.Pool {
   if (!roPool) {
@@ -80,9 +91,7 @@ function buildSkillsPrompt(skills: SkillSummary[]): string {
 }
 
 const skillCallOptionsSchema = z.object({
-  skills: z.array(
-    z.object({ name: z.string(), description: z.string() }),
-  ),
+  skills: z.array(z.object({ name: z.string(), description: z.string() })),
 });
 
 const loadSkillTool = tool({
@@ -92,9 +101,7 @@ const loadSkillTool = tool({
     name: z.string().describe("読み込むスキル名"),
   }),
   execute: async ({ name }, { experimental_context }) => {
-    const ctx = experimental_context as
-      | { skills: SkillSummary[] }
-      | undefined;
+    const ctx = experimental_context as { skills: SkillSummary[] } | undefined;
     const skills = ctx?.skills ?? [];
     // Validate against known skills — reject hallucinated names without DB hit
     if (
@@ -228,19 +235,17 @@ function buildSystemPrompt(
   // ツール連鎖の原則
   prompt += `
 
-## ツール使用の原則（重要・必ず遵守）
-- **研究員のように行動する**: 1回の検索で終わらず、十分な情報が集まるまで複数ステップで調査を続ける。ユーザーの質問の本質を理解し、必要な情報を自分で判断して能動的に集める
-- **必須ルール: 詳細・網羅的な質問には最低3回ツールを使う**: 「まとめて」「詳しく」「できるだけ多く」等の指示がある場合、1〜2回のツール呼び出しでは不十分。異なるキーワード・角度で複数回検索し、重要な結果は全文取得してから回答する。各ステップで「まだ調べるべき角度はないか？」と自問する
-- **回答前に自問する**: 「この情報だけで正確で包括的な回答ができるか？」— できないなら追加ツールを使う。1回の検索結果だけで回答を書き始めてはいけない
-- **判断をユーザーに丸投げしない**: 「検索しましょうか？」「もっと調べますか？」と聞かず、自分で判断して行動する。検索結果が不十分なら、自分でキーワードや時間範囲を変えて再検索する
-- **既に得た情報を活用する**: 前のステップで取得した情報（KB の財務データ等）を踏まえて次の調査や回答を組み立てる。情報を割裂して扱わない`;
+## ツール使用の原則
+- **質問の複雑さに応じて調査量を調整する**: 簡単な質問は1回の検索で十分。複雑な質問や「詳しく」「まとめて」等の指示がある場合は、異なるキーワード・角度で追加検索する
+- **判断をユーザーに丸投げしない**: 「検索しましょうか？」と聞かず、自分で判断して行動する
+- **既に得た情報を活用する**: 前のステップで取得した情報を踏まえて次の調査や回答を組み立てる`;
 
   if (hasWeb) {
     prompt += `
-- **ウェブ検索はクエリ分解（fan-out）で行う**: 複雑な質問は2〜4個の独立したサブクエリに分解し、それぞれ異なる角度から検索する。各クエリは1つのトピック/側面に絞る。1回の検索に複数トピックを詰め込まない
-- **日英両方で検索する**: 日本語クエリと英語クエリの両方を実行する。英語の方が情報量が豊富なトピックが多い（例: 「クラゲ 生態 種類」→「jellyfish species biology ecology」）。結果は常にユーザーの言語（デフォルト日本語）で回答する
-- **ウェブ検索後は必ず詳細を確認する**: ${webSearchToolName}の結果はサマリーのみ。関連性の高い結果は${hasTavily ? "readPage" : "readUrl"}で全文を取得してから回答する。サマリーだけで回答を書かない
-- **検索クエリは事実ベース・中立に**: ユーザーの質問から核心キーワードを抽出し、事実的な関連語で補強する（3〜7語が最適）。主観的・装飾的な語（「不思議な」「すごい」等）や、ユーザーが求めていないカテゴリ語（「最新ニュース」「トレンド」等）を勝手に足さない。不確実な拡張語はハルシネーションリスクがあるため追加しない`;
+- **クエリ分解（fan-out）**: 複雑な質問は2〜3個のサブクエリに分解。各クエリは1つの側面に絞る
+- **日英両方の検索を検討する**: 英語の方が情報量が豊富なトピックでは英語でも検索する。ただし必須ではない
+- **重要な結果は詳細を確認**: ${webSearchToolName}の結果はサマリーのみ。特に重要な結果は${hasTavily ? "readPage" : "readUrl"}で全文を取得する
+- **検索クエリは事実ベース・中立に**: 核心キーワード＋事実的な関連語で3〜7語。主観的・装飾的な語を足さない`;
   }
 
   // generateSlides ツール説明
@@ -284,11 +289,10 @@ function buildSystemPrompt(
 - 手動入力: fetchDealData(source:"manual", manualInput:{...})
 
 **情報収集（fetchDealData と analyzeDeal の間）**:
-fetchDealData でデータを取得したら、analyzeDeal を呼ぶ前に**あらゆるツールを駆使して情報を集める**こと。集めた情報が多いほど分析と提案の質が上がる。遠慮せず何度でもツールを呼ぶ:
-- searchKnowledgeBase: 会社名・業界・案件名・課題キーワードで社内 KB を検索。複数の KB があれば複数検索する
-- webSearch + readPage: 顧客企業の最新ニュース・DX 戦略・競合情報・業界動向を調査。サマリーで終わらず、関連性の高い URL は readPage で全文取得する
-- loadSkill: 顧客の業界や課題に関連するスキルがあれば読み込んで活用する
-- 複数ラウンド: 1回の検索で足りなければキーワードや言語を変えて追加検索する。検索回数に制限はない
+fetchDealData でデータを取得したら、analyzeDeal を呼ぶ前に関連情報を集める:
+- searchKnowledgeBase: 会社名・業界・案件名で社内 KB を検索
+- webSearch: 顧客企業の最新ニュース・競合情報・業界動向を調査。重要な結果は readPage で全文取得
+- loadSkill: 関連するスキルがあれば読み込む
 
 analyzeDeal の additionalContext には、収集した情報の要点をまとめて渡す。
 
@@ -729,7 +733,7 @@ export async function POST(req: Request) {
           results,
           next_step:
             results.length > 0
-              ? "IMPORTANT: (1) These are only summaries. Call readPage with the most relevant URLs (up to 3) to get full content. (2) After reading pages, consider if you need ADDITIONAL searches with different keywords or in a different language to cover more angles. Do NOT stop after just one search round."
+              ? "These are summaries. For the most important results, call readPage to get full content before answering."
               : undefined,
         };
       },
@@ -737,7 +741,7 @@ export async function POST(req: Request) {
 
     tools.readPage = tool({
       description:
-        "Extract full content from specific URLs. You MUST call this after webSearch to read the most relevant results before answering. Do NOT answer based on search summaries alone. Can read up to 3 URLs at once.",
+        "Extract full content from specific URLs. Call this after webSearch when you need detailed content beyond the summaries. Can read up to 3 URLs at once.",
       inputSchema: z.object({
         urls: z
           .array(z.string())
@@ -863,20 +867,28 @@ export async function POST(req: Request) {
             signal: AbortSignal.timeout(30000),
           });
           if (!res.ok)
-            return { success: false, error: `画像取得失敗: HTTP ${res.status}` };
+            return {
+              success: false,
+              error: `画像取得失敗: HTTP ${res.status}`,
+            };
           mimeType = res.headers.get("content-type") || "image/png";
           imageData = new Uint8Array(await res.arrayBuffer());
         } else {
           // fileId → read from disk
           const fileRow = await getChatFile(source);
           if (!fileRow)
-            return { success: false, error: `ファイルが見つかりません: ${source}` };
+            return {
+              success: false,
+              error: `ファイルが見つかりません: ${source}`,
+            };
           const buffer = await readStoredFile(fileRow.stored_path);
           imageData = new Uint8Array(buffer);
           mimeType = fileRow.media_type;
         }
 
-        const prompt = question || "この画像を詳細に説明してください。テキストがあれば抽出し、チャートや表があればデータを読み取ってください。";
+        const prompt =
+          question ||
+          "この画像を詳細に説明してください。テキストがあれば抽出し、チャートや表があればデータを読み取ってください。";
         const imageModel = getChatModel();
         const result = await generateText({
           model: imageModel,
@@ -884,7 +896,11 @@ export async function POST(req: Request) {
             {
               role: "user",
               content: [
-                { type: "image" as const, image: imageData, mediaType: mimeType },
+                {
+                  type: "image" as const,
+                  image: imageData,
+                  mediaType: mimeType,
+                },
                 { type: "text" as const, text: prompt },
               ],
             },
@@ -911,16 +927,17 @@ export async function POST(req: Request) {
     description:
       "以前アップロード/生成されたファイルの内容を読み取ります。/api/files/{id} で配信されるファイルのIDを指定。テキストファイル（CSV, JSON, Markdown等）はテキスト内容を、バイナリファイルはサイズ情報を返します。",
     inputSchema: z.object({
-      fileId: z
-        .string()
-        .describe("ファイルID（/api/files/ のパスから取得）"),
+      fileId: z.string().describe("ファイルID（/api/files/ のパスから取得）"),
     }),
     execute: async ({ fileId }) => {
       console.log(`[chat] 📂 readFile: ${fileId}`);
       try {
         const fileRow = await getChatFile(fileId);
         if (!fileRow)
-          return { success: false, error: `ファイルが見つかりません: ${fileId}` };
+          return {
+            success: false,
+            error: `ファイルが見つかりません: ${fileId}`,
+          };
 
         const contentType = fileRow.media_type || "application/octet-stream";
 
@@ -973,10 +990,7 @@ export async function POST(req: Request) {
         .record(z.string(), z.string())
         .optional()
         .describe("HTTPヘッダー（key-value）"),
-      body: z
-        .string()
-        .optional()
-        .describe("リクエストボディ（JSON文字列等）"),
+      body: z.string().optional().describe("リクエストボディ（JSON文字列等）"),
     }),
     execute: async ({ url, method, headers, body }) => {
       const m = method ?? "GET";
@@ -1008,7 +1022,9 @@ export async function POST(req: Request) {
           responseBody = responseBody.slice(0, 12000) + "\n...(truncated)";
         }
 
-        console.log(`[chat] 🌐 httpRequest done: ${Date.now() - t0}ms, status=${res.status}`);
+        console.log(
+          `[chat] 🌐 httpRequest done: ${Date.now() - t0}ms, status=${res.status}`,
+        );
         return {
           status: res.status,
           statusText: res.statusText,
@@ -1035,7 +1051,9 @@ export async function POST(req: Request) {
     inputSchema: z.object({
       sql: z
         .string()
-        .describe("SELECT文のみ。INSERT/UPDATE/DELETE等の書込み操作は拒否されます。"),
+        .describe(
+          "SELECT文のみ。INSERT/UPDATE/DELETE等の書込み操作は拒否されます。",
+        ),
     }),
     execute: async ({ sql }) => {
       console.log(`[chat] 🗄️ queryDatabase: ${sql.slice(0, 100)}`);
@@ -1044,7 +1062,8 @@ export async function POST(req: Request) {
       if (WRITE_PATTERN.test(sql)) {
         return {
           success: false,
-          error: "書込み操作は許可されていません。SELECTクエリのみ実行可能です。",
+          error:
+            "書込み操作は許可されていません。SELECTクエリのみ実行可能です。",
         };
       }
 
@@ -1058,7 +1077,9 @@ export async function POST(req: Request) {
         await client.query("COMMIT");
 
         const rows = result.rows ?? [];
-        console.log(`[chat] 🗄️ queryDatabase done: ${Date.now() - t0}ms, ${rows.length} rows`);
+        console.log(
+          `[chat] 🗄️ queryDatabase done: ${Date.now() - t0}ms, ${rows.length} rows`,
+        );
 
         const output = {
           success: true,
@@ -1083,7 +1104,11 @@ export async function POST(req: Request) {
 
         return output;
       } catch (err) {
-        try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          /* ignore */
+        }
         console.error(`[chat] ❌ queryDatabase failed:`, err);
         return {
           success: false,
@@ -1191,7 +1216,8 @@ export async function POST(req: Request) {
               opportunity: {
                 Name: manualInput.dealName,
                 Amount: manualInput.budget,
-                Description: `${manualInput.challenges || ""}\n${manualInput.details || ""}`.trim(),
+                Description:
+                  `${manualInput.challenges || ""}\n${manualInput.details || ""}`.trim(),
                 StageName: "提案中",
               },
               activities: [],
@@ -1202,7 +1228,10 @@ export async function POST(req: Request) {
               source === "salesforce" ? "/sf/fetch" : "/kintone/fetch";
             const body: Record<string, unknown> =
               source === "salesforce"
-                ? { opportunityId: dealId, objectType: objectType || "Opportunity" }
+                ? {
+                    opportunityId: dealId,
+                    objectType: objectType || "Opportunity",
+                  }
                 : { recordId: dealId };
             const fetchRes = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
               method: "POST",
@@ -1249,7 +1278,10 @@ export async function POST(req: Request) {
           // 1. Retrieve full CRM data from session
           const session = await getSession(dataKey);
           if (!session) {
-            return { error: "データが見つかりません。fetchDealData を先に実行してください。" };
+            return {
+              error:
+                "データが見つかりません。fetchDealData を先に実行してください。",
+            };
           }
           const sfData = session.data;
 
@@ -1259,7 +1291,9 @@ export async function POST(req: Request) {
             const tplRes = await fetch(`${CRM_SERVICE_URL}/templates`);
             if (tplRes.ok) {
               const tpls = await tplRes.json();
-              templateServices = (Array.isArray(tpls) ? tpls : tpls.templates || [])
+              templateServices = (
+                Array.isArray(tpls) ? tpls : tpls.templates || []
+              )
                 .map((t: { serviceName?: string }) => t.serviceName)
                 .filter(Boolean);
             }
@@ -1283,7 +1317,10 @@ export async function POST(req: Request) {
             });
             analysisData = result.object as unknown as Record<string, unknown>;
           } catch (analyzeErr) {
-            console.error(`[chat] ⚠️ analyzeDeal: generateObject failed, using fallback:`, analyzeErr);
+            console.error(
+              `[chat] ⚠️ analyzeDeal: generateObject failed, using fallback:`,
+              analyzeErr,
+            );
             analysisData = {
               winProbability: 50,
               dealHealthScore: 50,
@@ -1294,9 +1331,27 @@ export async function POST(req: Request) {
               riskFactors: ["分析データが不完全な可能性があります"],
               recommendedActions: ["再度分析を実行してください"],
               scenarios: {
-                optimistic: { label: "楽観シナリオ", probability: 70, expectedRevenue: 0, timeline: "未定", conditions: [] },
-                base: { label: "標準シナリオ", probability: 50, expectedRevenue: 0, timeline: "未定", conditions: [] },
-                pessimistic: { label: "悲観シナリオ", probability: 25, expectedRevenue: 0, timeline: "未定", conditions: [] },
+                optimistic: {
+                  label: "楽観シナリオ",
+                  probability: 70,
+                  expectedRevenue: 0,
+                  timeline: "未定",
+                  conditions: [],
+                },
+                base: {
+                  label: "標準シナリオ",
+                  probability: 50,
+                  expectedRevenue: 0,
+                  timeline: "未定",
+                  conditions: [],
+                },
+                pessimistic: {
+                  label: "悲観シナリオ",
+                  probability: 25,
+                  expectedRevenue: 0,
+                  timeline: "未定",
+                  conditions: [],
+                },
               },
               rationale: {
                 customerChallenges: [],
@@ -1304,7 +1359,8 @@ export async function POST(req: Request) {
                 combinedSolution: "",
                 existingProposalHints: [],
                 proposalJudgment: "dx_development",
-                proposalJudgmentReason: "AI分析の実行に失敗したため、デフォルト判定です。",
+                proposalJudgmentReason:
+                  "AI分析の実行に失敗したため、デフォルト判定です。",
               },
             };
           }
@@ -1394,7 +1450,9 @@ export async function POST(req: Request) {
       description:
         "画像を生成・編集します。ユーザーが「描いて」「画像を作って」「イラスト」「この画像を編集して」等を依頼した場合に即座に呼び出す。プロンプトの書き換えや翻訳は不要 — ユーザーの原文がそのまま画像モデルに渡される。",
       inputSchema: z.object({
-        prompt: z.string().describe("ユーザーの原文をそのまま渡す（書き換え・翻訳不要）"),
+        prompt: z
+          .string()
+          .describe("ユーザーの原文をそのまま渡す（書き換え・翻訳不要）"),
         aspectRatio: z
           .enum(["1:1", "3:4", "4:3", "9:16", "16:9"])
           .optional()
@@ -1421,17 +1479,18 @@ export async function POST(req: Request) {
               },
             },
           };
-          const result = lastUserModelMessages.length > 0
-            ? await generateText({
-                model: imageModel,
-                messages: lastUserModelMessages,
-                ...genOpts,
-              })
-            : await generateText({
-                model: imageModel,
-                prompt: imagePrompt,
-                ...genOpts,
-              });
+          const result =
+            lastUserModelMessages.length > 0
+              ? await generateText({
+                  model: imageModel,
+                  messages: lastUserModelMessages,
+                  ...genOpts,
+                })
+              : await generateText({
+                  model: imageModel,
+                  prompt: imagePrompt,
+                  ...genOpts,
+                });
           const savedUrls: string[] = [];
           for (const file of (result.files ?? []).slice(0, 1)) {
             const ext =
@@ -1479,7 +1538,8 @@ export async function POST(req: Request) {
 
   // Scheduler tools (only when TASK_WORKER_URL is configured)
   if (hasScheduler) {
-    const { createTask, listTasks, updateTask, deleteTask } = await import("@/lib/scheduler-db");
+    const { createTask, listTasks, updateTask, deleteTask } =
+      await import("@/lib/scheduler-db");
 
     tools.createScheduledTask = tool({
       description:
@@ -1487,16 +1547,38 @@ export async function POST(req: Request) {
         "使わない場面: 今すぐ1回だけ実行してほしい依頼（直接回答する）、既存タスクの変更（updateScheduledTaskを使う）、タスク確認（listScheduledTasksを使う）。",
       inputSchema: z.object({
         name: z.string().describe("タスクの短い名前（一覧表示用）"),
-        prompt: z.string().describe("タスク実行時にAIに渡すプロンプト。具体的で明確に書く。タスク実行AIはKB検索・Web検索・CRM API・コード実行ツールを使える"),
+        prompt: z
+          .string()
+          .describe(
+            "タスク実行時にAIに渡すプロンプト。具体的で明確に書く。タスク実行AIはKB検索・Web検索・CRM API・コード実行ツールを使える",
+          ),
         cron_expr: z
           .string()
           .describe(
             "5フィールドCron式。分 時 日 月 曜日。ユーザーのローカル時間で指定。例: '0 9 * * *'=毎日9時, '0 9 * * 1'=毎週月曜9時, '0 */6 * * *'=6時間毎, '30 8 * * 1-5'=平日8:30",
           ),
-        timezone: z.string().optional().describe("IANAタイムゾーン。省略時はAsia/Tokyo。例: 'Asia/Tokyo', 'America/New_York'"),
-        kb_slug: z.string().optional().describe("タスクが参照するナレッジベースのslug。KB検索が不要なら省略"),
-        model: z.string().optional().describe("使用するGeminiモデル名。省略時はデフォルト(gemini-3-flash-preview)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'"),
-        description: z.string().optional().describe("タスクの目的や背景の説明（管理画面表示用）"),
+        timezone: z
+          .string()
+          .optional()
+          .describe(
+            "IANAタイムゾーン。省略時はAsia/Tokyo。例: 'Asia/Tokyo', 'America/New_York'",
+          ),
+        kb_slug: z
+          .string()
+          .optional()
+          .describe(
+            "タスクが参照するナレッジベースのslug。KB検索が不要なら省略",
+          ),
+        model: z
+          .string()
+          .optional()
+          .describe(
+            "使用するGeminiモデル名。省略時はデフォルト(gemini-3-flash-preview)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'",
+          ),
+        description: z
+          .string()
+          .optional()
+          .describe("タスクの目的や背景の説明（管理画面表示用）"),
       }),
       execute: async (args) => {
         console.log(`[chat] 📅 createScheduledTask: ${args.name}`);
@@ -1510,9 +1592,17 @@ export async function POST(req: Request) {
             model: args.model,
             description: args.description,
           });
-          return { success: true, id, name: args.name, cron_expr: args.cron_expr };
+          return {
+            success: true,
+            id,
+            name: args.name,
+            cron_expr: args.cron_expr,
+          };
         } catch (err) {
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
         }
       },
     });
@@ -1544,11 +1634,16 @@ export async function POST(req: Request) {
         "既存の定時タスクを更新する。「タスクを無効にして」「実行時間を変えて」「プロンプトを修正して」等の変更依頼時に使用。enabled:falseで一時停止、trueで再開。" +
         "使わない場面: 新規作成（createScheduledTask）、完全削除（deleteScheduledTask）。必ず先にlistScheduledTasksでIDを確認してから呼ぶ。",
       inputSchema: z.object({
-        id: z.number().describe("更新対象のタスクID（listScheduledTasksで事前確認）"),
+        id: z
+          .number()
+          .describe("更新対象のタスクID（listScheduledTasksで事前確認）"),
         name: z.string().optional().describe("新しいタスク名"),
         prompt: z.string().optional().describe("新しいプロンプト"),
         cron_expr: z.string().optional().describe("新しいCron式"),
-        timezone: z.string().optional().describe("IANAタイムゾーン。例: 'Asia/Tokyo'"),
+        timezone: z
+          .string()
+          .optional()
+          .describe("IANAタイムゾーン。例: 'Asia/Tokyo'"),
         enabled: z.boolean().optional().describe("true=有効, false=一時停止"),
       }),
       execute: async (args) => {
@@ -1558,7 +1653,10 @@ export async function POST(req: Request) {
           await updateTask(id, data);
           return { success: true, id };
         } catch (err) {
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
         }
       },
     });
@@ -1568,7 +1666,9 @@ export async function POST(req: Request) {
         "定時タスクを完全に削除する（実行履歴も消える）。ユーザーが明確に「タスクを削除して」「もう不要」と言った時のみ使用。" +
         "使わない場面: 一時停止したいだけ（updateScheduledTaskでenabled:falseにする）。削除は取り消せないので、ユーザーの意図を確認してから実行する。",
       inputSchema: z.object({
-        id: z.number().describe("削除対象のタスクID（listScheduledTasksで事前確認）"),
+        id: z
+          .number()
+          .describe("削除対象のタスクID（listScheduledTasksで事前確認）"),
       }),
       execute: async ({ id }) => {
         console.log(`[chat] 📅 deleteScheduledTask: id=${id}`);
@@ -1576,7 +1676,10 @@ export async function POST(req: Request) {
           await deleteTask(id);
           return { success: true, id };
         } catch (err) {
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
         }
       },
     });
@@ -1587,15 +1690,19 @@ export async function POST(req: Request) {
         "使わない場面: スケジュール変更（updateScheduledTask）、タスク確認（listScheduledTasks）。" +
         "実行はキューに投入され非同期で処理される。結果は通知またはスケジューラ詳細画面で確認できる。",
       inputSchema: z.object({
-        id: z.number().describe("実行対象のタスクID（listScheduledTasksで事前確認）"),
+        id: z
+          .number()
+          .describe("実行対象のタスクID（listScheduledTasksで事前確認）"),
       }),
       execute: async ({ id }) => {
         console.log(`[chat] 📅 runScheduledTask: id=${id}`);
         try {
-          const { getTask, createExecution, updateExecution } = await import("@/lib/scheduler-db");
+          const { getTask, createExecution, updateExecution } =
+            await import("@/lib/scheduler-db");
           const { enqueueTask } = await import("@/lib/scheduler-queue");
           const task = await getTask(id);
-          if (!task) return { success: false, error: `タスクID ${id} が見つかりません` };
+          if (!task)
+            return { success: false, error: `タスクID ${id} が見つかりません` };
           const executionId = await createExecution(id);
           await updateExecution(executionId, { status: "queued" });
           await enqueueTask({
@@ -1610,9 +1717,17 @@ export async function POST(req: Request) {
             notifyTo: task.notify_to,
             notifyFrom: task.notify_from,
           });
-          return { success: true, taskId: id, executionId, taskName: task.name };
+          return {
+            success: true,
+            taskId: id,
+            executionId,
+            taskName: task.name,
+          };
         } catch (err) {
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
         }
       },
     });
@@ -1629,14 +1744,19 @@ export async function POST(req: Request) {
             type: z
               .enum(["update", "rewrite", "delete", "insert", "reorder"])
               .describe("操作タイプ"),
-            slideIndex: z.number().describe("対象スライドのインデックス（0始まり）"),
+            slideIndex: z
+              .number()
+              .describe("対象スライドのインデックス（0始まり）"),
             oldStr: z.string().optional().describe("update: 置換前テキスト"),
             newStr: z.string().optional().describe("update: 置換後テキスト"),
             instruction: z
               .string()
               .optional()
               .describe("rewrite/insert: 生成指示"),
-            targetIndex: z.number().optional().describe("reorder: 移動先インデックス"),
+            targetIndex: z
+              .number()
+              .optional()
+              .describe("reorder: 移動先インデックス"),
           }),
         ),
       }),
@@ -1755,7 +1875,10 @@ ${op.instruction}
                 const insertHtml = extractHtmlFromResponse(insertResult.text);
                 if (insertHtml) {
                   // For simplicity, update the existing slide at the index (or last slide)
-                  const targetIdx = Math.min(op.slideIndex, deck.slides.length - 1);
+                  const targetIdx = Math.min(
+                    op.slideIndex,
+                    deck.slides.length - 1,
+                  );
                   version = await updateSlideAndVersion(
                     activeDeckId!,
                     targetIdx,
@@ -1835,8 +1958,7 @@ ${op.instruction}
       callOptionsSchema: skillCallOptionsSchema,
       prepareCall: ({ options, ...settings }) => ({
         ...settings,
-        instructions:
-          settings.instructions + buildSkillsPrompt(options.skills),
+        instructions: settings.instructions + buildSkillsPrompt(options.skills),
         experimental_context: { skills: options.skills },
       }),
       ...(thinking && useGemini
@@ -1844,7 +1966,7 @@ ${op.instruction}
             providerOptions: {
               [providerOptionsKey]: {
                 thinkingConfig: {
-                  thinkingBudget: 8192,
+                  thinkingBudget: 1024,
                   includeThoughts: true,
                 },
               },
@@ -1876,7 +1998,10 @@ ${op.instruction}
         let tokens: unknown = "?";
         try {
           const usage = await result.totalUsage;
-          tokens = (usage as Record<string, unknown>)?.completionTokens ?? (usage as Record<string, unknown>)?.outputTokens ?? "?";
+          tokens =
+            (usage as Record<string, unknown>)?.completionTokens ??
+            (usage as Record<string, unknown>)?.outputTokens ??
+            "?";
         } catch {}
         console.log(
           `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${tokens}`,

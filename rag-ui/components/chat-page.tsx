@@ -145,13 +145,8 @@ function getClientTime(): string {
   });
 }
 
-function generateTitle(text: string): string {
-  // Take first 50 chars, cut at last word boundary
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= 50) return trimmed;
-  const cut = trimmed.slice(0, 50);
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
+function generateTitle(_text: string): string {
+  return "新しい会話";
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +177,9 @@ export function ChatPage({
 
   // Sync document.title
   useEffect(() => {
-    document.title = chatTitle ? `${chatTitle} | FleGrowth Stella` : "FleGrowth Stella";
+    document.title = chatTitle
+      ? `${chatTitle} | FleGrowth Stella`
+      : "FleGrowth Stella";
     return () => {
       document.title = "FleGrowth Stella";
     };
@@ -234,8 +231,9 @@ export function ChatPage({
       }
       // Restore model / thinking from conversation — record the DB values
       // so the persist effect knows not to write them back
-      const restoredModel = initialData.conversation.chat_model || "gemini-3-flash-preview";
-      const restoredThinking = initialData.conversation.thinking ?? true;
+      const restoredModel =
+        initialData.conversation.chat_model || "gemini-3-flash-preview";
+      const restoredThinking = initialData.conversation.thinking ?? false;
       dbModelRef.current = restoredModel;
       dbThinkingRef.current = restoredThinking;
       useChatSettingsStore.getState().setChatModel(restoredModel);
@@ -257,7 +255,8 @@ export function ChatPage({
     const convId = convIdRef.current;
     if (!convId || !initializedRef.current) return;
     // Already in DB — nothing to persist
-    if (chatModel === dbModelRef.current && thinking === dbThinkingRef.current) return;
+    if (chatModel === dbModelRef.current && thinking === dbThinkingRef.current)
+      return;
     // Closure is stale (store was updated by init but component hasn't re-rendered)
     const store = useChatSettingsStore.getState();
     if (chatModel !== store.chatModel || thinking !== store.thinking) return;
@@ -419,7 +418,10 @@ export function ChatPage({
     for (let ai = assistants.length - 1; ai >= 0; ai--) {
       for (const part of assistants[ai].parts) {
         if (!isToolUIPart(part) || part.state !== "output-available") continue;
-        const callId = "toolCallId" in part ? (part as Record<string, unknown>).toolCallId as string : "";
+        const callId =
+          "toolCallId" in part
+            ? ((part as Record<string, unknown>).toolCallId as string)
+            : "";
         if (callId && processedToolCallIdsRef.current.has(callId)) continue;
 
         const toolName = getToolName(part);
@@ -461,7 +463,15 @@ export function ChatPage({
         }
       }
     }
-  }, [status, messages, openProposal, slidePanelOpen, closeSlidePanelFn, triggerRefresh, openDeck]);
+  }, [
+    status,
+    messages,
+    openProposal,
+    slidePanelOpen,
+    closeSlidePanelFn,
+    triggerRefresh,
+    openDeck,
+  ]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
@@ -477,7 +487,13 @@ export function ChatPage({
         await fetch("/api/history/chats", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, title, kb_slug: activeKb, chat_model: chatModel, thinking }),
+          body: JSON.stringify({
+            id,
+            title,
+            kb_slug: activeKb,
+            chat_model: chatModel,
+            thinking,
+          }),
         });
       } catch (e) {
         console.error("[chat-page] create conversation failed:", e);
@@ -580,10 +596,22 @@ export function ChatPage({
         chatId: convIdRef.current,
         parentId: regenParentId,
         thinking,
-        ...(deckIdBody ? { deckId: deckIdBody, slidesSummary: slidesSummaryBody } : {}),
+        ...(deckIdBody
+          ? { deckId: deckIdBody, slidesSummary: slidesSummaryBody }
+          : {}),
       },
     });
-  }, [regenerate, service, activeKb, chatModel, thinking, messages, conversationDeckId, cachedSlides, cachedDeckTitle]);
+  }, [
+    regenerate,
+    service,
+    activeKb,
+    chatModel,
+    thinking,
+    messages,
+    conversationDeckId,
+    cachedSlides,
+    cachedDeckTitle,
+  ]);
 
   // Edit message: create new branch
   const handleEdit = useCallback(
@@ -859,7 +887,13 @@ export function ChatPage({
       if (slidePanelOpen) closeSlidePanelFn();
       openProposal(sk);
     },
-    [openProposal, slidePanelOpen, closeSlidePanelFn, conversationDeckId, openDeck],
+    [
+      openProposal,
+      slidePanelOpen,
+      closeSlidePanelFn,
+      conversationDeckId,
+      openDeck,
+    ],
   );
 
   // ProposalPanel → SlidePanel transition
@@ -902,11 +936,7 @@ export function ChatPage({
               </div>
               <SuggestionCards className="mt-2 max-w-3xl">
                 {DEMO_SUGGESTIONS.map((s) => (
-                  <SuggestionCard
-                    key={s.title}
-                    data={s}
-                    onClick={handleSend}
-                  />
+                  <SuggestionCard key={s.title} data={s} onClick={handleSend} />
                 ))}
               </SuggestionCards>
             </div>
