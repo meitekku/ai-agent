@@ -7,7 +7,7 @@ import {
   smoothStream,
   stepCountIs,
   tool,
-  ToolLoopAgent,
+  streamText,
   UIMessage,
 } from "ai";
 import { z } from "zod";
@@ -40,22 +40,8 @@ import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
 import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
 import { saveMessages, updateConversation } from "@/lib/chat-db";
-import {
-  storeSession,
-  getSession,
-  updateSessionAnalysis,
-  updateSessionFull,
-} from "@/lib/proposal-session";
-import { DealAnalysisSchema, buildAnalysisPrompt } from "@/lib/analysis-schema";
-import {
-  getSlideDeckDetail,
-  updateSlideAndVersion,
-  ensureSlideTables,
-} from "@/lib/slide-db";
-import {
-  SLIDE_HTML_SYSTEM_PROMPT,
-  extractHtmlFromResponse,
-} from "@/lib/slide-prompts";
+import { createArtifactTool } from "@/lib/artifact-tool";
+import { getArtifactByConversation, getCurrentContent } from "@/lib/artifact-db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -89,10 +75,6 @@ function buildSkillsPrompt(skills: SkillSummary[]): string {
   const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
   return `\n\n## スキル（重要・積極活用）\n\n以下のスキルが有効です。ユーザーの質問やタスクに関連するスキルがあれば、**聞かずに自動で** \`loadSkill\` を呼んで読み込み、その指示に従って回答してください。「スキルを使いますか？」と確認しない。関連性が少しでもあれば読み込む — 不要な読み込みのコストは低く、活用漏れのコストは高い。\n\n${list}`;
 }
-
-const skillCallOptionsSchema = z.object({
-  skills: z.array(z.object({ name: z.string(), description: z.string() })),
-});
 
 const loadSkillTool = tool({
   description:
@@ -184,6 +166,7 @@ function buildSystemPrompt(
   hasKb: boolean,
   clientTime?: string,
   autoDiscovery?: boolean,
+  crmCapabilities?: { salesforce: boolean; kintone: boolean },
 ): string {
   const webSearchToolName = hasTavily ? "webSearch" : "google_search";
   const hasWeb = hasTavily || hasGoogleSearch;
@@ -248,12 +231,6 @@ function buildSystemPrompt(
 - **検索クエリは事実ベース・中立に**: 核心キーワード＋事実的な関連語で3〜7語。主観的・装飾的な語を足さない`;
   }
 
-  // generateSlides ツール説明
-  prompt += `
-- **generateSlides**: 商談・提案書・CRM に関係ない一般的なスライド作成依頼の場合のみ使用（例: 「機械学習の解説スライドを作って」「チーム紹介スライドを作って」）。CRM の商談データや提案書が関係する場合は必ず fetchDealData → analyzeDeal ワークフローを使うこと。
-  ナレッジベースの内容を使う場合は、先に searchKnowledgeBase で検索し、結果を content に含める。
-- **suggestSlides**: 回答がスライド化に適している場合（解説・分析・比較・手順など構造化された内容）に呼び出す。短い挨拶・雑談・簡単な回答では不要。テキスト回答と同じステップで呼び出すこと。`;
-
   // 新ツール説明
   prompt += `
 - **analyzeImage**: 画像URLまたはfileIdを指定して画像をAI分析。OCR、チャート読取、オブジェクト識別、画像に関する質問に回答。ユーザーが画像について質問した場合に使用
@@ -270,49 +247,88 @@ function buildSystemPrompt(
   }
 
   // CRM ツール説明
-  if (hasCrm) {
+  const crm = crmCapabilities;
+  if (hasCrm && crm && (crm.salesforce || crm.kintone)) {
+    const toolLines: string[] = [];
+    const flowLines: string[] = [];
+    const unavailable: string[] = [];
+    if (!crm.salesforce) unavailable.push("Salesforce");
+    if (!crm.kintone) unavailable.push("Kintone");
+    if (crm.salesforce) {
+      toolLines.push("- **listSalesforceDeals**: Salesforce から商談一覧を取得");
+      toolLines.push("- **fetchSalesforceData**: Salesforce の商談詳細データを取得（取得のみ）");
+      flowLines.push("- Salesforce: listSalesforceDeals → ユーザーが選択 → fetchSalesforceData(dealId)");
+    }
+    if (crm.kintone) {
+      toolLines.push("- **listKintoneDeals**: Kintone から案件一覧を取得");
+      toolLines.push("- **fetchKintoneData**: Kintone の案件詳細データを取得（取得のみ）");
+      flowLines.push("- Kintone: listKintoneDeals → ユーザーが選択 → fetchKintoneData(recordId)");
+    }
+    toolLines.push("- **analyzeDeal**: 商談データを AI で分析");
+    toolLines.push("- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正");
+
     prompt += `
 
 ## CRM・商談分析・提案書ツール
 
 ### ツール一覧
-- **listDeals**: CRM（Salesforce/Kintone）から商談一覧を取得
-- **fetchDealData**: CRM から商談データを取得（取得のみ、分析は別ステップ）。dataKey を返す
-- **analyzeDeal**: 商談データを AI で分析。fetchDealData の dataKey + 追加コンテキストを渡す。完了すると提案書パネルが自動で開く
-- **reviseRationale**: ユーザーのフィードバックで分析根拠を修正。sessionKey + feedback を渡す
+${toolLines.join("\n")}
 
 ### ワークフロー
 「商談」「案件」「CRM」「提案」「分析」等のキーワードでこのワークフローを開始する。
 
-**基本フロー**: fetchDealData → **情報収集** → analyzeDeal
-- CRM データ源あり: listDeals で一覧表示 → ユーザーが選択 → fetchDealData(source, dealId)
-- 手動入力: fetchDealData(source:"manual", manualInput:{...})
+**基本フロー**: 商談データ取得 → **情報収集** → analyzeDeal
+${flowLines.join("\n")}
 
-**情報収集（fetchDealData と analyzeDeal の間）**:
-fetchDealData でデータを取得したら、analyzeDeal を呼ぶ前に関連情報を集める:
+**情報収集（データ取得と analyzeDeal の間）**:
 - searchKnowledgeBase: 会社名・業界・案件名で社内 KB を検索
-- webSearch: 顧客企業の最新ニュース・競合情報・業界動向を調査。重要な結果は readPage で全文取得
+- webSearch: 顧客企業の最新ニュース・競合情報・業界動向を調査
 - loadSkill: 関連するスキルがあれば読み込む
+${crm.salesforce && crm.kintone ? "\n**データソース分離（必須）**: Salesforce と Kintone のデータを同じ分析に混ぜない。ユーザーが明示的に指示した場合のみ併用可。" : ""}
+${unavailable.length > 0 ? `**利用不可の CRM: ${unavailable.join("、")}** — これらは現在接続されていない。ユーザーが ${unavailable.join(" や ")} のデータを要求した場合、「現在 ${unavailable.join("/")} は接続されていません」と回答し、ツールを呼び出さないこと。別の CRM のデータで代用してはいけない。` : ""}
 
-analyzeDeal の additionalContext には、収集した情報の要点をまとめて渡す。
-
-**禁止事項**:
-- analyzeDeal 完了後、提案書スライドは ProposalPanel で自動生成される。**generateSlides は絶対に呼ばない**
-- 「提案書を作って」「スライドを作って」等の依頼も fetchDealData → analyzeDeal ワークフローを使う
-
-**データソース分離（必須）**:
-- Salesforce の商談を分析する場合、Kintone のデータ（モックデータ含む）を混ぜてはいけない。逆も同様
-- KB 検索結果やウェブ検索結果に他方の CRM のデータが含まれていても、現在のデータソースに関係ない情報は無視・除外して回答すること
-- listDeals で一方の CRM を使い始めたら、同じワークフロー内でもう一方の CRM に切り替えないこと
-- ユーザーが明示的に「Kintone のデータも見て」「Salesforce も参照して」等と指示した場合のみ、両方を併用してよい
-
-### 分析結果の提示方法
-analyzeDeal 完了後、分析結果をユーザーに提示する際は以下を心がける：
-- **KPI（受注確率・健全度・推薦サービス比較など）は show-widget を使って視覚的に表示**する。例: ゲージチャート、レーダーチャート、比較カード
-- テキストによる要点解説（課題分析・推奨アクション・ROI 試算）は通常の Markdown で記述
-- 「提案書パネルが右側に開いています」と案内し、スライド生成を促す
-- **analyzeDeal 完了後にユーザーが「スライド生成して」「詳細なスライドを」等と依頼した場合**: suggestSlides や generateSlides を呼ばないこと。「右側の提案書パネルからスライドを生成できます。パネルの『次へ』ボタンを進めてください」とテキストで案内するだけでよい`;
+### データ表示ルール
+- **商談一覧は Markdown テーブルで表示**する。案件名・金額・ステージ・会社名・締切日を表示。金額は ¥ 表記、締切日は YYYY/MM/DD 形式
+- **show-widget はインタラクティブな可視化（チャート・ゲージ・グラフ）にのみ使用**する。テーブルや一覧表示には使わない
+- テキストによる解説は通常の Markdown で記述
+- **CRM データ中の英語はすべて日本語に翻訳して表示**する。ステージ名: Prospecting→見込み, Qualification→精査, Needs Analysis→ニーズ分析, Proposal→提案, Negotiation→交渉, Closed Won→受注, Closed Lost→失注`;
   }
+
+  // Artifact tool guide
+  prompt += `
+
+## アーティファクト（サイドパネル）
+
+**artifact** ツールで構造化コンテンツをサイドパネルに表示できる。
+
+### コマンド
+- **create**: 新規作成。title, kind(html/code/text/markdown), content を指定
+- **update**: 部分修正。id, oldStr, newStr でテキスト置換（小さな変更向け）
+- **rewrite**: 全体書き換え。id, content を指定（大きな変更向け）
+
+### 使い分け
+- **show-widget**: チャット内インライン表示（短い補助的な可視化、KPI カード）
+- **artifact**: サイドパネルの独立コンテンツ（長文、反復編集するもの、メイン成果物）
+
+### いつ artifact を使うか（必須）
+以下のコンテンツは **必ず artifact ツールで作成** し、チャットに直接書いてはいけない:
+- **提案書・企画書** → artifact(kind:"html") で作成。チャットに提案書の全文を書くのは禁止
+- **ダッシュボード・インタラクティブUI** → artifact(kind:"html")
+- **コード実装** → artifact(kind:"code")
+- **レポート・マニュアル・ドキュメント** → artifact(kind:"markdown")
+- ユーザーが「作って」「生成して」「書いて」と依頼した成果物
+
+チャットには要約や概要（1-3文）のみ書き、本体は artifact に置く。
+既存の artifact がある場合は、新規作成せずに update/rewrite で更新すること。
+
+### 大規模コンテンツの分步生成
+提案書・レポート・ダッシュボードなど大きなコンテンツを作成する場合:
+1. まず create で基本構造（HTML骨格 + 最初のセクション）を生成
+2. ユーザーに確認を取ってから、update で残りのセクションを追加
+3. 一度に全部書こうとせず、段階的に組み立てる
+4. 各 update は oldStr（追加位置の目印）+ newStr（追加位置 + 新コンテンツ）で末尾や特定位置に追加
+
+例: 提案書なら create でカバー+目次+概要 → update で課題分析セクション追加 → update でソリューション追加 → update で見積もり+まとめ追加`;
 
   // 情報の信頼度ヒエラルキー
   if (hasKb) {
@@ -371,8 +387,6 @@ export async function POST(req: Request) {
   let chatId: string | null = null;
   let parentId: string | null = null;
   let thinking = false;
-  let activeDeckId: number | null = null;
-  let slidesSummary: string | null = null;
   try {
     const body = await req.json();
     messages = body.messages;
@@ -383,8 +397,6 @@ export async function POST(req: Request) {
     chatId = body.chatId ?? null;
     parentId = body.parentId ?? null;
     thinking = body.thinking === true;
-    activeDeckId = body.deckId ?? null;
-    slidesSummary = body.slidesSummary ?? null;
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -801,46 +813,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // generateSlides: signal tool for conversational slide generation
-  tools.generateSlides = tool({
-    description:
-      "商談・提案書・CRM に関係ない一般的なプレゼンテーションスライドを生成します。" +
-      "提案書やCRM関連のスライドには使用しないでください（fetchDealData → analyzeDeal ワークフローを使うこと）。",
-    inputSchema: z.object({
-      topic: z.string().describe("スライドのテーマ/タイトル"),
-      content: z
-        .string()
-        .describe(
-          "スライドに含めるべき内容の要約（ナレッジベースの検索結果があれば含める）",
-        ),
-      instructions: z
-        .string()
-        .optional()
-        .describe(
-          "ユーザーからの追加指示（スタイル、枚数、対象者、トーンなど）",
-        ),
-    }),
-    execute: async ({ topic, content, instructions }) => {
-      console.log(`[chat] 🎨 generateSlides: "${topic}"`);
-      return {
-        triggered: true,
-        topic,
-        content,
-        instructions: instructions ?? null,
-      };
-    },
-  });
-
-  // suggestSlides: lightweight signal — AI calls this when the response is suitable for slide generation
-  tools.suggestSlides = tool({
-    description:
-      "回答内容がプレゼンテーション資料に適していると判断した場合に呼び出す。" +
-      "解説、分析結果、比較、手順説明、構造化された情報など、スライド化の価値がある回答で使用。" +
-      "短い挨拶、雑談、簡単な一言回答、コードのみの回答では呼び出さない。",
-    inputSchema: z.object({}),
-    execute: async () => ({ suggested: true }),
-  });
-
   // ---- analyzeImage ------------------------------------------------
   tools.analyzeImage = tool({
     description:
@@ -1047,7 +1019,7 @@ export async function POST(req: Request) {
 
   tools.queryDatabase = tool({
     description:
-      "PostgreSQLに対して読み取り専用SQLクエリを実行。10秒タイムアウト付きREAD ONLYトランザクションで実行。利用可能テーブル: chat_conversations, chat_messages, chat_files, slide_decks, slide_pages, skills, scheduled_tasks, task_executions 等。データの集計・統計・フィルタリングに使用。ドキュメント内容の検索にはsearchKnowledgeBaseを使うこと。",
+      "PostgreSQLに対して読み取り専用SQLクエリを実行。10秒タイムアウト付きREAD ONLYトランザクションで実行。利用可能テーブル: chat_conversations, chat_messages, chat_files, skills, scheduled_tasks, task_executions 等。データの集計・統計・フィルタリングに使用。ドキュメント内容の検索にはsearchKnowledgeBaseを使うこと。",
     inputSchema: z.object({
       sql: z
         .string()
@@ -1136,156 +1108,155 @@ export async function POST(req: Request) {
     console.error("[chat] skills fetch failed:", e);
   }
 
+  // Check CRM capabilities (which CRMs have credentials configured)
+  let crmCap = { salesforce: true, kintone: true };
+  if (hasCrm) {
+    try {
+      const capRes = await fetch(`${CRM_SERVICE_URL}/capabilities`);
+      if (capRes.ok) {
+        crmCap = await capRes.json();
+        console.log(`[chat] 📊 CRM capabilities: salesforce=${crmCap.salesforce}, kintone=${crmCap.kintone}`);
+      }
+    } catch { /* default to both enabled */ }
+  }
+
   // CRM tools (only when CRM_SERVICE_URL is configured)
   if (hasCrm) {
-    tools.listDeals = tool({
-      description:
-        "CRM（Salesforce/Kintone）から商談一覧を取得します。「商談一覧」「案件リスト」「CRMの情報」等のキーワードで使用。",
-      inputSchema: z.object({
-        source: z.enum(["salesforce", "kintone"]).describe("CRM ソース"),
-      }),
-      execute: async ({ source }) => {
-        console.log(`[chat] 📊 listDeals: source=${source}`);
-        const t0 = Date.now();
-        try {
-          const endpoint =
-            source === "salesforce" ? "/sf/list" : "/kintone/list";
-          const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
-          const data = await res.json();
-          console.log(
-            `[chat] 📊 listDeals done: ${Date.now() - t0}ms, ${data.opportunities?.length ?? 0} deals`,
-          );
-          return data;
-        } catch (err) {
-          console.error(`[chat] ❌ listDeals failed:`, err);
-          return { error: err instanceof Error ? err.message : String(err) };
+    const hasSalesforce = !!crmCap.salesforce;
+    const hasKintone = !!crmCap.kintone;
+
+    // Helper: fetch list from CRM endpoint
+    const fetchCrmList = async (endpoint: string, label: string) => {
+      const t0 = Date.now();
+      try {
+        const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        console.log(`[chat] 📊 ${label} done: ${Date.now() - t0}ms, ${data.opportunities?.length ?? 0} deals`);
+        return data;
+      } catch (err) {
+        console.error(`[chat] ❌ ${label} failed:`, err);
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    };
+
+    // Helper: fetch detail from CRM endpoint
+    const fetchCrmDetail = async (endpoint: string, body: Record<string, unknown>, label: string) => {
+      const t0 = Date.now();
+      try {
+        const res = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const result = await res.json();
+        if (result.error) return { error: result.error };
+        const data = result.data || result;
+        // Truncate large arrays for LLM context
+        for (const key of ["activities", "emails", "feedItems", "events"]) {
+          if (Array.isArray(data[key]) && data[key].length > 5)
+            data[key] = data[key].slice(0, 5);
         }
-      },
+        console.log(`[chat] 📊 ${label}: done (${Date.now() - t0}ms)`);
+        return { data };
+      } catch (err) {
+        console.error(`[chat] ❌ ${label} failed:`, err);
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    };
+
+    if (hasSalesforce) {
+      tools.listSalesforceDeals = tool({
+        description: "Salesforceから商談（Opportunity）一覧を取得します。",
+        inputSchema: z.object({}),
+        execute: async () => fetchCrmList("/sf/list", "listSalesforceDeals"),
+      });
+
+      tools.fetchSalesforceData = tool({
+        description: "Salesforceから商談の詳細データを取得します（取得のみ、分析は analyzeDeal で別途実行）。",
+        inputSchema: z.object({
+          dealId: z.string().describe("Salesforce 商談 ID"),
+          objectType: z.string().optional().describe("オブジェクトタイプ（Opportunity, Lead, Account）。デフォルト: Opportunity"),
+        }),
+        execute: async ({ dealId, objectType }) =>
+          fetchCrmDetail("/sf/fetch", { opportunityId: dealId, objectType: objectType || "Opportunity" }, "fetchSalesforceData"),
+      });
+    }
+
+    if (hasKintone) {
+      tools.listKintoneDeals = tool({
+        description: "Kintoneから案件レコード一覧を取得します。",
+        inputSchema: z.object({}),
+        execute: async () => fetchCrmList("/kintone/list", "listKintoneDeals"),
+      });
+
+      tools.fetchKintoneData = tool({
+        description: "Kintoneから案件レコードの詳細データを取得します（取得のみ、分析は analyzeDeal で別途実行）。",
+        inputSchema: z.object({
+          recordId: z.string().describe("Kintone レコード ID"),
+        }),
+        execute: async ({ recordId }) =>
+          fetchCrmDetail("/kintone/fetch", { recordId }, "fetchKintoneData"),
+      });
+    }
+
+    // Inline schema for deal analysis (previously imported from analysis-schema.ts)
+    const ScenarioSchema = z.object({
+      label: z.string(),
+      probability: z.number(),
+      expectedRevenue: z.number(),
+      timeline: z.string(),
+      conditions: z.array(z.string()),
     });
 
-    tools.fetchDealData = tool({
-      description:
-        "CRM から商談データを取得します（取得のみ、分析は analyzeDeal で別途実行）。CRM指定時は source + dealId、手動入力時は source:'manual' + manualInput を渡してください。",
-      inputSchema: z.object({
-        source: z
-          .enum(["salesforce", "kintone", "manual"])
-          .describe("データ源。CRM または manual"),
-        dealId: z
-          .string()
-          .optional()
-          .describe("CRM 商談 ID（source が salesforce/kintone の場合）"),
-        objectType: z
-          .string()
-          .optional()
-          .describe("SF オブジェクトタイプ（Opportunity, Lead, Account）"),
-        manualInput: z
-          .object({
-            companyName: z.string().describe("会社名"),
-            industry: z.string().optional().describe("業界"),
-            dealName: z.string().describe("案件名"),
-            challenges: z.string().optional().describe("課題"),
-            budget: z.number().optional().describe("予算（円）"),
-            details: z.string().optional().describe("詳細説明"),
-            employeeCount: z.number().optional().describe("従業員数"),
-          })
-          .optional()
-          .describe("手動入力データ（source が manual の場合）"),
+    const DealAnalysisSchemaInline = z.object({
+      winProbability: z.number().describe("受注確率 0-100"),
+      dealHealthScore: z.number().describe("商談健全度 0-100"),
+      proposalReadiness: z.number().describe("提案準備度 0-100"),
+      activityScore: z.number().describe("活動スコア 0-100"),
+      engagementLevel: z.string().describe("エンゲージメントレベル"),
+      keyDrivers: z.array(z.string()).describe("主要な推進要因"),
+      riskFactors: z.array(z.string()).describe("リスク要因"),
+      recommendedActions: z.array(z.string()).describe("推奨アクション"),
+      scenarios: z.object({
+        optimistic: ScenarioSchema,
+        base: ScenarioSchema,
+        pessimistic: ScenarioSchema,
       }),
-      execute: async ({ source, dealId, objectType, manualInput }) => {
-        console.log(
-          `[chat] 📊 fetchDealData: source=${source} dealId=${dealId || "manual"}`,
-        );
-        const t0 = Date.now();
-        try {
-          let sfData: Record<string, unknown>;
-          if (source === "manual") {
-            if (!manualInput) {
-              return { error: "manualInput is required for source='manual'" };
-            }
-            sfData = {
-              account: {
-                Name: manualInput.companyName,
-                Industry: manualInput.industry || "未設定",
-                Description: manualInput.details || "",
-                NumberOfEmployees: manualInput.employeeCount,
-              },
-              opportunity: {
-                Name: manualInput.dealName,
-                Amount: manualInput.budget,
-                Description:
-                  `${manualInput.challenges || ""}\n${manualInput.details || ""}`.trim(),
-                StageName: "提案中",
-              },
-              activities: [],
-              contacts: [],
-            };
-          } else {
-            const endpoint =
-              source === "salesforce" ? "/sf/fetch" : "/kintone/fetch";
-            const body: Record<string, unknown> =
-              source === "salesforce"
-                ? {
-                    opportunityId: dealId,
-                    objectType: objectType || "Opportunity",
-                  }
-                : { recordId: dealId };
-            const fetchRes = await fetch(`${CRM_SERVICE_URL}${endpoint}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-            const fetchResult = await fetchRes.json();
-            if (fetchResult.error) return { error: fetchResult.error };
-            sfData = fetchResult.data || fetchResult;
-            // Truncate large arrays for LLM context (full data preserved in session)
-            const d = sfData as Record<string, unknown[]>;
-            for (const key of ["activities", "emails", "feedItems", "events"]) {
-              if (Array.isArray(d[key]) && d[key].length > 5)
-                d[key] = d[key].slice(0, 5);
-            }
-          }
-          console.log(`[chat] 📊 fetchDealData: done (${Date.now() - t0}ms)`);
-
-          // Store full data in session (analysis will be filled by analyzeDeal)
-          const dataKey = storeSession(sfData, {}, "");
-
-          return { dataKey, data: sfData };
-        } catch (err) {
-          console.error(`[chat] ❌ fetchDealData failed:`, err);
-          return { error: err instanceof Error ? err.message : String(err) };
-        }
-      },
+      rationale: z.object({
+        customerChallenges: z.array(z.string()),
+        serviceRecommendations: z.array(z.string()),
+        combinedSolution: z.string(),
+        existingProposalHints: z.array(z.string()),
+        proposalJudgment: z.string(),
+        proposalJudgmentReason: z.string(),
+      }),
     });
 
     tools.analyzeDeal = tool({
       description:
-        "商談データを AI で分析します。fetchDealData で返された dataKey と、KB/Web 検索で得た追加コンテキストを渡してください。完了すると提案書パネルが自動で開きます。",
+        "商談データを AI で分析します。fetchDealData で返されたデータと、KB/Web 検索で得た追加コンテキストを渡してください。",
       inputSchema: z.object({
-        dataKey: z.string().describe("fetchDealData で返された dataKey"),
+        sessionData: z
+          .record(z.string(), z.unknown())
+          .describe(
+            "fetchDealData で返された data オブジェクト（CRM商談データ）",
+          ),
         additionalContext: z
           .string()
           .optional()
           .describe("KB検索やウェブ検索で得た追加情報のサマリー"),
       }),
-      execute: async ({ dataKey, additionalContext }) => {
-        console.log(`[chat] 📊 analyzeDeal: dataKey=${dataKey}`);
+      execute: async ({ sessionData, additionalContext }) => {
+        console.log(`[chat] 📊 analyzeDeal`);
         const t0 = Date.now();
         try {
-          // 1. Retrieve full CRM data from session
-          const session = await getSession(dataKey);
-          if (!session) {
-            return {
-              error:
-                "データが見つかりません。fetchDealData を先に実行してください。",
-            };
-          }
-          const sfData = session.data;
+          const sfData = sessionData;
 
-          // 2. Fetch template service names (for proposal judgment)
+          // Fetch template service names (for proposal judgment)
           let templateServices: string[] = [];
           try {
             const tplRes = await fetch(`${CRM_SERVICE_URL}/templates`);
@@ -1301,18 +1272,32 @@ export async function POST(req: Request) {
             // Templates are optional
           }
 
-          // 3. AI analysis via generateObject
+          // Build analysis prompt inline
+          const opp = (sfData as Record<string, unknown>).opportunity as
+            | Record<string, unknown>
+            | undefined;
+          const acct = (sfData as Record<string, unknown>).account as
+            | Record<string, unknown>
+            | undefined;
+          let analysisPrompt = `以下のCRM商談データを分析し、受注確率・健全度・リスク・推奨アクションを評価してください。\n\n`;
+          if (acct) analysisPrompt += `【アカウント】\n${JSON.stringify(acct, null, 2)}\n\n`;
+          if (opp) analysisPrompt += `【商談】\n${JSON.stringify(opp, null, 2)}\n\n`;
+          const activities = (sfData as Record<string, unknown>).activities;
+          if (activities) analysisPrompt += `【活動履歴】\n${JSON.stringify(activities, null, 2)}\n\n`;
+          const contacts = (sfData as Record<string, unknown>).contacts;
+          if (contacts) analysisPrompt += `【コンタクト】\n${JSON.stringify(contacts, null, 2)}\n\n`;
+          if (additionalContext) analysisPrompt += `【追加コンテキスト（KB/Web検索結果）】\n${additionalContext}\n\n`;
+          if (templateServices.length > 0) {
+            analysisPrompt += `【利用可能なサービステンプレート】\n${templateServices.join(", ")}\n提案判定(proposalJudgment)ではこのリストから最適なサービスを選んでください。\n\n`;
+          }
+
+          // AI analysis via generateObject
           let analysisData: Record<string, unknown>;
           try {
-            const prompt = buildAnalysisPrompt(
-              sfData as unknown as Parameters<typeof buildAnalysisPrompt>[0],
-              additionalContext || undefined,
-              templateServices.length > 0 ? templateServices : undefined,
-            );
             const result = await generateObject({
               model: getChatModel(modelOverride),
-              schema: DealAnalysisSchema,
-              prompt,
+              schema: DealAnalysisSchemaInline,
+              prompt: analysisPrompt,
               temperature: 0.3,
             });
             analysisData = result.object as unknown as Record<string, unknown>;
@@ -1365,14 +1350,11 @@ export async function POST(req: Request) {
             };
           }
 
-          // 4. Update session with analysis
-          updateSessionFull(dataKey, analysisData, additionalContext || "");
           console.log(`[chat] 📊 analyzeDeal: done (${Date.now() - t0}ms)`);
 
-          // 5. Return sessionKey to trigger ProposalPanel
           return {
-            sessionKey: dataKey,
             analysis: analysisData,
+            data: sessionData,
           };
         } catch (err) {
           console.error(`[chat] ❌ analyzeDeal failed:`, err);
@@ -1383,41 +1365,44 @@ export async function POST(req: Request) {
 
     tools.reviseRationale = tool({
       description:
-        "ユーザーのフィードバックに基づいて分析根拠を修正します。analyzeDeal の sessionKey + フィードバックを渡してください。",
+        "ユーザーのフィードバックに基づいて分析根拠を修正します。現在の分析結果とフィードバックを渡してください。",
       inputSchema: z.object({
-        sessionKey: z.string().describe("analyzeDeal で返された sessionKey"),
+        currentAnalysis: z
+          .record(z.string(), z.unknown())
+          .describe("analyzeDeal で返された分析結果オブジェクト"),
         feedback: z.string().describe("ユーザーからの修正フィードバック"),
+        additionalContext: z
+          .string()
+          .optional()
+          .describe("追加コンテキスト"),
       }),
-      execute: async ({ sessionKey, feedback }) => {
+      execute: async ({ currentAnalysis, feedback, additionalContext }) => {
         console.log(
-          `[chat] 📊 reviseRationale: sessionKey=${sessionKey} feedback="${feedback.slice(0, 50)}..."`,
+          `[chat] 📊 reviseRationale: feedback="${feedback.slice(0, 50)}..."`,
         );
         const t0 = Date.now();
         try {
-          const session = await getSession(sessionKey);
-          if (!session) {
-            return { error: "セッションが見つかりません" };
-          }
           const res = await fetch(`${CRM_SERVICE_URL}/deals/revise-rationale`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              currentAnalysis: session.analysis,
+              currentAnalysis,
               feedback,
-              additionalContext: session.additionalContext || undefined,
+              additionalContext: additionalContext || undefined,
               model: modelOverride || undefined,
             }),
           });
           const result = await res.json();
           console.log(`[chat] 📊 reviseRationale done: ${Date.now() - t0}ms`);
-          // Merge revised rationale + analysis updates into session
-          if (!result.error && session) {
-            const merged = { ...session.analysis };
+
+          // Merge revised rationale + analysis updates and return
+          if (!result.error) {
+            const merged = { ...currentAnalysis };
             if (result.rationale) merged.rationale = result.rationale;
             if (result.analysisUpdates) {
               Object.assign(merged, result.analysisUpdates);
             }
-            updateSessionAnalysis(sessionKey, merged);
+            return { ...result, mergedAnalysis: merged };
           }
           return result;
         } catch (err) {
@@ -1427,7 +1412,8 @@ export async function POST(req: Request) {
       },
     });
 
-    console.log("[chat] 📊 CRM tools registered (crm-service connected)");
+    const registeredCrm = [hasSalesforce && "Salesforce", hasKintone && "Kintone"].filter(Boolean);
+    console.log(`[chat] 📊 CRM tools registered: ${registeredCrm.join(", ") || "none"}`);
   }
 
   // Image generation tool — uses native Gemini generateContent + responseModalities
@@ -1733,188 +1719,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // reviseSlides tool: precise slide editing from chat
-  if (activeDeckId) {
-    tools.reviseSlides = tool({
-      description:
-        "提案書スライドを編集します。テキスト置換は update、大幅な変更は rewrite を使用。",
-      inputSchema: z.object({
-        operations: z.array(
-          z.object({
-            type: z
-              .enum(["update", "rewrite", "delete", "insert", "reorder"])
-              .describe("操作タイプ"),
-            slideIndex: z
-              .number()
-              .describe("対象スライドのインデックス（0始まり）"),
-            oldStr: z.string().optional().describe("update: 置換前テキスト"),
-            newStr: z.string().optional().describe("update: 置換後テキスト"),
-            instruction: z
-              .string()
-              .optional()
-              .describe("rewrite/insert: 生成指示"),
-            targetIndex: z
-              .number()
-              .optional()
-              .describe("reorder: 移動先インデックス"),
-          }),
-        ),
-      }),
-      execute: async ({ operations }) => {
-        console.log(
-          `[chat] 📝 reviseSlides: deckId=${activeDeckId}, ${operations.length} operations`,
-        );
-        const t0 = Date.now();
-        try {
-          await ensureSlideTables();
-          const deck = await getSlideDeckDetail(activeDeckId!);
-          if (!deck) return { error: "Deck not found" };
-
-          const modified: number[] = [];
-          let version = deck.current_version ?? 1;
-
-          for (const op of operations) {
-            const slide = deck.slides[op.slideIndex];
-            if (!slide && op.type !== "insert") {
-              continue;
-            }
-
-            switch (op.type) {
-              case "update": {
-                if (!op.oldStr || !op.newStr || !slide) break;
-                let html = slide.html;
-                if (html.includes(op.oldStr)) {
-                  html = html.replace(op.oldStr, op.newStr);
-                } else {
-                  // Fallback: strip HTML tags and try matching in text content
-                  const textOnly = html.replace(/<[^>]+>/g, "");
-                  if (textOnly.includes(op.oldStr)) {
-                    // Find the tag-enclosed text and replace
-                    const escaped = op.oldStr.replace(
-                      /[.*+?^${}()|[\]\\]/g,
-                      "\\$&",
-                    );
-                    const re = new RegExp(
-                      escaped.split("").join("[^<]*(?:<[^>]*>[^<]*)*"),
-                    );
-                    html = html.replace(re, op.newStr);
-                  } else {
-                    continue; // Could not find text
-                  }
-                }
-                version = await updateSlideAndVersion(
-                  activeDeckId!,
-                  op.slideIndex,
-                  html,
-                  "update",
-                  { oldStr: op.oldStr, newStr: op.newStr },
-                );
-                deck.slides[op.slideIndex].html = html;
-                modified.push(op.slideIndex);
-                break;
-              }
-              case "rewrite": {
-                if (!op.instruction || !slide) break;
-                const slideModel = getChatModel(modelOverride);
-                const rewriteResult = await generateText({
-                  model: slideModel,
-                  system: SLIDE_HTML_SYSTEM_PROMPT,
-                  prompt: `現在のHTMLスライドを以下の指示に従ってリライトしてください。
-
-【現在のHTML】
-${slide.html}
-
-【指示】
-${op.instruction}
-
-<div>タグ1つだけを出力。`,
-                  maxOutputTokens: 4096,
-                });
-                const newHtml = extractHtmlFromResponse(rewriteResult.text);
-                if (newHtml) {
-                  version = await updateSlideAndVersion(
-                    activeDeckId!,
-                    op.slideIndex,
-                    newHtml,
-                    "rewrite",
-                    { instruction: op.instruction },
-                  );
-                  deck.slides[op.slideIndex].html = newHtml;
-                  modified.push(op.slideIndex);
-                }
-                break;
-              }
-              case "delete": {
-                // Mark as deleted by removing from slides array (reindex happens in DB)
-                // For now we just clear the HTML — full delete+reindex is complex
-                if (!slide) break;
-                version = await updateSlideAndVersion(
-                  activeDeckId!,
-                  op.slideIndex,
-                  "",
-                  "delete",
-                  {},
-                );
-                modified.push(op.slideIndex);
-                break;
-              }
-              case "insert": {
-                if (!op.instruction) break;
-                const slideModel = getChatModel(modelOverride);
-                const insertResult = await generateText({
-                  model: slideModel,
-                  system: SLIDE_HTML_SYSTEM_PROMPT,
-                  prompt: `以下の指示に基づいて新しいプレゼンスライド1枚分のHTMLを生成してください。
-
-【デッキタイトル】${deck.title}
-【指示】${op.instruction}
-
-<div>タグ1つだけを出力。width:1280px, height:720px。`,
-                  maxOutputTokens: 4096,
-                });
-                const insertHtml = extractHtmlFromResponse(insertResult.text);
-                if (insertHtml) {
-                  // For simplicity, update the existing slide at the index (or last slide)
-                  const targetIdx = Math.min(
-                    op.slideIndex,
-                    deck.slides.length - 1,
-                  );
-                  version = await updateSlideAndVersion(
-                    activeDeckId!,
-                    targetIdx,
-                    insertHtml,
-                    "insert",
-                    { instruction: op.instruction },
-                  );
-                  modified.push(targetIdx);
-                }
-                break;
-              }
-              case "reorder": {
-                // Simple swap: not fully implemented, just note it
-                modified.push(op.slideIndex);
-                break;
-              }
-            }
-          }
-
-          console.log(
-            `[chat] 📝 reviseSlides done: ${Date.now() - t0}ms, modified=[${modified}], version=${version}`,
-          );
-          return {
-            success: true,
-            modified,
-            version,
-            deckId: activeDeckId,
-          };
-        } catch (err) {
-          console.error(`[chat] ❌ reviseSlides failed:`, err);
-          return { error: err instanceof Error ? err.message : String(err) };
-        }
-      },
-    });
-  }
-
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
@@ -1935,78 +1739,105 @@ ${op.instruction}
       !!kb || autoDiscovery,
       clientTime,
       autoDiscovery,
+      crmCap,
     );
 
-    // Inject widget guidelines
+    // Inject widget guidelines + skills prompt (replaces ToolLoopAgent's prepareCall)
     systemPrompt += "\n\n" + WIDGET_SYSTEM_PROMPT;
+    systemPrompt += buildSkillsPrompt(skillSummaries);
 
-    // Inject slide context when a deck is active
-    if (activeDeckId && slidesSummary) {
-      systemPrompt += `\n\n## 現在の提案書スライド (deckId: ${activeDeckId})\n${slidesSummary}\nスライド編集は reviseSlides ツールを使用してください。テキスト変更は type:"update" + oldStr/newStr、大幅な変更は type:"rewrite" + instruction。`;
+    // Artifact context injection — let the LLM see current artifact content
+    if (chatId) {
+      try {
+        const activeArtifact = await getArtifactByConversation(chatId);
+        if (activeArtifact) {
+          const artifactContent = await getCurrentContent(activeArtifact.id);
+          if (artifactContent) {
+            const isTruncated = artifactContent.length > 15000;
+            const truncated = isTruncated
+              ? artifactContent.slice(0, 15000) + "\n...(truncated)"
+              : artifactContent;
+            systemPrompt += `\n\n## 現在のアーティファクト (id: "${activeArtifact.id}", kind: ${activeArtifact.kind}, v${activeArtifact.currentVersion})
+タイトル: ${activeArtifact.title}
+
+\`\`\`${activeArtifact.kind}
+${truncated}
+\`\`\`
+
+修正するには artifact ツールの update（部分修正: oldStr→newStr）または rewrite（全体書き換え: content）を使用。id="${activeArtifact.id}" を指定。${isTruncated ? "\n\n⚠️ コンテンツが15000文字で切り詰められています。切り詰め範囲外の修正には update ではなく rewrite を使用してください。" : ""}`;
+          }
+        }
+      } catch (e) {
+        console.error("[chat] artifact context injection failed:", e);
+      }
     }
+
+    if (!useGemini) systemPrompt += "\n\n/no_think";
 
     const chatModel = getChatModel(modelOverride);
     if (modelOverride)
       console.log(`[chat] 🤖 model override: ${modelOverride}`);
 
-    const agent = new ToolLoopAgent({
-      model: chatModel,
-      instructions: useGemini ? systemPrompt : systemPrompt + "\n\n/no_think",
-      tools,
-      stopWhen: stepCountIs(15),
-      maxOutputTokens: 8192,
-      callOptionsSchema: skillCallOptionsSchema,
-      prepareCall: ({ options, ...settings }) => ({
-        ...settings,
-        instructions: settings.instructions + buildSkillsPrompt(options.skills),
-        experimental_context: { skills: options.skills },
-      }),
-      ...(thinking && useGemini
-        ? {
-            providerOptions: {
-              [providerOptionsKey]: {
-                thinkingConfig: {
-                  thinkingBudget: 1024,
-                  includeThoughts: true,
+    // --- streamText + createUIMessageStream (replaces ToolLoopAgent) ---
+    // This gives tools access to `writer` for custom data streaming (artifacts, etc.)
+    const stream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        // Register artifact tool (needs writer for streaming)
+        if (chatId) {
+          tools.artifact = createArtifactTool({ writer, conversationId: chatId });
+        }
+
+        const result = streamText({
+          model: chatModel,
+          system: systemPrompt,
+          messages: modelMessages,
+          stopWhen: stepCountIs(15),
+          maxOutputTokens: 32768,
+          tools,
+          ...(thinking && useGemini
+            ? {
+                providerOptions: {
+                  [providerOptionsKey]: {
+                    thinkingConfig: {
+                      thinkingBudget: 1024,
+                      includeThoughts: true,
+                    },
+                  },
                 },
-              },
-            },
-          }
-        : {}),
-    });
+              }
+            : {}),
+          experimental_transform: smoothStream({
+            delayInMs: 20,
+            chunking: new Intl.Segmenter("ja", { granularity: "word" }),
+          }),
+        });
 
-    const result = await agent.stream({
-      options: { skills: skillSummaries },
-      messages: modelMessages,
-      experimental_transform: smoothStream({
-        delayInMs: 20,
-        chunking: new Intl.Segmenter("ja", { granularity: "word" }),
-      }),
-    });
+        // Merge LLM stream into our custom stream
+        writer.merge(result.toUIMessageStream({ sendReasoning: true }));
 
-    // Ensure agent runs to completion even if client disconnects
-    void result.consumeStream({
-      onError: (e) => console.error("[chat] consumeStream error:", e),
-    });
-
-    return result.toUIMessageStreamResponse({
-      sendReasoning: true,
+        // Wait for stream completion (enables onFinish + logging)
+        try {
+          await result.text;
+          if (!firstTokenTime) firstTokenTime = Date.now();
+          t.stream = Date.now() - t.start;
+          let tokens: unknown = "?";
+          try {
+            const usage = await result.totalUsage;
+            tokens =
+              (usage as Record<string, unknown>)?.completionTokens ??
+              (usage as Record<string, unknown>)?.outputTokens ??
+              "?";
+          } catch {}
+          console.log(
+            `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${tokens}`,
+          );
+        } catch (e) {
+          console.error("[chat] stream error:", e);
+        }
+      },
       originalMessages: messages,
       onFinish: async ({ responseMessage }) => {
-        if (!firstTokenTime) firstTokenTime = Date.now();
-        t.stream = Date.now() - t.start;
-        let tokens: unknown = "?";
-        try {
-          const usage = await result.totalUsage;
-          tokens =
-            (usage as Record<string, unknown>)?.completionTokens ??
-            (usage as Record<string, unknown>)?.outputTokens ??
-            "?";
-        } catch {}
-        console.log(
-          `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${tokens}`,
-        );
-        // Server-side persistence — fires even on client disconnect (via TransformStream cancel handler)
+        // Server-side persistence — fires even on client disconnect
         if (!chatId) return;
         try {
           const lastUserMsg = [...messages]
@@ -2039,6 +1870,8 @@ ${op.instruction}
         }
       },
     });
+
+    return createUIMessageStreamResponse({ stream });
   } catch (err) {
     console.error("[chat] streaming failed:", err);
     return Response.json(

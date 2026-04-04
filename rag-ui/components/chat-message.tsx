@@ -35,8 +35,6 @@ import {
   BrainIcon,
   SparklesIcon,
   DatabaseIcon,
-  PresentationIcon,
-  LayoutIcon,
   ImageIcon,
   PencilIcon,
   FileTextIcon,
@@ -50,12 +48,7 @@ import {
   OctagonIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { useArtifactStore } from "@/lib/artifact-store";
 
 const ImageLightbox = lazy(() =>
   import("@/components/image-lightbox").then((m) => ({
@@ -294,38 +287,50 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
-  if (toolName === "generateSlides") {
+  if (toolName === "listSalesforceDeals") {
     return (
       <StepIndicator
-        icon={PresentationIcon}
-        activeLabel="スライドを準備中..."
-        completedLabel="スライド生成を開始しました"
+        icon={DatabaseIcon}
+        activeLabel="Salesforceから商談一覧を取得中..."
+        completedLabel="Salesforceから商談一覧を取得しました"
         active={!isComplete}
       />
     );
   }
 
-  if (toolName === "listDeals") {
+  if (toolName === "listKintoneDeals") {
     return (
       <StepIndicator
         icon={DatabaseIcon}
-        activeLabel="商談一覧を取得中..."
-        completedLabel="商談一覧を取得しました"
+        activeLabel="Kintoneから案件一覧を取得中..."
+        completedLabel="Kintoneから案件一覧を取得しました"
         active={!isComplete}
       />
     );
   }
 
-  if (toolName === "fetchDealData") {
+  if (toolName === "fetchSalesforceData") {
     return (
       <StepIndicator
         icon={DatabaseIcon}
-        activeLabel="商談データを取得中..."
-        completedLabel="商談データを取得しました"
+        activeLabel="Salesforceから商談データを取得中..."
+        completedLabel="Salesforceから商談データを取得しました"
         active={!isComplete}
       />
     );
   }
+
+  if (toolName === "fetchKintoneData") {
+    return (
+      <StepIndicator
+        icon={DatabaseIcon}
+        activeLabel="Kintoneからデータを取得中..."
+        completedLabel="Kintoneからデータを取得しました"
+        active={!isComplete}
+      />
+    );
+  }
+
 
   if (toolName === "analyzeDeal") {
     return (
@@ -349,17 +354,6 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
     );
   }
 
-  if (toolName === "generateProposal") {
-    return (
-      <StepIndicator
-        icon={PresentationIcon}
-        activeLabel="提案書を生成中..."
-        completedLabel="提案書を生成しました"
-        active={!isComplete}
-      />
-    );
-  }
-
   if (toolName === "loadSkill") {
     const name = typeof args?.name === "string" ? args.name : "";
     return (
@@ -373,17 +367,6 @@ export const ToolCallIndicator = memo(function ToolCallIndicator({
             ? `スキルを読み込みました — 「${name}」`
             : "スキルを読み込みました"
         }
-        active={!isComplete}
-      />
-    );
-  }
-
-  if (toolName === "reviseSlides") {
-    return (
-      <StepIndicator
-        icon={PresentationIcon}
-        activeLabel="スライドを編集中..."
-        completedLabel="スライドを編集しました"
         active={!isComplete}
       />
     );
@@ -433,14 +416,14 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: "ウェブ検索",
   readPage: "ページ読み込み",
   readUrl: "ページ読み込み",
-  generateSlides: "スライド生成",
-  listDeals: "商談一覧",
-  fetchDealData: "商談データ取得",
+  listSalesforceDeals: "Salesforce商談一覧",
+  listKintoneDeals: "Kintone案件一覧",
+  fetchSalesforceData: "Salesforce商談データ",
+  fetchKintoneData: "Kintoneデータ",
   analyzeDeal: "商談分析",
   fetchAndAnalyze: "商談分析",
-  generateProposal: "提案書生成",
   generateImage: "画像生成",
-  reviseSlides: "スライド編集",
+  artifact: "アーティファクト",
 };
 
 function getGroupSummary(tools: ToolEntry[]): string {
@@ -486,7 +469,6 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
     if (part.type === "step-start") continue;
     if (isToolUIPart(part)) {
       const tn = getToolName(part);
-      if (tn === "suggestSlides") continue;
       // Find the nearest tool-group, skipping transparent parts in between
       let targetGroup: (GroupedSegment & { type: "tool-group" }) | null = null;
       for (let j = result.length - 1; j >= 0; j--) {
@@ -512,6 +494,74 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
   }
   return result;
 }
+
+// Clickable artifact card — shown when artifact tool completes
+const ArtifactCard = memo(function ArtifactCard({
+  result,
+}: {
+  result: Record<string, unknown>;
+}) {
+  const artifactId = result.id as string | undefined;
+  const artifactTitle = result.title as string | undefined;
+  const artifactKind = result.kind as string | undefined;
+  const artifactVersion = result.version as number | undefined;
+
+  const handleClick = useCallback(async () => {
+    if (!artifactId) return;
+    // If store already has this artifact, just reopen
+    const store = useArtifactStore.getState();
+    if (store.id === artifactId && store.content) {
+      useArtifactStore.setState({ isOpen: true });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/artifacts/${artifactId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      useArtifactStore.getState().openArtifact({
+        id: data.id,
+        title: data.title,
+        kind: data.kind,
+        content: data.content,
+        version: data.currentVersion,
+        versions: data.versions,
+      });
+    } catch (e) {
+      console.error("[ArtifactCard] fetch failed:", e);
+    }
+  }, [artifactId]);
+
+  if (!artifactId) return null;
+
+  const kindLabel =
+    artifactKind === "html"
+      ? "HTML"
+      : artifactKind === "code"
+        ? "Code"
+        : artifactKind === "markdown"
+          ? "Markdown"
+          : "Text";
+
+  return (
+    <button
+      onClick={handleClick}
+      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent/50 transition-colors cursor-pointer w-fit max-w-sm"
+    >
+      <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
+        <FileTextIcon className="size-4 text-primary" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-medium truncate">
+          {artifactTitle || "Artifact"}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {kindLabel}
+          {artifactVersion ? ` · v${artifactVersion}` : ""}
+        </div>
+      </div>
+    </button>
+  );
+});
 
 const ToolCallGroup = memo(function ToolCallGroup({
   messageId,
@@ -543,6 +593,15 @@ const ToolCallGroup = memo(function ToolCallGroup({
   // Single tool — always show inline
   if (tools.length === 1) {
     const t = tools[0];
+
+    // Artifact tool — show clickable card when complete
+    if (t.toolName === "artifact" && t.part.state === "output-available") {
+      const result = (t.part.result ?? t.part.output ?? {}) as Record<string, unknown>;
+      if (result.id) {
+        return <ArtifactCard result={result} />;
+      }
+    }
+
     const indicator = (
       <ToolCallIndicator
         toolName={t.toolName}
@@ -667,14 +726,9 @@ export const ChatMessage = memo(function ChatMessage({
   stopped,
   onCopy,
   onRegenerate,
-  onGenerateSlides,
   onEdit,
   branchInfo,
   onSwitchBranch,
-  slidePanelSourceId,
-  onReopenSlides,
-  onOpenProposal,
-  hasConversationDeck,
 }: {
   message: UIMessage;
   isLoading: boolean;
@@ -683,10 +737,6 @@ export const ChatMessage = memo(function ChatMessage({
   stopped?: boolean;
   onCopy: (text: string) => void;
   onRegenerate: () => void;
-  onGenerateSlides?: (
-    text: string,
-    mode: "html" | "visual" | "studio" | "simple",
-  ) => void;
   onEdit?: (messageId: string, newText: string) => void;
   branchInfo?: {
     index: number;
@@ -694,10 +744,6 @@ export const ChatMessage = memo(function ChatMessage({
     siblings: string[];
   } | null;
   onSwitchBranch?: (nodeId: string) => void;
-  slidePanelSourceId?: string | null;
-  onReopenSlides?: () => void;
-  onOpenProposal?: (sessionKey: string) => void;
-  hasConversationDeck?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1019,60 +1065,6 @@ export const ChatMessage = memo(function ChatMessage({
               return null;
           }
         })}
-        {/* Inline proposal button after analyzeDeal / fetchAndAnalyze result */}
-        {message.role === "assistant" && !isActiveStreaming && onOpenProposal && (() => {
-          for (const part of message.parts) {
-            if (!isToolUIPart(part) || part.state !== "output-available") continue;
-            const tn = getToolName(part);
-            if (tn !== "analyzeDeal" && tn !== "fetchAndAnalyze") continue;
-            const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
-            if (typeof result?.sessionKey === "string" && !result?.error) {
-              const sk = result.sessionKey as string;
-              return (
-                <button
-                  key="proposal-btn"
-                  onClick={() => onOpenProposal(sk)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 mt-1"
-                >
-                  {hasConversationDeck ? (
-                    <>
-                      <PresentationIcon className="size-3.5" />
-                      スライドを表示
-                    </>
-                  ) : (
-                    <>
-                      <FileTextIcon className="size-3.5" />
-                      提案書パネルを開く
-                    </>
-                  )}
-                </button>
-              );
-            }
-          }
-          return null;
-        })()}
-        {/* Inline slide button after reviseSlides result */}
-        {message.role === "assistant" && !isActiveStreaming && onReopenSlides && (() => {
-          for (const part of message.parts) {
-            if (!isToolUIPart(part) || part.state !== "output-available") continue;
-            const tn = getToolName(part);
-            if (tn !== "reviseSlides") continue;
-            const result = (("result" in part ? part.result : part.output) ?? {}) as Record<string, unknown>;
-            if (result?.success) {
-              return (
-                <button
-                  key="revise-slide-btn"
-                  onClick={onReopenSlides}
-                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 mt-1"
-                >
-                  <PresentationIcon className="size-3.5" />
-                  スライドを表示
-                </button>
-              );
-            }
-          }
-          return null;
-        })()}
         {showThinking ? <ThinkingIndicator /> : null}
         {showGenerating ? <GeneratingIndicator /> : null}
         {stopped && message.role === "assistant" && (
@@ -1126,58 +1118,6 @@ export const ChatMessage = memo(function ChatMessage({
           <MessageAction tooltip="再生成" onClick={onRegenerate}>
             <RotateCcwIcon className="size-3.5" />
           </MessageAction>
-          {onGenerateSlides &&
-          getMessageText(message) &&
-          message.parts.some(
-            (p) => isToolUIPart(p) && getToolName(p) === "suggestSlides",
-          ) ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <MessageAction tooltip="スライド生成">
-                  <PresentationIcon className="size-3.5" />
-                </MessageAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52">
-                <DropdownMenuItem
-                  onClick={() =>
-                    onGenerateSlides(getMessageText(message), "html")
-                  }
-                >
-                  <LayoutIcon className="size-3.5 mr-2" />
-                  HTML スライド
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    onGenerateSlides(getMessageText(message), "visual")
-                  }
-                >
-                  <ImageIcon className="size-3.5 mr-2" />
-                  ビジュアルスライド
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    onGenerateSlides(getMessageText(message), "studio")
-                  }
-                >
-                  <PencilIcon className="size-3.5 mr-2" />
-                  スライドスタジオ
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    onGenerateSlides(getMessageText(message), "simple")
-                  }
-                >
-                  <FileTextIcon className="size-3.5 mr-2" />
-                  簡易スライド
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          {slidePanelSourceId === message.id && onReopenSlides && (
-            <MessageAction tooltip="スライドを開く" onClick={onReopenSlides}>
-              <PresentationIcon className="size-3.5 text-primary" />
-            </MessageAction>
-          )}
           {branchInfo && onSwitchBranch && (
             <BranchSelector
               index={branchInfo.index}

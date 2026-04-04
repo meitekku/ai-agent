@@ -183,7 +183,7 @@ app.post("/sf/list", async (c) => {
     const available = await checkAvailable(conn);
 
     if (available.has("Opportunity")) {
-      const result = await conn.query<R>(`SELECT Id, Name, Amount, StageName, CloseDate, Account.Name FROM Opportunity WHERE IsClosed = false ORDER BY LastModifiedDate DESC LIMIT 50`);
+      const result = await conn.query<R>(`SELECT Id, Name, Amount, toLabel(StageName) StageName, CloseDate, Account.Name FROM Opportunity WHERE IsClosed = false ORDER BY LastModifiedDate DESC LIMIT 50`);
       const opportunities = result.records.map((r: R) => ({ Id: r.Id, Name: r.Name, Amount: (r.Amount as number) || 0, StageName: r.StageName || "", CloseDate: r.CloseDate || "", AccountName: r.Account?.Name || "", _type: "Opportunity" }));
       return c.json({ opportunities, objectType: "Opportunity", available: Array.from(available) });
     }

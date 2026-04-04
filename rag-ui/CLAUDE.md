@@ -9,7 +9,7 @@
 - Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
 - shadcn/ui（已初始化）
 - AI Elements（`ai-elements`）— Conversation, Message, PromptInput コンポーネント
-- Vercel AI SDK (`ai` v6) — ToolLoopAgent + useChat
+- Vercel AI SDK (`ai` v6) — streamText + createUIMessageStream + useChat
 - `@ai-sdk/react` — useChat フック
 - `@ai-sdk/openai` — MLX OpenAI 互換プロバイダー（フォールバック用）
 - `@ai-sdk/google` — Gemini プロバイダー
@@ -21,9 +21,10 @@
 ```
 Browser useChat → /api/chat Route Handler → isImageModel?
                                             → YES: generateText + responseModalities → 画像保存 → UIMessageStream
-                                            → NO:  Gemini/MLX ToolLoopAgent + tool calling
+                                            → NO:  Gemini/MLX streamText + stopWhen(15) + tool calling
                                               → searchKnowledgeBase（LightRAG search-only）
                                               → webSearch / readPage（Tavily）or google_search（Gemini grounding）
+                                              → artifact（create/update/rewrite → サイドパネル表示）
                                               → generateImage（Gemini 画像生成ツール）
                                               → analyzeImage（Gemini Vision 画像分析）
                                               → readFile / editFile / listFiles / grepFiles（ファイル操作）
@@ -127,10 +128,7 @@ pm2 delete lightrag-service && pm2 start ~/Desktop/ai/ecosystem.config.js --only
 | `GEMINI_MODEL`           | gemini-3-flash-preview               | Gemini LLM 模型（デフォルト、チャット別にユーザーが変更可） |
 | `GEMINI_EMBEDDING_MODEL` | text-embedding-004                   | Gemini Embedding 模型                                       |
 | `EMBEDDING_PROVIDER`     | local                                | Embedding 提供者（`local` / `gemini`）                      |
-| `SLIDE_LLM_BASE_URL`     | (空)                                 | スライド専用 LLM ベース URL（設定時は専用プロバイダー使用） |
-| `SLIDE_LLM_API_KEY`      | (空)                                 | スライド専用 LLM API Key                                    |
-| `SLIDE_LLM_MODEL`        | (空)                                 | スライド専用 LLM モデル名                                   |
-| `DATABASE_URL`           | postgresql://localhost:5432/lightrag | PostgreSQL 接続 URL（スライド履歴・テンプレート保存用）     |
+| `DATABASE_URL`           | postgresql://localhost:5432/lightrag | PostgreSQL 接続 URL（チャット履歴・Artifact 保存用）        |
 
 ## 项目结构
 
@@ -146,7 +144,7 @@ rag-ui/
 │   │   └── [slug]/page.tsx            # ナレッジベース詳細（ドキュメント管理）
 │   ├── skills/page.tsx                # スキル管理ページ
 │   └── api/
-│       ├── chat/route.ts              # ToolLoopAgent + tool calling + CRM tools（fetchAndAnalyze 統合、generateProposal 廃止）+ 画像
+│       ├── chat/route.ts              # streamText + createUIMessageStream + tool calling + artifact tool + CRM tools + 画像
 │       ├── kbs/
 │       │   ├── route.ts               # GET/POST ナレッジベース一覧/作成
 │       │   └── [slug]/
@@ -171,53 +169,29 @@ rag-ui/
 │       │   ├── route.ts               # GET 文档列表
 │       │   ├── upload/route.ts        # POST PDF 上传
 │       │   └── [id]/route.ts          # DELETE 文档删除
-│       ├── slides/
-│       │   ├── plan/route.ts          # POST 簡易スライド構成計画
-│       │   ├── render/route.ts        # POST 簡易スライド HTML 生成
-│       │   ├── generate/route.ts      # POST 構造化デッキ JSON（Zod）
-│       │   ├── pptx/route.ts          # POST PPTX 生成（2モード）
-│       │   ├── pdf/route.ts           # POST PDF 生成（jsPDF）
-│       │   ├── refine/route.ts        # POST AI デッキリファイン
-│       │   ├── visual/
-│       │   │   ├── outline/route.ts   # POST ビジュアルアウトライン生成
-│       │   │   └── renderhtml/route.ts # POST ビジュアルスライド HTML 生成
-│       │   └── htmlslide/
-│       │       ├── plan/route.ts      # POST HTML スライド構成計画（スタイル対応）
-│       │       └── render/route.ts    # POST HTML スライド生成（テンプレート対応）
+│       ├── artifacts/
+│       │   ├── route.ts               # GET ?conversationId= アーティファクト取得（内容+バージョン一覧）
+│       │   └── [id]/
+│       │       ├── route.ts           # GET アーティファクト詳細（メタ+バージョン+内容）
+│       │       └── versions/
+│       │           └── [version]/route.ts # GET 特定バージョン内容
 │       ├── crm/
-│       │   ├── generate-pptx/route.ts       # POST crm-service PPTX 一括生成プロキシ（sessionKey 対応）
 │       │   ├── proposal-plan/route.ts       # POST crm-service plan JSON 生成プロキシ
 │       │   ├── proposal-render/route.ts     # POST crm-service PPTX レンダリングプロキシ
 │       │   ├── proposal-revise-slide/route.ts # POST crm-service 1 スライド修正プロキシ
-│       │   ├── proposal-session/[key]/route.ts # GET 提案セッションデータ取得
 │       │   └── templates/route.ts           # GET/POST crm-service テンプレート一覧・アップロードプロキシ
-│       ├── history/
-│       │   └── slides/
-│       │       ├── route.ts           # GET/POST スライド履歴
-│       │       └── [id]/route.ts      # GET/PUT/PATCH/DELETE 個別デッキ
-│       └── templates/
-│           └── slides/
-│               ├── route.ts           # GET/POST テンプレート
-│               └── [id]/route.ts      # DELETE テンプレート
 ├── components/
 │   ├── ui/                    # shadcn コンポーネント（コマンド生成、手動変更不可）
 │   ├── ai-elements/           # AI Elements コンポーネント（コマンド生成）
 │   ├── chat-input.tsx         # チャット入力（ファイル添付、アップロード進捗、D&D、リトライ対応）
-│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル、画像大表示、fetchAndAnalyze インラインボタン、reasoning インライン、4モードDD）
+│   ├── chat-message.tsx       # チャットメッセージ（マルチモーダル、画像大表示、ArtifactCard、reasoning インライン）
+│   ├── artifact-panel.tsx     # Artifact サイドパネル（HTML/code/markdown/text 渲染、バージョン切替、コピー、ダウンロード）
 │   ├── widget-renderer.tsx    # Generative UI: sandbox iframe + postMessage（CodePilot 方式）
 │   ├── widget-shimmer.tsx     # Widget ローディングシマーオーバーレイ
 │   ├── image-lightbox.tsx     # shadcn Dialog ベース画像拡大表示 + ダウンロードボタン
-│   ├── slide-viewer.tsx       # 簡易スライドビューア（既存）
-│   ├── visual-slide-viewer.tsx # ビジュアルスライドビューア（7スタイル、outline→HTML）
-│   ├── html-slide-viewer.tsx  # HTML スライドビューア（DB保存、テンプレート、ドラッグ）
-│   ├── slide-studio.tsx       # スライドスタジオ（構造化編集、Mermaid、PPTX）
-│   ├── style-options-panel.tsx # スタイルオプション（産業/職種/年代/色/フォント）
-│   ├── template-manager.tsx   # テンプレート管理モーダル
 │   ├── app-shell.tsx           # AppShell（sidebar + header ラッパー、layout から使用）
 │   ├── app-sidebar.tsx        # ナビゲーションサイドバー（overlay/pinned、チャット履歴）
-│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ+ProposalPanel→SlidePanel 遷移）
-│   ├── proposal-panel.tsx     # 提案書パネル（分析表示 → テンプレート確認 → スタイル設定 → SlidePanel 遷移）PanelShell リサイズ対応
-│   ├── slide-preview.tsx      # PresentationPlan → HTML プレビュー（16:9、inch→%変換）
+│   ├── chat-page.tsx          # チャット共有コンポーネント（履歴+ブランチ+Artifact復元+streaming検出）
 │   ├── documents-page.tsx     # ナレッジベース一覧ページ
 │   ├── kb-detail-page.tsx     # ナレッジベース詳細（ドキュメント管理+設定編集）
 │   └── skills-page.tsx        # スキル CRUD + ZIP アップロード + skills.sh レジストリ（自動更新）
@@ -232,25 +206,19 @@ rag-ui/
 │   ├── ollama-provider.ts # AI SDK プロバイダー設定（Gemini/MLX 自動切替 + 画像モデル）
 │   ├── embedding-client.ts # Embedding クライアント（Ollama/Gemini 切替）
 │   ├── semantic-cache.ts  # Valkey/Redis 查询缓存（TTL 1h）
-│   ├── slide-provider.ts  # スライド LLM プロバイダー（Gemini/MLX 自動切替）
-│   ├── slide-prompts.ts   # スライド生成プロンプト + バリデーション
-│   ├── slide-store.ts     # 簡易スライド状態管理（Zustand）
+│   ├── artifact-db.ts     # PostgreSQL Artifact CRUD + バージョン管理（artifacts + artifact_versions テーブル）
+│   ├── artifact-tool.ts   # AI SDK artifact ツール（create/update/rewrite、writer 経由で流式推送）
+│   ├── artifact-store.ts  # Zustand store（Artifact 状態管理、streaming 対応）
 │   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg、source_type 列対応）
 │   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
 │   ├── skill-registry.ts  # skills.sh レジストリ共有ヘルパー（GitHub SKILL.md 取得 + frontmatter 解析）
-│   ├── slide-db.ts        # PostgreSQL スライドCRUD + バージョン管理（pg）
-│   ├── slide-types.ts     # スライド共有型定義（SlideVersion 含む）
-│   ├── slide-api.ts       # フロントエンド API クライアント（履歴/テンプレート/バージョン）
-│   ├── slide-panel-store.ts # Zustand store（cachedSlides + conversationDeckId + refreshToken）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
 │   ├── chat-files-db.ts   # chat_files テーブル CRUD
 │   ├── file-cleanup.ts    # 孤立ファイル自動削除
 │   ├── widget-parser.ts   # show-widget コードフェンス解析（セグメント分割 + JSON 抽出）
 │   ├── widget-sanitizer.ts # Widget HTML 消毒 + iframe srcdoc ビルダー（CSP + postMessage）
 │   ├── widget-css-bridge.ts # CSS 変数ブリッジ（rag-ui oklch → widget 標準変数名）
-│   ├── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
-│   ├── proposal-panel-store.ts # Zustand store（sessionKey + phase + styleOptions 管理）
-│   └── proposal-session.ts  # 提案セッション（PostgreSQL 永続化 + インメモリキャッシュ）
+│   └── widget-guidelines.ts # Widget 生成システムプロンプト（~150 tokens）
 ├── hooks/
 │   └── use-file-upload.ts # クライアント自動アップロード（XHR 進捗、リトライ対応）
 ├── instrumentation.ts     # 起動時キャッシュフラッシュ + 孤立ファイルクリーンアップ
@@ -281,7 +249,7 @@ rag-ui/
 
 | メソッド             | パス                             | 説明                                                                            |
 | -------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
-| POST                 | /api/chat                        | AI チャット（ToolLoopAgent + tool calling + Valkey cache + resolveServerFiles） |
+| POST                 | /api/chat                        | AI チャット（streamText + createUIMessageStream + tool calling + artifact + Valkey cache） |
 | POST                 | /api/files/upload                | ファイルアップロード（multipart/form-data → ディスク保存 + DB 記録）            |
 | GET                  | /api/files/[id]                  | ファイル配信（immutable cache、Content-Type 付き）                              |
 | GET/POST             | /api/kbs                         | ナレッジベース一覧 / 新規作成                                                   |
@@ -302,26 +270,9 @@ rag-ui/
 | GET/POST             | /api/history/chats               | チャット履歴一覧 / 新規会話作成                                                 |
 | GET/PATCH/DELETE     | /api/history/chats/[id]          | 会話詳細 / 更新 / 削除                                                          |
 | POST                 | /api/history/chats/[id]/messages | メッセージ保存 + active_leaf_id 更新                                            |
-| POST                 | /api/slides/plan                 | 簡易スライド構成計画                                                            |
-| POST                 | /api/slides/render               | 簡易スライド HTML 生成                                                          |
-| POST                 | /api/slides/generate             | 構造化デッキ JSON 生成（generateObject + Zod）                                  |
-| POST                 | /api/slides/pptx                 | PPTX 生成（Mode A: 画像 / Mode B: 構造化）                                      |
-| POST                 | /api/slides/pdf                  | PDF 生成（jsPDF landscape）                                                     |
-| POST                 | /api/slides/refine               | AI デッキリファイン（generateObject）                                           |
-| POST                 | /api/slides/visual/outline       | ビジュアルアウトライン生成                                                      |
-| POST                 | /api/slides/visual/renderhtml    | ビジュアルスライド HTML 生成                                                    |
-| POST                 | /api/slides/htmlslide/plan       | HTML スライド構成計画（スタイル+テンプレート対応）                              |
-| POST                 | /api/slides/htmlslide/render     | HTML スライド生成（テンプレート参考対応）                                       |
-| GET/POST             | /api/history/slides              | スライド履歴一覧 / 新規保存                                                     |
-| GET/PUT/PATCH/DELETE | /api/history/slides/[id]         | スライドデッキ詳細/更新/リネーム/削除                                           |
-| GET/POST             | /api/history/slides/[id]/versions | GET バージョン一覧(?version=N で特定版スライド取得) / POST バージョン復元       |
-| GET/POST             | /api/templates/slides            | テンプレート一覧 / 保存                                                         |
-| DELETE               | /api/templates/slides/[id]       | テンプレート削除                                                                |
-| POST                 | /api/crm/generate-pptx           | crm-service PPTX 一括生成プロキシ（sessionKey 対応）                            |
-| POST                 | /api/crm/proposal-plan           | crm-service plan JSON 生成プロキシ                                              |
-| POST                 | /api/crm/proposal-render         | crm-service PPTX レンダリングプロキシ                                           |
-| POST                 | /api/crm/proposal-revise-slide   | crm-service 1 スライド修正プロキシ                                              |
-| GET                  | /api/crm/proposal-session/[key]  | 提案セッションデータ取得                                                        |
+| GET                  | /api/artifacts                   | 会話の Artifact 取得（?conversationId= → メタ+内容+バージョン一覧）            |
+| GET                  | /api/artifacts/[id]              | Artifact 詳細（メタ+バージョン+内容）                                           |
+| GET                  | /api/artifacts/[id]/versions/[v] | Artifact 特定バージョン内容                                                     |
 | GET/POST             | /api/crm/templates               | crm-service テンプレート一覧 / アップロードプロキシ                             |
 | GET/POST             | /api/scheduler                   | 定時タスク一覧 / 新規作成                                                       |
 | GET/PATCH/DELETE     | /api/scheduler/[id]              | 定時タスク詳細 / 更新 / 削除                                                    |
@@ -405,177 +356,80 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - ChatInput: absolute bottom-0 で下部固定（グラデーションフェード付き）
 - Conversation: flex-1 スクロール（ConversationContent に pb-48 で ChatInput との重なり対策）
 
-## スライド機能（4モード）
+## Artifact システム
 
-チャット回答からスライドを自動生成。ドロップダウンメニューから4種類のビューアを選択可能。
+Agent loop 内で全ての成果物を生成・更新する統一アーティファクトシステム。サイドパネルに表示。
 
-### 4つのスライドモード
+### アーキテクチャ
 
-| モード                 | コンポーネント    | 特徴                                                        | DB保存 |
-| ---------------------- | ----------------- | ----------------------------------------------------------- | ------ |
-| **HTML スライド**      | HtmlSlideViewer   | スタイルオプション、テンプレート、ドラッグ編集、DB保存/履歴 | あり   |
-| **ビジュアルスライド** | VisualSlideViewer | 7種風格プリセット、outline→HTML、contentEditable            | なし   |
-| **スライドスタジオ**   | SlideStudio       | 構造化編集（bullets/表/チャート/Mermaid）、AI Refine        | なし   |
-| **簡易スライド**       | SlideViewer       | 既存のシンプルなプレビュー+PPTX                             | なし   |
+```
+streamText + createUIMessageStream
+  → LLM が artifact tool 呼出（create/update/rewrite）
+  → tool execute: DB 保存 + writer.write() で data-artifact イベント推送
+  → クライアント: onData → useArtifactStore → ArtifactPanel 表示
+  → 流式渲染: tool input の input-streaming 状態を監視 → 部分 content を面板にリアルタイム表示
+```
+
+### Artifact ツール（3コマンド）
+
+| コマンド | パラメータ | 動作 |
+|----------|-----------|------|
+| `create` | title, kind(html/code/text/markdown), content, language? | 新規作成 → DB + writer 推送 |
+| `update` | id, oldStr, newStr | テキスト置換（小さな変更） → 新バージョン |
+| `rewrite` | id, content | 全体書き換え（大きな変更） → 新バージョン |
+
+### Artifact 種別
+
+| kind | 渲染方式 | ダウンロード |
+|------|---------|-------------|
+| `html` | WidgetRenderer（sandbox iframe + morphdom） | .html |
+| `code` | Streamdown 構文ハイライト（language パラメータ対応） | .py/.ts/.js 等 |
+| `markdown` | Streamdown（見出し・表・リスト・コードブロック） | .md |
+| `text` | Streamdown（Markdown として渲染） | .txt |
 
 ### データフロー
 
-```
-回答下のドロップダウンメニュー → 4モード選択
+1. LLM → `artifact` tool call（`input-streaming` 状態で content が逐次到達）
+2. chat-page.tsx の useEffect が `input-streaming` を検出 → `setStreaming()` で面板に部分 content 表示
+3. tool 完了 → `writer.write({ type: "data-artifact", data: {...} })` 推送
+4. `onData` コールバック → `openArtifact()` / `updateArtifact()` で面板更新
+5. DB: `artifacts` + `artifact_versions` テーブルに永続化
+6. 会話再開時: `/api/artifacts?conversationId=` から復元
 
-[HTML スライド]
-  → POST /api/slides/htmlslide/plan（スタイルオプション対応）
-  → POST /api/slides/htmlslide/render × N（テンプレート参考対応）
-  → ドラッグ/フォント/ズーム編集
-  → DB保存（slide_decks + slide_pages）
-  → PPTX/PDF エクスポート
+### 上下文注入
 
-[ビジュアルスライド]
-  → POST /api/slides/visual/outline（JSON アウトライン生成）
-  → 7スタイルプリセット選択
-  → POST /api/slides/visual/renderhtml × N（or PPTX Native ローカル生成）
-  → contentEditable 編集 + 再描画
-  → PPTX エクスポート
+毎ターンの system prompt に現在の artifact 内容を注入（Gemini Canvas 方式）:
+- `getArtifactByConversation()` で会話の最新 artifact 取得
+- content を 15000 字で切り詰め（超過時は rewrite 使用を推奨）
+- LLM は既存 artifact の update/rewrite を判断可能
 
-[スライドスタジオ]
-  → POST /api/slides/generate（Zod schema → 構造化 deck）
-  → GUI 編集（title/bullets/table/chart/mermaid/notes）
-  → POST /api/slides/refine（AI リファイン）
-  → PPTX エクスポート（Mode B 構造化）
-
-[簡易スライド] — 既存フロー
-  → POST /api/slides/plan → /api/slides/render × N → PPTX
-```
-
-### PostgreSQL テーブル（11表）
+### PostgreSQL テーブル
 
 | テーブル               | 用途                                                                                                       |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `chat_conversations`   | チャット会話（id, title, active_leaf_id, kb_slug, chat_model, thinking, timestamps）                       |
 | `chat_messages`        | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
 | `chat_files`           | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
-| `slide_decks`          | デッキメタデータ（title, question, answer, plan_md, style_options, current_version, conversation_id）      |
-| `slide_pages`          | 個別スライド（deck_id FK CASCADE, slide_index, title, html, plan_text）— 常に最新版                       |
-| `slide_page_versions`  | スライドバージョン履歴（deck_id, slide_index, version UNIQUE、operation、operation_detail JSONB）          |
-| `slide_templates`      | テンプレート（name, position, html, UNIQUE(name, position)）                                               |
+| `artifacts`            | Artifact メタデータ（id, conversation_id FK CASCADE, kind, title, current_version, timestamps）            |
+| `artifact_versions`    | Artifact バージョン（artifact_id + version 複合PK, content, command, description）                         |
 | `skills`               | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
 | `ui_config`            | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
-| `proposal_sessions`    | 提案セッション（key TEXT PK, data JSONB, analysis JSONB, additional_context TEXT）— 永続化、会話再開時も利用可 |
 | `scheduled_tasks`      | 定時タスク（cron_expr, prompt, kb_slug, allowed_tools, notify_to/from）— task-worker と共有 |
 | `task_executions`      | タスク実行履歴（status, tool_calls JSONB, result, error, execution_ms） |
 | `task_notifications`   | タスク通知（type: success/failure/timeout, read フラグ） |
 
 - DB: 既存 PostgreSQL (lightrag DB) を共用
-- テーブルは初回 API アクセス時に自動作成（`ensureChatTables()` / `ensureSlideTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()` / `ensureTable()`(proposal_sessions) / `ensureSchedulerTables()`）
+- テーブルは初回 API アクセス時に自動作成（`ensureArtifactTables()` / `ensureChatTables()` / `ensureSkillsTables()` / `ensureUiConfigTable()` / `ensureChatFilesTables()` / `ensureSchedulerTables()`）
 - 環境変数: `DATABASE_URL` (デフォルト: `postgresql://localhost:5432/lightrag`)
 
-### PPTX/PDF エクスポート
+## CRM 商談分析ツール
 
-| モード               | 入力                   | 出力                 | 特徴                 |
-| -------------------- | ---------------------- | -------------------- | -------------------- |
-| **Mode A**（画像）   | `pngs[]` data URL 配列 | 画像スライド         | 見た目忠実、編集不可 |
-| **Mode B**（構造化） | `deck` JSON            | テキスト+チャート+表 | 編集可能、PptxGenJS  |
-| **PDF**              | `pngs[]` data URL 配列 | Landscape PDF        | jsPDF                |
-
-**PNG キャプチャ方式**: `captureSlideAsPng()` で iframe 内の `body` に対して直接 `html2canvas` を実行。iframe 内では Tailwind CSS が処理済みのため、computed style コピー不要で所見即所得。PPTX/PDF 両方で共通利用。
-
-### スライド LLM プロバイダー
-
-`lib/slide-provider.ts` — 優先順位:
-
-1. `SLIDE_LLM_*` 環境変数 → 専用プロバイダー
-2. `GEMINI_API_KEY` 設定済み → Gemini
-3. フォールバック → MLX
-
-## CRM 提案書フロー
-
-### Tool 構成（v4 現行版）
+CRM ツール（listDeals, fetchDealData, analyzeDeal, reviseRationale）はデータ取得・分析ツールとして agent loop 内で動作。分析結果は agent が artifact tool で提案書として出力。
 
 ```
-v3 (2 tool calls, ~6K tokens):
-  listDeals → fetchAndAnalyze(auto KB+Web) → sessionKey 返却で ProposalPanel 自動開放
-  手動入力: fetchAndAnalyze(source:"manual", manualInput) → ProposalPanel 自動開放
-
-v4 (v3 + スライド編集):
-  上記フロー → SlidePanel 生成 → ユーザーが対話でスライド修正依頼
-  → reviseSlides(operations: [{ type:"update", slideIndex, oldStr, newStr }])
-  → SlidePanel 自動リフレッシュ（refreshToken 機構）
+listDeals → ユーザーが選択 → fetchDealData → KB/Web 検索 → analyzeDeal → artifact create（提案書 HTML）
+ユーザーフィードバック → reviseRationale → artifact update/rewrite
 ```
-
-`generateProposal` は廃止。`fetchAndAnalyze` が sessionKey を返却すると、chat-page.tsx が全 assistant メッセージをスキャンして自動的に ProposalPanel を開く。
-
-### reviseSlides ツール（v4 新規）
-
-チャットからスライドを精准編集。`activeDeckId` がリクエスト body にある場合のみ有効化。
-
-| 操作 | 実装 | LLM 呼出 |
-|------|------|---------|
-| `update` | `html.replace(oldStr, newStr)` + fallback: strip tags 後マッチ | 無 |
-| `rewrite` | 現 HTML + instruction → `generateText()` → 新 HTML | 有 |
-| `delete` | slide HTML を空に | 無 |
-| `insert` | instruction → `generateText()` → 新 HTML | 有 |
-| `reorder` | インデックス交換（簡易版） | 無 |
-
-各操作後: `deck.current_version++` → `slide_pages` 更新 → `slide_page_versions` 追記。
-chat-page.tsx が結果を検出 → `store.triggerRefresh()` → SlidePanel が DB から再読み込み。
-
-### スライド持久化 + バージョン管理（v4 新規）
-
-- `slide_decks.conversation_id` で対話とデッキを関連付け
-- auto-save 時に Zustand store にキャッシュ → 再開時は DB fetch 不要で即時復帰
-- "提案書パネルを開く" ボタン: デッキ存在時 → `openDeck(deckId)` で即表示、文字も "スライドを表示" に変化
-- バージョン履歴: SlidePanel ヘッダに `< v2/v5 >` ナビゲーション、旧バージョンは読み取り専用表示、"回復" で復元（新バージョンとして作成）
-
-### fetchAndAnalyze 内部フロー
-
-1. SFData 取得（CRM fetch or manualInput → SFData 変換）
-2. KB 全検索（`listKBs()` → 各 KB に `searchOnly()` 並列実行）
-3. Web 検索（Tavily あれば会社名+業界で検索）
-4. `additionalContext` = KB 結果 + Web 結果をテキスト結合
-5. `POST crm-service/deals/analyze` で分析実行（`analyzeResult.analysis ?? analyzeResult` でアンラップ）
-6. `storeSession(data, analysis, additionalContext)` → sessionKey
-7. `{ sessionKey, data, analysis }` を LLM に返却 → ProposalPanel 自動開放
-
-### ProposalPanel フロー
-
-```
-Phase 1: analysis（分析スコア + 成功要因 + リスク + 推薦サービス表示）
-  ↓ [次へ] ボタン
-Phase 2: templateCheck（GET /api/crm/templates → テンプレートカバレッジ表示）
-  ↓ [次へ] ボタン
-Phase 3: styleSetup（StyleOptionsPanel でスタイル設定、CRM データから業種自動推定）
-  ↓ [スライド生成] ボタン
-ProposalPanel を閉じ → onOpenSlidePanel(question, answer, instructions, styleOptions) で SlidePanel を開く
-```
-
-ProposalPanel は `PanelShell` を使用（デスクトップ: flex sibling でリサイズ可能 360-700px、モバイル: フルスクリーンオーバーレイ）。`buildProposalContent()` で CRM データを構造化テキストに変換し、`buildTemplateInstructions()` でマッチしたテンプレート指示を生成して SlidePanel に渡す。
-
-### chat-page.tsx の検出ロジック
-
-- 全 assistant メッセージをスキャン（ToolLoopAgent が複数 assistant メッセージを生成するため）
-- `fetchAndAnalyze` の成功結果（`sessionKey` あり + `error` なし）を検出
-- 相互排他: ProposalPanel 開放時に SlidePanel を閉じる（逆も同様）
-- `{proposalOpen && !slidePanelOpen && <ProposalPanel />}` でレンダリング
-- `onOpenProposal` を ChatMessage に渡してインラインボタンからも開放可能
-
-### chat-message.tsx の対応
-
-- `kbs.find()` クラッシュ修正: API レスポンスの `data.knowledge_bases` をアンラップ
-- fetchAndAnalyze 完了後にインライン「提案書パネルを開く」ボタンを表示
-- reasoning parts はインラインで表示（groupParts で連結、step-start はスキップ）
-
-### セッション管理
-
-- `lib/proposal-session.ts`: PostgreSQL 永続化 + インメモリキャッシュ
-- `storeSession()` → nanoid(12) のキーを返却、DB に永続保存（`proposal_sessions` テーブル）
-- `getSession()` → メモリキャッシュ優先、miss 時 DB fallback（async）。会話再開時も利用可
-- `updateSessionAnalysis()` → メモリ + DB 両方を更新
-- `reviseRationale` tool 呼出時にセッションの analysis をマージ更新（rationale + analysisUpdates を個別マージ、全体置換ではない）
-
-### スライド生成
-
-- SlidePanel で HTML スライドを並列生成（CONCURRENCY=3、Promise.race プール）
-- ProposalPanel から遷移時は `buildProposalContent()` の構造化テキストが SlidePanel の answer として渡される
 
 ## TODO
 
@@ -586,7 +440,7 @@ ProposalPanel は `PanelShell` を使用（デスクトップ: flex sibling で�
 - [x] レスポンシブ対応（モバイル: オーバーレイサイドバー）
 - [x] 性能优化（140s → 15s）
 - [x] スライド生成 + PPTX エクスポート（完全自包含、AIAgent 依存なし）
-- [x] AIAgent スライド UI 移植（4モード: HTML/Visual/Studio/Simple + PostgreSQL 持久化）
+- [x] Artifact システム（Claude Artifacts 方式: create/update/rewrite + サイドパネル + バージョン管理 + 流式渲染）
 - [x] LLM バックエンド自動切替（Gemini/MLX、UI セレクター廃止）
 - [x] チャット履歴永続化（PostgreSQL、サイドバー一覧、`/chat/[id]` ルート）
 - [x] メッセージ編集・ブランチ分岐（ツリー構造、ブランチセレクター）
