@@ -1,4 +1,11 @@
 import pg from "pg";
+import {
+  readSkillBody,
+  deleteSkillDir,
+  getSkillsDir,
+  saveSkillFiles,
+} from "./skill-storage";
+import { join } from "path";
 
 const DATABASE_URL =
   process.env.DATABASE_URL || "postgresql://localhost:5432/lightrag";
@@ -40,6 +47,16 @@ export async function ensureSkillsTables(): Promise<void> {
     await client.query(`
       ALTER TABLE skills ADD COLUMN IF NOT EXISTS registry_id VARCHAR(300)
     `);
+    await client.query(`
+      ALTER TABLE skills ADD COLUMN IF NOT EXISTS content_dir VARCHAR(300)
+    `);
+    // Allow content to be empty for new skills that store content on disk
+    await client.query(`
+      ALTER TABLE skills ALTER COLUMN content SET DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE skills ALTER COLUMN content DROP NOT NULL
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -55,8 +72,9 @@ export interface Skill {
   name: string;
   description: string;
   content: string;
+  content_dir?: string | null;
   enabled: boolean;
-  source_type: "manual" | "zip" | "registry";
+  source_type: "manual" | "zip" | "registry" | "built-in";
   registry_id?: string;
   created_at: string;
   updated_at: string;
@@ -101,7 +119,8 @@ export async function getEnabledSkillSummaries(): Promise<
   return res.rows;
 }
 
-/** Load a single skill's full content by name */
+/** Load a single skill's full content by name.
+ *  Prefers disk (content_dir) over DB (content column). */
 export async function getSkillByName(name: string): Promise<Skill | null> {
   await ensureSkillsTables();
   const res = await getPool().query(
@@ -110,36 +129,70 @@ export async function getSkillByName(name: string): Promise<Skill | null> {
   );
   if (res.rows.length === 0) return null;
   const r = res.rows[0];
+
+  let content = r.content || "";
+  if (r.content_dir) {
+    const diskContent = await readSkillBody(r.content_dir);
+    if (diskContent !== null) content = diskContent;
+  }
+
   return {
     ...r,
+    content,
     created_at: String(r.created_at),
     updated_at: String(r.updated_at),
   };
 }
 
+/** Get the skill directory path for loadSkill tool */
+export function getSkillDirectory(contentDir: string): string {
+  return join(getSkillsDir(), contentDir);
+}
+
 export async function createSkill(data: {
   name: string;
   description?: string;
-  content: string;
+  content?: string;
+  content_dir?: string;
   enabled?: boolean;
-  source_type?: "manual" | "zip" | "registry";
+  source_type?: "manual" | "zip" | "registry" | "built-in";
   registry_id?: string;
 }): Promise<number> {
   await ensureSkillsTables();
   const res = await getPool().query(
-    `INSERT INTO skills (name, description, content, enabled, source_type, registry_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO skills (name, description, content, content_dir, enabled, source_type, registry_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       data.name,
       data.description || "",
-      data.content,
+      data.content || "",
+      data.content_dir || null,
       data.enabled ?? true,
       data.source_type || "manual",
       data.registry_id || null,
     ],
   );
   return res.rows[0].id as number;
+}
+
+/**
+ * Create a skill in DB and save files to disk in one call.
+ * If disk write fails, the skill still works from the DB content column.
+ */
+export async function createSkillWithFiles(
+  data: Parameters<typeof createSkill>[0],
+  body: string,
+  refs?: { name: string; content: string }[],
+): Promise<number> {
+  const id = await createSkill(data);
+  try {
+    const contentDir = await saveSkillFiles(id, body, refs);
+    await updateSkill(id, { content_dir: contentDir });
+  } catch (e) {
+    console.warn("[skills] disk write failed, falling back to DB:", e);
+  }
+  return id;
 }
 
 export async function getInstalledRegistryIds(): Promise<string[]> {
@@ -156,6 +209,7 @@ export async function updateSkill(
     name?: string;
     description?: string;
     content?: string;
+    content_dir?: string;
     enabled?: boolean;
   },
 ): Promise<void> {
@@ -175,6 +229,10 @@ export async function updateSkill(
   if (data.content !== undefined) {
     fields.push(`content = $${idx++}`);
     values.push(data.content);
+  }
+  if (data.content_dir !== undefined) {
+    fields.push(`content_dir = $${idx++}`);
+    values.push(data.content_dir);
   }
   if (data.enabled !== undefined) {
     fields.push(`enabled = $${idx++}`);
@@ -207,5 +265,11 @@ export async function updateSkillByRegistryId(
 
 export async function deleteSkill(id: number): Promise<void> {
   await ensureSkillsTables();
-  await getPool().query(`DELETE FROM skills WHERE id = $1`, [id]);
+  const res = await getPool().query(
+    `DELETE FROM skills WHERE id = $1 RETURNING content_dir`,
+    [id],
+  );
+  if (res.rows.length > 0 && res.rows[0].content_dir) {
+    await deleteSkillDir(res.rows[0].content_dir);
+  }
 }

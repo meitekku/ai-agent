@@ -28,6 +28,12 @@ export async function ensureChatFilesTables(): Promise<void> {
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await client.query(`
+      ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS message_id TEXT
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_chat_files_message ON chat_files(message_id)
+    `);
     tablesReady = true;
   } finally {
     client.release();
@@ -40,6 +46,7 @@ export interface ChatFileRow {
   stored_path: string;
   media_type: string;
   size_bytes: number;
+  message_id?: string | null;
   created_at: string;
 }
 
@@ -49,17 +56,19 @@ export async function insertChatFile(file: {
   storedPath: string;
   mediaType: string;
   sizeBytes: number;
+  messageId?: string;
 }): Promise<void> {
   await ensureChatFilesTables();
   await getPool().query(
-    `INSERT INTO chat_files (id, original_name, stored_path, media_type, size_bytes)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO chat_files (id, original_name, stored_path, media_type, size_bytes, message_id)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       file.id,
       file.originalName,
       file.storedPath,
       file.mediaType,
       file.sizeBytes,
+      file.messageId || null,
     ],
   );
 }
@@ -104,6 +113,31 @@ export async function deleteChatFiles(ids: string[]): Promise<string[]> {
     [ids],
   );
   return res.rows.map((r) => r.stored_path);
+}
+
+/** Get files associated with a specific message */
+export async function getFilesByMessageId(
+  messageId: string,
+): Promise<ChatFileRow[]> {
+  await ensureChatFilesTables();
+  const res = await getPool().query(
+    `SELECT * FROM chat_files WHERE message_id = $1 ORDER BY created_at`,
+    [messageId],
+  );
+  return res.rows;
+}
+
+/** Batch-update message_id for multiple files */
+export async function updateFilesMessageId(
+  fileIds: string[],
+  messageId: string,
+): Promise<void> {
+  if (fileIds.length === 0) return;
+  await ensureChatFilesTables();
+  await getPool().query(
+    `UPDATE chat_files SET message_id = $1 WHERE id = ANY($2)`,
+    [messageId, fileIds],
+  );
 }
 
 /**

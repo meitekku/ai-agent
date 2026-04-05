@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseSkillZip } from "@/lib/skill-zip-parser";
-import { createSkill } from "@/lib/skills-db";
+import { createSkillWithFiles } from "@/lib/skills-db";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -30,12 +30,16 @@ export async function POST(req: NextRequest) {
     const buffer = await file.arrayBuffer();
     const parsed = await parseSkillZip(buffer);
 
-    const id = await createSkill({
-      name: parsed.name,
-      description: parsed.description,
-      content: parsed.content,
-      source_type: "zip",
-    });
+    const id = await createSkillWithFiles(
+      {
+        name: parsed.name,
+        description: parsed.description,
+        content: parsed.content,
+        source_type: "zip",
+      },
+      parsed.body,
+      parsed.refs,
+    );
 
     return NextResponse.json({ id, name: parsed.name });
   } catch (e) {

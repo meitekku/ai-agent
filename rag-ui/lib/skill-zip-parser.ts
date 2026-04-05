@@ -1,14 +1,24 @@
 import JSZip from "jszip";
 
+export interface ParsedSkillRef {
+  name: string;
+  content: string;
+}
+
 export interface ParsedSkill {
   name: string;
   description: string;
+  /** SKILL.md body only (no refs appended) */
+  body: string;
+  /** Structured reference files from ZIP */
+  refs: ParsedSkillRef[];
+  /** Backward-compatible flattened string (body + refs concatenated) */
   content: string;
 }
 
 /**
  * Parse a ZIP file containing SKILL.md (with YAML frontmatter) + optional reference files.
- * Returns { name, description, content } ready to insert into DB.
+ * Returns structured skill data with body, refs, and backward-compatible content.
  */
 export async function parseSkillZip(buffer: ArrayBuffer): Promise<ParsedSkill> {
   const zip = await JSZip.loadAsync(buffer);
@@ -22,7 +32,7 @@ export async function parseSkillZip(buffer: ArrayBuffer): Promise<ParsedSkill> {
   const skillMdContent = await zip.file(skillMdPath)!.async("string");
 
   // Parse frontmatter
-  const { frontmatter, body } = parseFrontmatter(skillMdContent);
+  const { frontmatter, body: skillBody } = parseFrontmatter(skillMdContent);
   const name = frontmatter.name || frontmatter.title || "";
   const description = frontmatter.description || "";
 
@@ -33,8 +43,9 @@ export async function parseSkillZip(buffer: ArrayBuffer): Promise<ParsedSkill> {
   // Collect reference files
   const refs = await collectReferences(zip, skillMdPath);
 
-  // Build final content
-  let content = body.trim();
+  // Build backward-compatible flattened content
+  const body = skillBody.trim();
+  let content = body;
   if (refs.length > 0) {
     content += "\n\n---\n\n## References\n";
     for (const ref of refs) {
@@ -42,7 +53,7 @@ export async function parseSkillZip(buffer: ArrayBuffer): Promise<ParsedSkill> {
     }
   }
 
-  return { name, description, content };
+  return { name, description, body, refs, content };
 }
 
 // ---------------------------------------------------------------------------
@@ -89,10 +100,6 @@ function parseFrontmatter(md: string): {
 }
 
 const IGNORED_DIRS = new Set([
-  "scripts",
-  "assets",
-  "images",
-  "img",
   ".git",
   "node_modules",
   "__MACOSX",
@@ -101,12 +108,18 @@ const TEXT_EXTENSIONS = new Set([
   ".md",
   ".txt",
   ".html",
+  ".css",
+  ".js",
+  ".ts",
   ".json",
   ".yaml",
   ".yml",
   ".csv",
   ".xml",
   ".toml",
+  ".sh",
+  ".py",
+  ".sql",
 ]);
 
 async function collectReferences(

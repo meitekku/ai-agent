@@ -129,6 +129,7 @@ pm2 delete lightrag-service && pm2 start ~/Desktop/ai/ecosystem.config.js --only
 | `GEMINI_EMBEDDING_MODEL` | text-embedding-004                   | Gemini Embedding 模型                                       |
 | `EMBEDDING_PROVIDER`     | local                                | Embedding 提供者（`local` / `gemini`）                      |
 | `DATABASE_URL`           | postgresql://localhost:5432/lightrag | PostgreSQL 接続 URL（チャット履歴・Artifact 保存用）        |
+| `SKILLS_DIR`             | data/skills                          | スキルファイル保存ディレクトリ（Docker: /app/data/skills）  |
 
 ## 项目结构
 
@@ -209,8 +210,9 @@ rag-ui/
 │   ├── artifact-db.ts     # PostgreSQL Artifact CRUD + バージョン管理（artifacts + artifact_versions テーブル）
 │   ├── artifact-tool.ts   # AI SDK artifact ツール（create/update/rewrite、writer 経由で流式推送）
 │   ├── artifact-store.ts  # Zustand store（Artifact 状態管理、streaming 対応）
-│   ├── skills-db.ts       # PostgreSQL スキルCRUD（pg、source_type 列対応）
-│   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + references）
+│   ├── skills-db.ts       # PostgreSQL スキルCRUD + createSkillWithFiles（DB + ディスク一括作成）
+│   ├── skill-storage.ts   # スキルファイルディスク I/O（agentskills.io 準拠、data/skills/{id}/）
+│   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + body + refs 構造化返却）
 │   ├── skill-registry.ts  # skills.sh レジストリ共有ヘルパー（GitHub SKILL.md 取得 + frontmatter 解析）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
 │   ├── chat-files-db.ts   # chat_files テーブル CRUD
@@ -409,10 +411,10 @@ streamText + createUIMessageStream
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `chat_conversations`   | チャット会話（id, title, active_leaf_id, kb_slug, chat_model, thinking, timestamps）                       |
 | `chat_messages`        | チャットメッセージツリー（parent_id でブランチ、parts JSONB）                                              |
-| `chat_files`           | アップロードファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, created_at）       |
+| `chat_files`           | アップロード/生成ファイルメタデータ（id, original_name, stored_path, media_type, size_bytes, message_id, created_at） |
 | `artifacts`            | Artifact メタデータ（id, conversation_id FK CASCADE, kind, title, current_version, timestamps）            |
 | `artifact_versions`    | Artifact バージョン（artifact_id + version 複合PK, content, command, description）                         |
-| `skills`               | スキル（name, description, content, enabled, source_type）— システムプロンプト注入用、ZIP アップロード対応 |
+| `skills`               | スキル（name, description, content, content_dir, enabled, source_type, registry_id）— ファイルベース保存（agentskills.io 準拠）、content_dir → data/skills/{id}/ |
 | `ui_config`            | UI設定（single-row、JSONB preferences）— サイドバー状態等の永続化                                          |
 | `scheduled_tasks`      | 定時タスク（cron_expr, prompt, kb_slug, allowed_tools, notify_to/from）— task-worker と共有 |
 | `task_executions`      | タスク実行履歴（status, tool_calls JSONB, result, error, execution_ms） |

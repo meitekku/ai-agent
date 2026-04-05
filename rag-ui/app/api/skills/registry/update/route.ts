@@ -8,6 +8,7 @@ import {
   parseFrontmatter,
   parseRegistryId,
 } from "@/lib/skill-registry";
+import { updateSkillFiles } from "@/lib/skill-storage";
 
 /** POST /api/skills/registry/update — batch-refresh all registry skills */
 export async function POST() {
@@ -31,7 +32,15 @@ export async function POST() {
             description,
             content: body.trim(),
           });
-          if (id !== null) updated++;
+          if (id !== null) {
+            // Sync to disk
+            try {
+              await updateSkillFiles(String(id), body.trim());
+            } catch {
+              // disk update failure is non-fatal
+            }
+            updated++;
+          }
         } catch {
           // skip failed individual updates silently
         }

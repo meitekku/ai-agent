@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSkills, createSkill } from "@/lib/skills-db";
+import { getSkills, createSkillWithFiles } from "@/lib/skills-db";
 
 export async function GET() {
   try {
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const id = await createSkill(body);
+    const id = await createSkillWithFiles(body, body.content);
     return NextResponse.json({ id });
   } catch (e) {
     console.error("POST /api/skills error:", e);

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>プレゼンテーション</title>
+
+    <!-- Tailwind CSS v4 (browser) + GSAP + Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Typography: Instrument Serif + Zen Kaku Gothic New + JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ===========================================
+           THEME: MIDNIGHT COPPER
+           =========================================== */
+        :root {
+            --bg-deep: #080706;
+            --bg-surface: #141210;
+            --bg-card: #1c1916;
+            --text-primary: #ede8e2;
+            --text-muted: #7a7068;
+            --accent: #d4845e;
+            --accent-glow: rgba(212, 132, 94, 0.25);
+            --accent-dim: #a0654a;
+            --copper-gradient: linear-gradient(135deg, #d4845e, #e8a878, #c07050);
+
+            --font-display: 'Instrument Serif', serif;
+            --font-body: 'Zen Kaku Gothic New', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            --title-size: clamp(2.5rem, 7vw, 6rem);
+            --h2-size: clamp(1.5rem, 4vw, 3rem);
+            --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+            --body-size: clamp(0.85rem, 1.5vw, 1.15rem);
+            --small-size: clamp(0.7rem, 1vw, 0.875rem);
+            --slide-padding: clamp(2rem, 6vw, 6rem);
+        }
+
+        /* === Base === */
+        body {
+            overflow: hidden;
+            background: var(--bg-deep);
+            font-family: var(--font-body);
+            color: var(--text-primary);
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        /* === Slides — full viewport, NO letterboxing === */
+        .slide {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            visibility: hidden;
+            z-index: 1;
+        }
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 10;
+        }
+        .slide-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            padding: var(--slide-padding);
+        }
+
+        /* === Animation init === */
+        .anim-elem { opacity: 0; transform: translateY(24px); }
+
+        /* === Grain overlay on every slide === */
+        .slide-content::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 1;
+        }
+        .slide-content > * { position: relative; z-index: 2; }
+
+        /* === Accent line === */
+        .accent-line {
+            width: 60px;
+            height: 2px;
+            background: var(--copper-gradient);
+            border-radius: 1px;
+        }
+
+        /* === Glass card === */
+        .glass-card {
+            background: rgba(28, 25, 22, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(212, 132, 94, 0.12);
+            border-radius: 12px;
+            transition: border-color 0.4s ease, box-shadow 0.4s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(212, 132, 94, 0.3);
+            box-shadow: 0 0 30px rgba(212, 132, 94, 0.08);
+        }
+
+
+        /* === Slide backgrounds === */
+        .slide-title .slide-content {
+            background:
+                radial-gradient(ellipse at 25% 75%, rgba(212, 132, 94, 0.15) 0%, transparent 55%),
+                radial-gradient(ellipse at 75% 25%, rgba(160, 101, 74, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(28, 25, 22, 1) 0%, var(--bg-deep) 100%);
+        }
+        .slide-title .slide-content::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(212, 132, 94, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(212, 132, 94, 0.03) 1px, transparent 1px);
+            background-size: 80px 80px;
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+            z-index: 0;
+        }
+        .slide-content-main .slide-content { background: var(--bg-deep); }
+        .slide-closing .slide-content {
+            background:
+                radial-gradient(ellipse at 50% 100%, rgba(212, 132, 94, 0.12) 0%, transparent 60%),
+                var(--bg-deep);
+        }
+
+        /* === Controls pill === */
+        .controls {
+            position: fixed;
+            bottom: clamp(1rem, 3vh, 2rem);
+            right: clamp(1.5rem, 3vw, 2.5rem);
+            z-index: 100;
+            background: rgba(20, 18, 16, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(212, 132, 94, 0.1);
+        }
+        .controls button {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-family: var(--font-body);
+            font-size: var(--small-size);
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .controls button:hover {
+            background: rgba(212, 132, 94, 0.15);
+            color: var(--accent);
+        }
+        .controls button:active { transform: scale(0.95); }
+
+        /* === Responsive === */
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(1.5rem, 4vw, 3rem);
+                --title-size: clamp(2rem, 6vw, 4rem);
+                --h2-size: clamp(1.25rem, 3.5vw, 2.25rem);
+            }
+        }
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(1rem, 3vw, 2rem);
+                --title-size: clamp(1.5rem, 5vw, 3rem);
+                --body-size: clamp(0.75rem, 1.2vw, 0.95rem);
+            }
+            .controls { display: none; }
+        }
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 2.5vw, 1.5rem);
+                --title-size: clamp(1.25rem, 4vw, 2rem);
+            }
+        }
+        @media (max-width: 600px) {
+            :root { --title-size: clamp(1.75rem, 8vw, 3rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+            .anim-elem { opacity: 1 !important; transform: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Page Number -->
+    <div id="slideNumber"
+         class="fixed z-50 font-[family-name:var(--font-mono)] text-[length:var(--small-size)]
+                text-[color:var(--text-muted)] tracking-widest"
+         style="bottom: clamp(1rem, 3vh, 2rem); left: clamp(1.5rem, 3vw, 2.5rem);">
+        1 / 3
+    </div>
+
+    <!-- ==========================================
+         SLIDES
+         ========================================== -->
+    <div class="relative w-full h-full">
+
+        <!-- SLIDE 1: Title -->
+        <div class="slide slide-title active">
+            <div class="slide-content flex flex-col items-center justify-center text-center">
+
+                <!-- Top marker -->
+                <div class="anim-elem mb-auto" style="padding-top: clamp(1rem, 4vh, 3rem);">
+                    <span class="font-[family-name:var(--font-mono)] text-[length:var(--small-size)]
+                                 text-[color:var(--text-muted)] tracking-[0.3em] uppercase">
+                        Presentation Template
+                    </span>
+                </div>
+
+                <!-- Title block -->
+                <div>
+                    <div class="anim-elem accent-line mx-auto" style="margin-bottom: clamp(1rem, 2vh, 2rem);"></div>
+                    <h1 class="anim-elem font-[family-name:var(--font-display)]
+                               text-[length:var(--title-size)] font-normal leading-[1.1] tracking-tight">
+                        変革を導く<br>
+                        <em class="text-[color:var(--accent)]">戦略と実行</em>
+                    </h1>
+                    <p class="anim-elem text-[length:var(--h3-size)] text-[color:var(--text-muted)]
+                              font-normal max-w-[600px] mx-auto"
+                       style="margin-top: clamp(0.5rem, 1.5vh, 1.5rem);">
+                        デジタル時代における企業変革の方法論
+                    </p>
+                </div>
+
+                <!-- Bottom info -->
+                <div class="anim-elem mt-auto flex items-center text-[length:var(--small-size)]
+                            text-[color:var(--text-muted)]"
+                     style="padding-bottom: clamp(1rem, 4vh, 3rem); gap: clamp(1rem, 3vw, 3rem);">
+                    <span>株式会社サンプル</span>
+                    <span class="w-6 h-px bg-[color:var(--accent-dim)]"></span>
+                    <span>2026年 4月</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 2: Content — glass cards -->
+        <div class="slide slide-content-main">
+            <div class="slide-content flex flex-col">
+
+                <!-- Section header -->
+                <div class="flex items-center"
+                     style="gap: clamp(0.75rem, 2vw, 1.5rem); margin-bottom: clamp(1.5rem, 4vh, 3rem);">
+                    <span class="anim-elem font-[family-name:var(--font-mono)]
+                                 text-[length:clamp(0.7rem,1vw,0.85rem)] text-[color:var(--accent)]
+                                 tracking-[0.15em]">01</span>
+                    <div class="anim-elem accent-line"></div>
+                    <h2 class="anim-elem font-[family-name:var(--font-display)]
+                               text-[length:var(--h2-size)] font-normal">
+                        現状の課題
+                    </h2>
+                </div>
+
+                <!-- Cards grid -->
+                <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))]
+                            flex-1 content-center"
+                     style="gap: clamp(0.75rem, 1.5vw, 1.25rem);">
+
+                    <div class="anim-elem glass-card" style="padding: clamp(1.25rem, 2.5vw, 2rem);">
+                        <div class="font-[family-name:var(--font-mono)] text-[length:var(--small-size)]
+                                    text-[color:var(--accent)] mb-3">01</div>
+                        <h3 class="text-[length:var(--h3-size)] font-bold mb-2">データの分断</h3>
+                        <p class="text-[length:var(--body-size)] text-[color:var(--text-muted)] leading-relaxed">
+                            部門間でデータが分断され、意思決定に必要な情報の統合に平均2日を要する
+                        </p>
+                    </div>
+
+                    <div class="anim-elem glass-card" style="padding: clamp(1.25rem, 2.5vw, 2rem);">
+                        <div class="font-[family-name:var(--font-mono)] text-[length:var(--small-size)]
+                                    text-[color:var(--accent)] mb-3">02</div>
+                        <h3 class="text-[length:var(--h3-size)] font-bold mb-2">手作業の非効率</h3>
+                        <p class="text-[length:var(--body-size)] text-[color:var(--text-muted)] leading-relaxed">
+                            レポート作成の80%が手動集計。年間1,200時間の工数を消費
+                        </p>
+                    </div>
+
+                    <div class="anim-elem glass-card" style="padding: clamp(1.25rem, 2.5vw, 2rem);">
+                        <div class="font-[family-name:var(--font-mono)] text-[length:var(--small-size)]
+                                    text-[color:var(--accent)] mb-3">03</div>
+                        <h3 class="text-[length:var(--h3-size)] font-bold mb-2">セキュリティリスク</h3>
+                        <p class="text-[length:var(--body-size)] text-[color:var(--text-muted)] leading-relaxed">
+                            レガシーシステムの脆弱性により、インシデント対応コストが前年比35%増加
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: Closing -->
+        <div class="slide slide-closing">
+            <div class="slide-content flex flex-col items-center justify-center text-center">
+
+                <div class="anim-elem accent-line mx-auto" style="margin-bottom: clamp(1rem, 3vh, 2.5rem);"></div>
+
+                <h2 class="anim-elem font-[family-name:var(--font-display)]
+                           text-[length:var(--title-size)] font-normal leading-[1.15] tracking-tight">
+                    ご清聴ありがとう<br>ございました
+                </h2>
+
+                <p class="anim-elem text-[length:var(--body-size)] text-[color:var(--text-muted)]
+                          max-w-[480px]"
+                   style="margin-top: clamp(0.5rem, 1.5vh, 1rem);">
+                    ご質問・ご相談はお気軽にどうぞ
+                </p>
+
+                <div class="anim-elem glass-card flex flex-col gap-2
+                            text-[length:var(--body-size)] text-[color:var(--text-muted)]"
+                     style="margin-top: clamp(1.5rem, 4vh, 3rem);
+                            padding: clamp(1.25rem, 2.5vw, 2rem) clamp(2rem, 4vw, 3.5rem);">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-regular fa-envelope text-[color:var(--accent)] w-[18px] text-center"></i>
+                        <span>contact@example.com</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-phone text-[color:var(--accent)] w-[18px] text-center"></i>
+                        <span>03-1234-5678</span>
+                    </div>
+                </div>
+
+                <!-- Bottom company mark -->
+                <div class="anim-elem mt-auto font-[family-name:var(--font-mono)]
+                            text-[length:var(--small-size)] text-[color:var(--text-muted)] tracking-[0.15em]"
+                     style="padding-bottom: clamp(1rem, 3vh, 2rem);">
+                    株式会社サンプル
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Controls -->
+    <div class="controls flex gap-1.5 rounded-full p-1">
+        <button class="rounded-full px-4 py-2 whitespace-nowrap" onclick="goToSlide(currentSlide - 1)">
+            <i class="fa-solid fa-chevron-left mr-1"></i>前へ
+        </button>
+        <button class="rounded-full px-4 py-2 whitespace-nowrap" onclick="toggleFullscreen()">
+            <i class="fa-solid fa-expand mr-1"></i>全画面
+        </button>
+        <button class="rounded-full px-4 py-2 whitespace-nowrap" onclick="goToSlide(currentSlide + 1)">
+            次へ<i class="fa-solid fa-chevron-right ml-1"></i>
+        </button>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+        let currentSlide = 0;
+        let wakeLock = null;
+
+        function goToSlide(index) {
+            if (index < 0 || index >= totalSlides || index === currentSlide) return;
+
+            const forward = index > currentSlide;
+            currentSlide = index; // Update IMMEDIATELY — keyboard always gets correct value
+
+            // Kill ALL running tweens
+            slides.forEach(s => gsap.killTweensOf(s.querySelectorAll('.anim-elem')));
+
+            // Target slide ON TOP first
+            const target = slides[index];
+            target.classList.add('active');
+            target.style.zIndex = 20;
+
+            // Prepare target content
+            const elements = target.querySelectorAll('.anim-elem');
+            gsap.set(elements, { opacity: 0, y: forward ? 20 : -20 });
+
+            // Deactivate all other slides (target is already on top, safe to clean)
+            slides.forEach((s, i) => {
+                if (i !== index) {
+                    s.classList.remove('active');
+                    s.style.zIndex = '';
+                    gsap.set(s.querySelectorAll('.anim-elem'), { opacity: 1, y: 0 });
+                }
+            });
+
+            // Animate target content in
+            gsap.to(elements, {
+                opacity: 1, y: 0,
+                duration: 0.5, stagger: forward ? 0.06 : -0.06,
+                ease: 'power2.out',
+                onComplete: () => { target.style.zIndex = ''; }
+            });
+
+            updatePageNumber();
+        }
+
+        function updatePageNumber() {
+            document.getElementById('slideNumber').textContent =
+                `${currentSlide + 1} / ${totalSlides}`;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+                    .then(() => requestWakeLock()).catch(() => {});
+            } else { document.exitFullscreen?.(); }
+        }
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
+            } catch {}
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                // Next: arrow/space/pagedown/enter — covers all presentation remotes
+                case 'ArrowRight': case 'ArrowDown': case ' ':
+                case 'PageDown': case 'Enter':
+                    e.preventDefault(); goToSlide(currentSlide + 1); break;
+                // Prev: arrow/pageup/backspace
+                case 'ArrowLeft': case 'ArrowUp':
+                case 'PageUp': case 'Backspace':
+                    e.preventDefault(); goToSlide(currentSlide - 1); break;
+                case 'f': case 'F': toggleFullscreen(); break;
+                // Home/End for jumping to first/last slide
+                case 'Home': e.preventDefault(); goToSlide(0); break;
+                case 'End': e.preventDefault(); goToSlide(totalSlides - 1); break;
+            }
+        });
+
+        let touchStartX = 0;
+        document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+        document.addEventListener('touchend', (e) => {
+            const diff = touchStartX - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) goToSlide(currentSlide + (diff > 0 ? 1 : -1));
+        });
+
+        window.addEventListener('load', () => {
+            const firstElements = slides[0].querySelectorAll('.anim-elem');
+            gsap.set(firstElements, { opacity: 0, y: 30 });
+            gsap.to(firstElements, {
+                opacity: 1, y: 0, duration: 0.9, stagger: 0.12,
+                ease: 'power3.out', delay: 0.4
+            });
+            requestWakeLock();
+        });
+    </script>
+</body>
+</html>

@@ -94,6 +94,7 @@ git push origin main   # → Orange Pi へ自動デプロイ
 | `valkeydata`    | /data                    | Valkey キャッシュ                                  |
 | `lightrag-data` | /app/data                | NetworkX グラフファイル                            |
 | `chat-files`    | /app/data/chat-files     | チャット添付ファイル（画像・PDF 等）               |
+| `skills-data`   | /app/data/skills         | スキルファイル（SKILL.md + 参照ファイル）          |
 
 ## リソース使用量
 
@@ -114,3 +115,60 @@ git push origin main   # → Orange Pi へ自動デプロイ
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
 - **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, skills, chat_conversations, chat_messages, chat_files, artifacts, artifact_versions, scheduled_tasks, task_executions, task_notifications, ui_config）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
+
+## スキルシステム（agentskills.io 準拠）
+
+[agentskills.io](https://agentskills.io/specification) 標準に準拠したファイルベースのスキル管理。DB はメタデータのみ、コンテンツはディスクに保存。
+
+### ストレージ
+
+```
+data/skills/{skillId}/
+  SKILL.md              <- frontmatter(name+description) + 指示本文
+  template.html         <- 参照ファイル（ZIP アップロード時の元構造を保持）
+  scripts/              <- 実行スクリプト（任意）
+```
+
+- **DB**: `skills` テーブル（id, name, description, enabled, source_type, content_dir, registry_id）
+- **ディスク**: `skills-data` Docker volume → `/app/data/skills`（task-worker は `:ro` マウント）
+- **content_dir**: DB 列。スキル ID 文字列（例: `"42"`）。NULL の場合は旧データとして DB `content` 列にフォールバック
+
+### Progressive Disclosure（3 段階読み込み）
+
+| レベル | 内容 | タイミング |
+|--------|------|-----------|
+| L1 | name + description | 常時 system prompt に注入（~100 tokens/skill） |
+| L2 | SKILL.md 本文 | `loadSkill` ツール呼出時 |
+| L3 | 参照ファイル | agent が `readFile` ツールで必要時に読み込み |
+
+### `loadSkill` ツール
+
+```typescript
+// 戻り値（cookbook 標準）:
+{
+  name: "skill-name",
+  content: "SKILL.md body (frontmatter 除去)",
+  skillDirectory: "/app/data/skills/42"  // agent が readFile で参照ファイルを読める
+}
+```
+
+### スキルソース
+
+| ソース | source_type | 動作 |
+|--------|-------------|------|
+| 手動作成 | `manual` | UI から name + content 入力 |
+| ZIP アップロード | `zip` | SKILL.md + 参照ファイルをディレクトリ構造ごと保存 |
+| skills.sh レジストリ | `registry` | GitHub から SKILL.md 取得、`registry_id` で自動更新対応 |
+
+### マイグレーション
+
+旧データ（`content_dir` が NULL）を磁盘に移行:
+```bash
+docker exec rag-ui bun run scripts/migrate-skills-to-disk.ts
+```
+
+## チャットファイル関連
+
+- `chat_files` テーブルに `message_id` 列追加。AI 回复で生成されたファイル（画像等）を特定のメッセージに関連付け
+- `onFinish` コールバックで `updateFilesMessageId()` を呼び、生成ファイルを assistant メッセージにリンク
+- `FileCard` コンポーネント（`chat-message.tsx`）: メッセージ底部にファイルカード表示（Claude Web スタイル）

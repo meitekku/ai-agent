@@ -1,0 +1,154 @@
+/* ===========================================
+   VIEWPORT FITTING: MANDATORY BASE STYLES
+   Include these rules in every presentation.
+   Ensures slides fill the full viewport.
+
+   NOTE: This file defines the SCROLL mode
+   (scroll-snap, one slide per viewport height).
+   The ABSOLUTE mode (position: absolute, GSAP
+   transitions) is defined in template.html and
+   SKILL.md — do NOT mix the two approaches.
+
+   Use ABSOLUTE mode (default) for GSAP-based
+   presentations. Use SCROLL mode for CSS-only
+   presentations without GSAP.
+   =========================================== */
+
+/* === Common: Lock body to viewport === */
+body {
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height — excludes mobile browser chrome */
+}
+
+/* ===========================================
+   MODE A: ABSOLUTE (GSAP presentations)
+   Used with goToSlide() and GSAP animations.
+   Slides are stacked via position: absolute.
+   =========================================== */
+/*
+.slide-container { width: 100%; height: 100%; position: relative; }
+.slide { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; visibility: hidden; z-index: 1; }
+.slide.active { opacity: 1; visibility: visible; z-index: 10; }
+.slide-content { width: 100%; height: 100%; position: relative; overflow: hidden; padding: var(--slide-padding); display: flex; flex-direction: column; justify-content: center; }
+*/
+
+/* ===========================================
+   MODE B: SCROLL (CSS-only presentations)
+   Used with scroll-snap and IntersectionObserver.
+   Uncomment below if using this mode.
+   =========================================== */
+/*
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+.slide { width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; scroll-snap-align: start; display: flex; flex-direction: column; position: relative; }
+.slide-content { flex: 1; display: flex; flex-direction: column; justify-content: center; max-height: 100%; overflow: hidden; padding: var(--slide-padding); }
+*/
+
+/* ===========================================
+   TYPOGRAPHY — ALL sizes use clamp()
+   Override these in your theme :root block.
+   =========================================== */
+:root {
+    --title-size: clamp(1.5rem, 5vw, 4rem);
+    --h2-size: clamp(1.25rem, 3.5vw, 2.5rem);
+    --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+    --body-size: clamp(0.75rem, 1.5vw, 1.125rem);
+    --small-size: clamp(0.65rem, 1vw, 0.875rem);
+
+    --slide-padding: clamp(1rem, 4vw, 4rem);
+    --content-gap: clamp(0.5rem, 2vw, 2rem);
+    --element-gap: clamp(0.25rem, 1vw, 1rem);
+}
+
+/* === Animated elements init === */
+.anim-elem {
+    opacity: 0;
+    transform: translateY(24px);
+}
+
+/* === Cards/containers max sizes === */
+.card, .container, .content-box {
+    max-width: min(90vw, 1000px);
+    max-height: min(80vh, 700px);
+}
+
+/* === Lists === */
+.feature-list, .bullet-list {
+    gap: clamp(0.4rem, 1vh, 1rem);
+}
+.feature-list li, .bullet-list li {
+    font-size: var(--body-size);
+    line-height: 1.4;
+}
+
+/* === Grids === */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+    gap: clamp(0.5rem, 1.5vw, 1rem);
+}
+
+/* === Images === */
+img, .image-container {
+    max-width: 100%;
+    max-height: min(50vh, 400px);
+    object-fit: contain;
+}
+
+/* ===========================================
+   RESPONSIVE BREAKPOINTS
+   =========================================== */
+@media (max-height: 700px) {
+    :root {
+        --slide-padding: clamp(0.75rem, 3vw, 2rem);
+        --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+        --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+        --h2-size: clamp(1rem, 3vw, 1.75rem);
+    }
+}
+
+@media (max-height: 600px) {
+    :root {
+        --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+        --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+        --title-size: clamp(1.1rem, 4vw, 2rem);
+        --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+    }
+    .nav-dots, .keyboard-hint, .decorative, .controls {
+        display: none;
+    }
+}
+
+@media (max-height: 500px) {
+    :root {
+        --slide-padding: clamp(0.4rem, 2vw, 1rem);
+        --title-size: clamp(1rem, 3.5vw, 1.5rem);
+        --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+        --body-size: clamp(0.65rem, 1vw, 0.85rem);
+    }
+}
+
+@media (max-width: 600px) {
+    :root {
+        --title-size: clamp(1.25rem, 7vw, 2.5rem);
+    }
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===========================================
+   REDUCED MOTION
+   =========================================== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+    html { scroll-behavior: auto; }
+    .anim-elem {
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}

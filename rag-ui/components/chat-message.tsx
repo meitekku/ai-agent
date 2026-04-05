@@ -736,12 +736,83 @@ const GeneratingIndicator = memo(function GeneratingIndicator() {
 // ChatMessage
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// MessageFile type — files associated with a message
+// ---------------------------------------------------------------------------
+
+export interface MessageFile {
+  id: string;
+  originalName: string;
+  mediaType: string;
+  sizeBytes: number;
+}
+
+// ---------------------------------------------------------------------------
+// FileCard — clickable file card shown at message bottom (Claude Web style)
+// ---------------------------------------------------------------------------
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const FILE_ICONS: Record<string, typeof FileTextIcon> = {
+  image: ImageIcon,
+  text: FileTextIcon,
+  application: FileIcon,
+};
+
+const FileCard = memo(function FileCard({
+  file,
+}: {
+  file: MessageFile;
+}) {
+  const typeCategory = file.mediaType.split("/")[0];
+  const ext = file.mediaType.split("/")[1]?.toUpperCase() ?? "";
+  const Icon = FILE_ICONS[typeCategory] ?? FileIcon;
+
+  const canPreview =
+    file.mediaType.startsWith("image/") ||
+    file.mediaType === "text/html" ||
+    file.mediaType === "text/markdown" ||
+    file.mediaType === "text/plain";
+
+  return (
+    <a
+      href={`/api/files/${file.id}${canPreview ? "" : "?dl=1"}`}
+      download={canPreview ? undefined : file.originalName}
+      target={canPreview ? "_blank" : undefined}
+      rel={canPreview ? "noopener" : undefined}
+      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer w-fit max-w-sm"
+    >
+      <div className="flex size-10 items-center justify-center rounded-md bg-muted/60">
+        <Icon className="size-5 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">{file.originalName}</div>
+        <div className="text-xs text-muted-foreground">
+          {ext} · {formatBytes(file.sizeBytes)}
+        </div>
+      </div>
+      <div className="shrink-0 text-xs text-muted-foreground border rounded-md px-2.5 py-1 hover:bg-muted transition-colors">
+        {canPreview ? "プレビュー" : "ダウンロード"}
+      </div>
+    </a>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// ChatMessage — main component
+// ---------------------------------------------------------------------------
+
 export const ChatMessage = memo(function ChatMessage({
   message,
   isLoading,
   isActiveStreaming,
   createdAt,
   stopped,
+  files,
   onCopy,
   onRegenerate,
   onEdit,
@@ -753,6 +824,7 @@ export const ChatMessage = memo(function ChatMessage({
   isActiveStreaming?: boolean;
   createdAt?: string;
   stopped?: boolean;
+  files?: MessageFile[];
   onCopy: (text: string) => void;
   onRegenerate: () => void;
   onEdit?: (messageId: string, newText: string) => void;
@@ -1092,6 +1164,15 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
       </MessageContent>
+
+      {/* File cards — generated files associated with this message */}
+      {files && files.length > 0 && message.role === "assistant" && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {files.map((f) => (
+            <FileCard key={f.id} file={f} />
+          ))}
+        </div>
+      )}
 
       {/* User message actions: edit + timestamp + branch selector — always rendered, visible on hover */}
       {message.role === "user" ? (

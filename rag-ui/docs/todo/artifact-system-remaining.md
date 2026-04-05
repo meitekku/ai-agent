@@ -77,15 +77,34 @@
 - show-widget: チャート・ゲージ等のインタラクティブ可視化のみ
 - 英語フィールド: 日本語に翻訳して表示（ステージ名マッピングは prompt で指示）
 
+## Skills + Chat Files 関連（2026-04-05 実装済み）
+
+### 実装済み
+- [x] Skills ファイルシステム化（agentskills.io 準拠、`data/skills/{id}/` にディスク保存）
+- [x] `loadSkill` tool が `skillDirectory` を返却（progressive disclosure L3）
+- [x] 内置 Skills 機構（`built-in-skills/` → 起動時自動同步、`source_type = "built-in"`）
+- [x] `chat_files.message_id` 列追加 + `generateImage` ファイル関連付け
+- [x] `FileCard` UI コンポーネント（Claude Web スタイル）
+
+### 未対応
+- [ ] `FileCard` のデータ接続: `chat-page.tsx` → `ChatMessage` に `files` prop を渡す
+- [ ] 歴史メッセージ読込時に `chat_files` を JOIN して返す
+- [ ] `executeCode` tool をチャット route に追加（opensandbox 経由、FileCard の主要ユースケース）
+
+詳細: `docs/handover/skills-filesystem-refactor.md`
+
 ## 関連ファイル
 
 | ファイル | 内容 |
 |---------|------|
 | `docs/handover/artifact-system-refactor.md` | リファクタリングの全体記録（旧システム→新システム） |
+| `docs/handover/skills-filesystem-refactor.md` | Skills ファイルシステム化 + Chat Files 記録 |
 | `lib/artifact-db.ts` | DB schema + CRUD |
 | `lib/artifact-tool.ts` | Tool 工場（writer 経由で streaming） |
 | `lib/artifact-store.ts` | Zustand store（streaming + artifact list） |
+| `lib/skill-storage.ts` | Skills ディスク I/O |
+| `lib/built-in-skills.ts` | 起動時内置スキル自動同步 |
 | `components/artifact-panel.tsx` | サイドパネル（アニメーション + ファイル一覧 + `key={id}` で切替対応） |
-| `components/chat-message.tsx` | ArtifactCard（多 tool グループ対応 + `output` fallback） |
-| `app/api/chat/route.ts` | streamText + CRM tools + artifact context injection |
+| `components/chat-message.tsx` | ArtifactCard + FileCard（多 tool グループ対応 + `output` fallback） |
+| `app/api/chat/route.ts` | streamText + CRM tools + artifact context injection + loadSkill |
 | `crm-service/src/routes/health.ts` | /capabilities エンドポイント |

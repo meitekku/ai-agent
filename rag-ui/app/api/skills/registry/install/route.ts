@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSkill } from "@/lib/skills-db";
+import { createSkillWithFiles } from "@/lib/skills-db";
 import { fetchSkillMd, parseFrontmatter } from "@/lib/skill-registry";
 
 export async function POST(req: NextRequest) {
@@ -19,13 +19,16 @@ export async function POST(req: NextRequest) {
     const name = frontmatter.name || frontmatter.title || skillId;
     const description = frontmatter.description || "";
 
-    const id = await createSkill({
-      name,
-      description,
-      content: body.trim(),
-      source_type: "registry",
-      registry_id: registryId,
-    });
+    const id = await createSkillWithFiles(
+      {
+        name,
+        description,
+        content: body.trim(),
+        source_type: "registry",
+        registry_id: registryId,
+      },
+      body.trim(),
+    );
 
     return NextResponse.json({ id, name, description });
   } catch (e: unknown) {

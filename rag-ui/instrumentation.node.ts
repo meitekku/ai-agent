@@ -1,6 +1,7 @@
 import { cleanupOrphanFiles } from "@/lib/file-cleanup";
 import { getTasksDueNow, createExecution, updateExecution, updateNextRunAt } from "@/lib/scheduler-db";
 import { enqueueTask } from "@/lib/scheduler-queue";
+import { syncBuiltInSkills } from "@/lib/built-in-skills";
 
 async function tickScheduler() {
   try {
@@ -47,6 +48,11 @@ export function startNodeInstrumentation() {
         console.error("[scheduled] Orphan file cleanup failed:", err),
       ),
     6 * 60 * 60 * 1000,
+  );
+
+  // Sync built-in skills on startup
+  syncBuiltInSkills().catch((err) =>
+    console.error("[startup] Built-in skills sync failed:", err),
   );
 
   // Scheduler: check for due tasks every 60 seconds

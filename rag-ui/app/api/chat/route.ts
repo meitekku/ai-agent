@@ -35,9 +35,17 @@ import {
   TASK_WORKER_URL,
   GEMINI_MODEL,
 } from "@/lib/constants";
-import { getEnabledSkillSummaries, getSkillByName } from "@/lib/skills-db";
+import {
+  getEnabledSkillSummaries,
+  getSkillByName,
+  getSkillDirectory,
+} from "@/lib/skills-db";
 import { WIDGET_SYSTEM_PROMPT } from "@/lib/widget-guidelines";
-import { getChatFile, insertChatFile } from "@/lib/chat-files-db";
+import {
+  getChatFile,
+  insertChatFile,
+  updateFilesMessageId,
+} from "@/lib/chat-files-db";
 import { readStoredFile, saveFile } from "@/lib/file-storage";
 import { saveMessages, updateConversation } from "@/lib/chat-db";
 import { createArtifactTool } from "@/lib/artifact-tool";
@@ -96,7 +104,13 @@ const loadSkillTool = tool({
     console.log(`[chat] 📖 loadSkill: ${name}`);
     const skill = await getSkillByName(name);
     if (!skill) return { error: `スキル「${name}」が見つかりません` };
-    return { name: skill.name, content: skill.content };
+    return {
+      name: skill.name,
+      content: skill.content,
+      skillDirectory: skill.content_dir
+        ? getSkillDirectory(skill.content_dir)
+        : null,
+    };
   },
 });
 
@@ -429,6 +443,9 @@ export async function POST(req: Request) {
   // Build tools map
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools: Record<string, any> = {};
+
+  // Collect file IDs generated during this request for message association
+  const generatedFileIds: string[] = [];
 
   // Inject searchKnowledgeBase: single-KB mode (manual) or auto-discovery mode
   if (kb) {
@@ -1500,6 +1517,7 @@ export async function POST(req: Request) {
               sizeBytes: file.uint8Array.length,
             });
             savedUrls.push(`/api/files/${id}`);
+            generatedFileIds.push(id);
           }
           console.log(
             `[chat] 🎨 generateImage done: ${Date.now() - t0}ms, ${savedUrls.length} images`,
@@ -1862,8 +1880,15 @@ ${truncated}
           await updateConversation(chatId, {
             active_leaf_id: responseMessage.id,
           });
+          // Associate generated files with the assistant message
+          if (generatedFileIds.length > 0) {
+            await updateFilesMessageId(
+              generatedFileIds,
+              responseMessage.id,
+            );
+          }
           console.log(
-            `[chat] 💾 Server-side saved ${toSave.length} msgs for conv=${chatId}`,
+            `[chat] 💾 Server-side saved ${toSave.length} msgs for conv=${chatId}${generatedFileIds.length > 0 ? `, ${generatedFileIds.length} files linked` : ""}`,
           );
         } catch (e) {
           console.error("[chat] server-side save failed:", e);

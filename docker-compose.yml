@@ -135,12 +135,14 @@ services:
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      SKILLS_DIR: /app/data/skills
       # Vertex AI
       USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
       GCP_LOCATION: ${GCP_LOCATION:-global}
       GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-sa.json
     volumes:
+      - skills-data:/app/data/skills:ro
       - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       postgres:
@@ -172,6 +174,7 @@ services:
       DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
       CHAT_FILES_DIR: /app/data/chat-files
       KB_FILES_DIR: /app/data/kb-files
+      SKILLS_DIR: /app/data/skills
       CRM_SERVICE_URL: http://crm-service:8009
       TASK_WORKER_URL: http://task-worker:8010
       APP_URL: ${APP_URL:-}
@@ -185,6 +188,7 @@ services:
     volumes:
       - chat-files:/app/data/chat-files
       - kb-files:/app/data/kb-files
+      - skills-data:/app/data/skills
       - ${GCP_SA_KEY_FILE:-/dev/null}:/app/gcp-sa.json:ro
     depends_on:
       lightrag:
@@ -201,3 +205,4 @@ volumes:
   lightrag-data:
   chat-files:
   kb-files:
+  skills-data:

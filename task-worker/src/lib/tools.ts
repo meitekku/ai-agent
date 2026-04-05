@@ -5,7 +5,11 @@ import { Resend } from "resend";
 import { executeCode } from "./sandbox";
 import { AiEmail } from "./emails/ai-email";
 import { getModel, providerOptionsKey } from "./ai-provider";
-import { type SkillSummary, getSkillByName } from "./skills-db";
+import {
+  type SkillSummary,
+  getSkillByName,
+  getSkillDirectory,
+} from "./skills-db";
 import { guessMimeType } from "./mime";
 
 const LIGHTRAG_URL = process.env.LIGHTRAG_URL || "http://lightrag:8007";
@@ -387,7 +391,13 @@ export function buildTools({
         console.log(`[tools] 📖 loadSkill: ${name}`);
         const skill = await getSkillByName(name);
         if (!skill) return { error: `Skill "${name}" not found` };
-        return { name: skill.name, content: skill.content };
+        return {
+          name: skill.name,
+          content: skill.content,
+          skillDirectory: skill.content_dir
+            ? getSkillDirectory(skill.content_dir)
+            : null,
+        };
       },
     });
   }
