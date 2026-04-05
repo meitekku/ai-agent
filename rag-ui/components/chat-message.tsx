@@ -423,7 +423,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   analyzeDeal: "商談分析",
   fetchAndAnalyze: "商談分析",
   generateImage: "画像生成",
-  artifact: "アーティファクト",
+  artifact: "生成ファイル",
 };
 
 function getGroupSummary(tools: ToolEntry[]): string {
@@ -537,10 +537,10 @@ const ArtifactCard = memo(function ArtifactCard({
     artifactKind === "html"
       ? "HTML"
       : artifactKind === "code"
-        ? "Code"
+        ? "コード"
         : artifactKind === "markdown"
-          ? "Markdown"
-          : "Text";
+          ? "ドキュメント"
+          : "テキスト";
 
   return (
     <button
@@ -552,7 +552,7 @@ const ArtifactCard = memo(function ArtifactCard({
       </div>
       <div className="min-w-0">
         <div className="text-sm font-medium truncate">
-          {artifactTitle || "Artifact"}
+          {artifactTitle || "生成ファイル"}
         </div>
         <div className="text-xs text-muted-foreground">
           {kindLabel}
@@ -659,7 +659,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
     <div>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
+        className="inline-flex w-fit items-center gap-2 rounded-lg py-1.5 text-xs text-muted-foreground/60 hover:bg-muted/30 transition-colors cursor-pointer"
       >
         <CheckIcon className="size-3.5 shrink-0 text-primary/60" />
         <span>{getGroupSummary(tools)} 完了</span>

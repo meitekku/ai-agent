@@ -25,6 +25,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useCallback, useState, useRef, useEffect } from "react";
 
 const math = createMathPlugin();
@@ -331,7 +336,6 @@ export function ArtifactPanel() {
   const [copied, setCopied] = useState(false);
   const [showList, setShowList] = useState(false);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
-  const [exporting, setExporting] = useState<"pdf" | "pptx" | null>(null);
   const isHtmlSlides = kind === "html" && isFullHtmlDocument(content);
   const maxVersion =
     versions.length > 0 ? versions[versions.length - 1].version : version;
@@ -394,19 +398,22 @@ export function ArtifactPanel() {
     URL.revokeObjectURL(url);
   }, [content, kind, language, title]);
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingPptx, setExportingPptx] = useState(false);
+
   const handleExportPdf = useCallback(async () => {
-    if (exporting) return;
-    setExporting("pdf");
+    if (exportingPdf) return;
+    setExportingPdf(true);
     try { await exportPdf(content, title); } catch (e) { console.error("[ArtifactPanel] PDF export failed:", e); }
-    setExporting(null);
-  }, [content, title, exporting]);
+    setExportingPdf(false);
+  }, [content, title, exportingPdf]);
 
   const handleExportPptx = useCallback(async () => {
-    if (exporting) return;
-    setExporting("pptx");
+    if (exportingPptx) return;
+    setExportingPptx(true);
     try { await exportPptx(content, title); } catch (e) { console.error("[ArtifactPanel] PPTX export failed:", e); }
-    setExporting(null);
-  }, [content, title, exporting]);
+    setExportingPptx(false);
+  }, [content, title, exportingPptx]);
 
   const handleSelectArtifact = useCallback(
     async (item: ArtifactListItem) => {
@@ -460,94 +467,81 @@ export function ArtifactPanel() {
         <div className="flex items-center gap-0.5">
           {maxVersion > 1 && (
             <div className="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                onClick={handlePrevVersion}
-                disabled={version <= 1}
-              >
-                <ChevronLeft className="size-3" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-6" onClick={handlePrevVersion} disabled={version <= 1}>
+                    <ChevronLeft className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>前のバージョン</TooltipContent>
+              </Tooltip>
               <span className="tabular-nums min-w-[3ch] text-center">
                 v{version}/{maxVersion}
               </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                onClick={handleNextVersion}
-                disabled={version >= maxVersion}
-              >
-                <ChevronRight className="size-3" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-6" onClick={handleNextVersion} disabled={version >= maxVersion}>
+                    <ChevronRight className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>次のバージョン</TooltipContent>
+              </Tooltip>
             </div>
           )}
           {artifactList.length > 1 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => setShowList((v) => !v)}
-              title="ファイル一覧"
-            >
-              <Files className="size-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7" onClick={() => setShowList((v) => !v)}>
+                  <Files className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>ファイル一覧</TooltipContent>
+            </Tooltip>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={handleCopy}
-            title="コピー"
-          >
-            {copied ? (
-              <Check className="size-3.5 text-green-500" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={handleDownload}
-            title="ダウンロード"
-          >
-            <Download className="size-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-7" onClick={handleCopy}>
+                {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copied ? "コピー済み" : "コピー"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-7" onClick={handleDownload}>
+                <Download className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>HTMLダウンロード</TooltipContent>
+          </Tooltip>
           {isHtmlSlides && (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={handleExportPdf}
-                disabled={!!exporting}
-                title="PDF エクスポート"
-              >
-                {exporting === "pdf" ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={handleExportPptx}
-                disabled={!!exporting}
-                title="PPTX エクスポート"
-              >
-                {exporting === "pptx" ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[9px] font-bold">PPT</span>}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-7" onClick={handleExportPdf} disabled={exportingPdf}>
+                    {exportingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>PDFエクスポート</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-7" onClick={handleExportPptx} disabled={exportingPptx}>
+                    {exportingPptx ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[9px] font-bold">PPT</span>}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>PPTXエクスポート</TooltipContent>
+              </Tooltip>
             </>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={closeArtifact}
-          >
-            <X className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-7" onClick={closeArtifact}>
+                <X className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>閉じる</TooltipContent>
+          </Tooltip>
         </div>
         {/* File list dropdown */}
         {showList && (
