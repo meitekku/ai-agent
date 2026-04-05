@@ -21,6 +21,8 @@ import {
   Check,
   Files,
   GripVertical,
+  FileDown,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallback, useState, useRef, useEffect } from "react";
@@ -100,6 +102,113 @@ function ArtifactListDropdown({
   );
 }
 
+/** Detect complete HTML documents that need direct srcdoc rendering */
+function isFullHtmlDocument(html: string): boolean {
+  const head = html.trimStart().slice(0, 200).toLowerCase();
+  return head.includes("<!doctype") || (head.includes("<html") && head.includes("<head"));
+}
+
+/** Capture HTML content as PNG via hidden iframe + html2canvas */
+async function captureHtmlAsPng(html: string): Promise<string> {
+  const { default: html2canvas } = await import("html2canvas");
+  const container = document.createElement("div");
+  Object.assign(container.style, { position: "fixed", left: "-9999px", top: "0", opacity: "0" });
+  document.body.appendChild(container);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "width:1280px;height:720px;border:none";
+  iframe.srcdoc = html;
+  container.appendChild(iframe);
+
+  await new Promise<void>((resolve) => { iframe.onload = () => resolve(); });
+  try { await iframe.contentDocument?.fonts.ready; } catch {}
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const body = iframe.contentDocument?.body;
+  if (!body) { container.remove(); throw new Error("iframe body not found"); }
+
+  const canvas = await html2canvas(body, {
+    width: 1280, height: 720, scale: 2, useCORS: true, backgroundColor: null,
+  });
+  container.remove();
+  return canvas.toDataURL("image/png");
+}
+
+/** Export HTML slides as PDF */
+async function exportPdf(html: string, title: string): Promise<void> {
+  // Find all slides and capture each
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const slideCount = doc.querySelectorAll(".slide").length || 1;
+
+  const pngs: string[] = [];
+  for (let i = 0; i < slideCount; i++) {
+    // Inject JS to navigate to slide i before capturing
+    const slideHtml = html.replace(
+      "</body>",
+      `<script>
+        try {
+          const slides = document.querySelectorAll('.slide');
+          slides.forEach((s, idx) => {
+            s.classList.toggle('active', idx === ${i});
+            s.style.opacity = idx === ${i} ? '1' : '0';
+            s.style.visibility = idx === ${i} ? 'visible' : 'hidden';
+            s.style.zIndex = idx === ${i} ? '10' : '1';
+            s.querySelectorAll('.anim-elem').forEach(e => { e.style.opacity = '1'; e.style.transform = 'none'; });
+          });
+        } catch(e) {}
+      </script></body>`,
+    );
+    pngs.push(await captureHtmlAsPng(slideHtml));
+  }
+
+  const { default: jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1280, 720] });
+  for (let i = 0; i < pngs.length; i++) {
+    if (i > 0) pdf.addPage([1280, 720], "landscape");
+    pdf.addImage(pngs[i].split(",")[1], "PNG", 0, 0, 1280, 720);
+  }
+  const safeName = (title || "artifact").replace(/[^a-zA-Z0-9\u3040-\u30ff\u4e00-\u9fff _-]/g, "_");
+  pdf.save(`${safeName}.pdf`);
+}
+
+/** Export HTML slides as PPTX */
+async function exportPptx(html: string, title: string): Promise<void> {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const slideCount = doc.querySelectorAll(".slide").length || 1;
+
+  const pngs: string[] = [];
+  for (let i = 0; i < slideCount; i++) {
+    const slideHtml = html.replace(
+      "</body>",
+      `<script>
+        try {
+          const slides = document.querySelectorAll('.slide');
+          slides.forEach((s, idx) => {
+            s.classList.toggle('active', idx === ${i});
+            s.style.opacity = idx === ${i} ? '1' : '0';
+            s.style.visibility = idx === ${i} ? 'visible' : 'hidden';
+            s.style.zIndex = idx === ${i} ? '10' : '1';
+            s.querySelectorAll('.anim-elem').forEach(e => { e.style.opacity = '1'; e.style.transform = 'none'; });
+          });
+        } catch(e) {}
+      </script></body>`,
+    );
+    pngs.push(await captureHtmlAsPng(slideHtml));
+  }
+
+  const PptxGenJS = (await import("pptxgenjs")).default;
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_16x9";
+  for (const png of pngs) {
+    const slide = pptx.addSlide();
+    slide.addImage({ data: png, x: 0, y: 0, w: "100%", h: "100%" });
+  }
+  const safeName = (title || "artifact").replace(/[^a-zA-Z0-9\u3040-\u30ff\u4e00-\u9fff _-]/g, "_");
+  await pptx.writeFile({ fileName: `${safeName}.pptx` });
+}
+
 function PanelContent({
   kind,
   language,
@@ -112,6 +221,19 @@ function PanelContent({
   isStreaming: boolean;
 }) {
   if (kind === "html") {
+    // Complete HTML documents → direct srcdoc iframe (fixes white screen)
+    // Fragments (widget-style) → WidgetRenderer with morphdom streaming
+    if (!isStreaming && isFullHtmlDocument(content)) {
+      return (
+        <iframe
+          srcDoc={content}
+          sandbox="allow-scripts"
+          className="w-full h-full border-0"
+          style={{ minHeight: "100%" }}
+          title="Artifact preview"
+        />
+      );
+    }
     return <WidgetRenderer widgetCode={content} isStreaming={isStreaming} />;
   }
   if (kind === "code") {
@@ -209,6 +331,8 @@ export function ArtifactPanel() {
   const [copied, setCopied] = useState(false);
   const [showList, setShowList] = useState(false);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const [exporting, setExporting] = useState<"pdf" | "pptx" | null>(null);
+  const isHtmlSlides = kind === "html" && isFullHtmlDocument(content);
   const maxVersion =
     versions.length > 0 ? versions[versions.length - 1].version : version;
 
@@ -269,6 +393,20 @@ export function ArtifactPanel() {
     a.click();
     URL.revokeObjectURL(url);
   }, [content, kind, language, title]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (exporting) return;
+    setExporting("pdf");
+    try { await exportPdf(content, title); } catch (e) { console.error("[ArtifactPanel] PDF export failed:", e); }
+    setExporting(null);
+  }, [content, title, exporting]);
+
+  const handleExportPptx = useCallback(async () => {
+    if (exporting) return;
+    setExporting("pptx");
+    try { await exportPptx(content, title); } catch (e) { console.error("[ArtifactPanel] PPTX export failed:", e); }
+    setExporting(null);
+  }, [content, title, exporting]);
 
   const handleSelectArtifact = useCallback(
     async (item: ArtifactListItem) => {
@@ -378,6 +516,30 @@ export function ArtifactPanel() {
           >
             <Download className="size-3.5" />
           </Button>
+          {isHtmlSlides && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={handleExportPdf}
+                disabled={!!exporting}
+                title="PDF エクスポート"
+              >
+                {exporting === "pdf" ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={handleExportPptx}
+                disabled={!!exporting}
+                title="PPTX エクスポート"
+              >
+                {exporting === "pptx" ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[9px] font-bold">PPT</span>}
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon"

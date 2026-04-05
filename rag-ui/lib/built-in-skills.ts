@@ -107,7 +107,7 @@ export async function syncBuiltInSkills(): Promise<void> {
 
     // Check if already exists
     const existing = await getPool().query(
-      `SELECT id, content_dir FROM skills WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+      `SELECT id, content_dir, source_type FROM skills WHERE LOWER(name) = LOWER($1) LIMIT 1`,
       [frontmatter.name],
     );
 
@@ -120,7 +120,7 @@ export async function syncBuiltInSkills(): Promise<void> {
           [frontmatter.description, body.trim(), row.id],
         );
       }
-      console.log(`[built-in-skills] ✓ ${frontmatter.name} (exists, skipped)`);
+      console.log(`[built-in-skills] ✓ ${frontmatter.name} (${row.source_type === "built-in" ? "updated" : "exists, user-modified, skipped"})`);
       continue;
     }
 

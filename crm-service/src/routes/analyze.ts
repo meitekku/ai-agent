@@ -54,8 +54,10 @@ async function generateRationale(data: SFData, availableTemplateServices: string
 
 app.post("/deals/analyze", async (c) => {
   try {
-    const { data, availableTemplateServices, additionalContext, model } = await c.req.json();
+    const body = await c.req.json();
+    const { data, availableTemplateServices, additionalContext, model } = body;
     if (!data?.opportunity) {
+      console.error("[analyze] Missing opportunity. data keys:", data ? Object.keys(data) : "null");
       return c.json({ error: "商談データが不足しています" }, 400);
     }
 

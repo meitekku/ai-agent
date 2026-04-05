@@ -59,12 +59,16 @@ export function createArtifactTool({
         .describe("この変更の簡潔な説明"),
     }),
     execute: async (args) => {
+      console.log(`[artifact] ${args.command} ${args.id ?? "(new)"} title="${args.title ?? ""}" contentLen=${args.content?.length ?? 0} oldStrLen=${args.oldStr?.length ?? 0} newStrLen=${args.newStr?.length ?? 0}`);
+      // Fix escaped quotes from LLM JSON output (e.g. \" → ")
+      const unesc = (s: string) => s.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
       switch (args.command) {
         case "create": {
           const id = nanoid(12);
           const kind = args.kind ?? "html";
           const title = args.title ?? "Untitled";
-          const content = args.content ?? "";
+          const content = unesc(args.content ?? "");
 
           await createArtifact(id, conversationId, kind, title, content);
 
@@ -101,13 +105,16 @@ export function createArtifactTool({
           const current = await getCurrentContent(args.id);
           if (!current) return { error: "no content found" };
 
-          if (!current.includes(args.oldStr)) {
+          const oldStr = unesc(args.oldStr);
+          const newStr = unesc(args.newStr);
+
+          if (!current.includes(oldStr)) {
             return {
               error: `oldStr not found in current content. Make sure the string matches exactly.`,
             };
           }
 
-          const newContent = current.replace(args.oldStr, args.newStr);
+          const newContent = current.replace(oldStr, newStr);
           const newVersion = artifact.currentVersion + 1;
 
           await Promise.all([
@@ -151,13 +158,14 @@ export function createArtifactTool({
           const artifact = await getArtifact(args.id);
           if (!artifact) return { error: "artifact not found" };
 
+          const rewriteContent = unesc(args.content);
           const newVersion = artifact.currentVersion + 1;
 
           await Promise.all([
             createArtifactVersion(
               args.id,
               newVersion,
-              args.content,
+              rewriteContent,
               "rewrite",
               args.description ?? "",
             ),
@@ -175,7 +183,7 @@ export function createArtifactTool({
               id: args.id,
               title: args.title ?? artifact.title,
               kind: args.kind ?? artifact.kind,
-              content: args.content,
+              content: rewriteContent,
               version: newVersion,
             },
           });

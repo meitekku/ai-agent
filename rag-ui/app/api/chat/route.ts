@@ -2,7 +2,6 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  generateObject,
   generateText,
   smoothStream,
   stepCountIs,
@@ -1220,39 +1219,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Inline schema for deal analysis (previously imported from analysis-schema.ts)
-    const ScenarioSchema = z.object({
-      label: z.string(),
-      probability: z.number(),
-      expectedRevenue: z.number(),
-      timeline: z.string(),
-      conditions: z.array(z.string()),
-    });
-
-    const DealAnalysisSchemaInline = z.object({
-      winProbability: z.number().describe("受注確率 0-100"),
-      dealHealthScore: z.number().describe("商談健全度 0-100"),
-      proposalReadiness: z.number().describe("提案準備度 0-100"),
-      activityScore: z.number().describe("活動スコア 0-100"),
-      engagementLevel: z.string().describe("エンゲージメントレベル"),
-      keyDrivers: z.array(z.string()).describe("主要な推進要因"),
-      riskFactors: z.array(z.string()).describe("リスク要因"),
-      recommendedActions: z.array(z.string()).describe("推奨アクション"),
-      scenarios: z.object({
-        optimistic: ScenarioSchema,
-        base: ScenarioSchema,
-        pessimistic: ScenarioSchema,
-      }),
-      rationale: z.object({
-        customerChallenges: z.array(z.string()),
-        serviceRecommendations: z.array(z.string()),
-        combinedSolution: z.string(),
-        existingProposalHints: z.array(z.string()),
-        proposalJudgment: z.string(),
-        proposalJudgmentReason: z.string(),
-      }),
-    });
-
     tools.analyzeDeal = tool({
       description:
         "商談データを AI で分析します。fetchDealData で返されたデータと、KB/Web 検索で得た追加コンテキストを渡してください。",
@@ -1271,106 +1237,30 @@ export async function POST(req: Request) {
         console.log(`[chat] 📊 analyzeDeal`);
         const t0 = Date.now();
         try {
-          const sfData = sessionData;
+          // Delegate to crm-service /deals/analyze
+          // - Deterministic scores from scoring.ts (win probability, health, readiness, activity)
+          // - AI-generated rationale from Gemini (challenges, recommendations, solution)
+          // sessionData may be { data: {...} } (from fetchCrmDetail) or raw CRM data
+          const crmData = (sessionData as Record<string, unknown>).data ?? sessionData;
+          const res = await fetch(`${CRM_SERVICE_URL}/deals/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              data: crmData,
+              additionalContext: additionalContext || undefined,
+              model: modelOverride || undefined,
+            }),
+          });
+          const result = await res.json();
 
-          // Fetch template service names (for proposal judgment)
-          let templateServices: string[] = [];
-          try {
-            const tplRes = await fetch(`${CRM_SERVICE_URL}/templates`);
-            if (tplRes.ok) {
-              const tpls = await tplRes.json();
-              templateServices = (
-                Array.isArray(tpls) ? tpls : tpls.templates || []
-              )
-                .map((t: { serviceName?: string }) => t.serviceName)
-                .filter(Boolean);
-            }
-          } catch {
-            // Templates are optional
-          }
-
-          // Build analysis prompt inline
-          const opp = (sfData as Record<string, unknown>).opportunity as
-            | Record<string, unknown>
-            | undefined;
-          const acct = (sfData as Record<string, unknown>).account as
-            | Record<string, unknown>
-            | undefined;
-          let analysisPrompt = `以下のCRM商談データを分析し、受注確率・健全度・リスク・推奨アクションを評価してください。\n\n`;
-          if (acct) analysisPrompt += `【アカウント】\n${JSON.stringify(acct, null, 2)}\n\n`;
-          if (opp) analysisPrompt += `【商談】\n${JSON.stringify(opp, null, 2)}\n\n`;
-          const activities = (sfData as Record<string, unknown>).activities;
-          if (activities) analysisPrompt += `【活動履歴】\n${JSON.stringify(activities, null, 2)}\n\n`;
-          const contacts = (sfData as Record<string, unknown>).contacts;
-          if (contacts) analysisPrompt += `【コンタクト】\n${JSON.stringify(contacts, null, 2)}\n\n`;
-          if (additionalContext) analysisPrompt += `【追加コンテキスト（KB/Web検索結果）】\n${additionalContext}\n\n`;
-          if (templateServices.length > 0) {
-            analysisPrompt += `【利用可能なサービステンプレート】\n${templateServices.join(", ")}\n提案判定(proposalJudgment)ではこのリストから最適なサービスを選んでください。\n\n`;
-          }
-
-          // AI analysis via generateObject
-          let analysisData: Record<string, unknown>;
-          try {
-            const result = await generateObject({
-              model: getChatModel(modelOverride),
-              schema: DealAnalysisSchemaInline,
-              prompt: analysisPrompt,
-              temperature: 0.3,
-            });
-            analysisData = result.object as unknown as Record<string, unknown>;
-          } catch (analyzeErr) {
-            console.error(
-              `[chat] ⚠️ analyzeDeal: generateObject failed, using fallback:`,
-              analyzeErr,
-            );
-            analysisData = {
-              winProbability: 50,
-              dealHealthScore: 50,
-              proposalReadiness: 50,
-              activityScore: 0,
-              engagementLevel: "—",
-              keyDrivers: ["AI分析に一時的な問題が発生しました"],
-              riskFactors: ["分析データが不完全な可能性があります"],
-              recommendedActions: ["再度分析を実行してください"],
-              scenarios: {
-                optimistic: {
-                  label: "楽観シナリオ",
-                  probability: 70,
-                  expectedRevenue: 0,
-                  timeline: "未定",
-                  conditions: [],
-                },
-                base: {
-                  label: "標準シナリオ",
-                  probability: 50,
-                  expectedRevenue: 0,
-                  timeline: "未定",
-                  conditions: [],
-                },
-                pessimistic: {
-                  label: "悲観シナリオ",
-                  probability: 25,
-                  expectedRevenue: 0,
-                  timeline: "未定",
-                  conditions: [],
-                },
-              },
-              rationale: {
-                customerChallenges: [],
-                serviceRecommendations: [],
-                combinedSolution: "",
-                existingProposalHints: [],
-                proposalJudgment: "dx_development",
-                proposalJudgmentReason:
-                  "AI分析の実行に失敗したため、デフォルト判定です。",
-              },
-            };
+          if (result.error) {
+            console.error(`[chat] ⚠️ analyzeDeal: crm-service error:`, result.error);
+            return { error: result.error };
           }
 
           console.log(`[chat] 📊 analyzeDeal: done (${Date.now() - t0}ms)`);
-
           return {
-            analysis: analysisData,
+            analysis: result.analysis,
             data: sessionData,
           };
         } catch (err) {
@@ -1809,7 +1699,7 @@ ${truncated}
           model: chatModel,
           system: systemPrompt,
           messages: modelMessages,
-          stopWhen: stepCountIs(15),
+          stopWhen: stepCountIs(30),
           maxOutputTokens: 32768,
           tools,
           ...(thinking && useGemini
@@ -1846,8 +1736,12 @@ ${truncated}
               (usage as Record<string, unknown>)?.outputTokens ??
               "?";
           } catch {}
+          let finishReason = "?";
+          try { finishReason = (await result.finishReason) ?? "?"; } catch {}
+          let steps = 0;
+          try { steps = (await result.steps).length; } catch {}
           console.log(
-            `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${tokens}`,
+            `[chat] ✅ done: total=${t.stream}ms | prefill=${firstTokenTime ? firstTokenTime - t1 : "?"}ms gen=${firstTokenTime ? Date.now() - firstTokenTime : "?"}ms | tokens=${tokens} | finish=${finishReason} steps=${steps}`,
           );
         } catch (e) {
           console.error("[chat] stream error:", e);

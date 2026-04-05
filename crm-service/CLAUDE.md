@@ -54,7 +54,7 @@ crm-service/
     │   ├── salesforce.ts         # POST /sf/check, /sf/list, /sf/fetch
     │   ├── kintone.ts            # POST /kintone/list, /kintone/fetch（モックフォールバック）
     │   ├── parse-file.ts         # POST /deals/parse-file（XLSX/CSV/TXT）
-    │   ├── analyze.ts            # POST /deals/analyze（スコアリング + Gemini 根拠生成）
+    │   ├── analyze.ts            # POST /deals/analyze（決定的スコアリング + Gemini 根拠生成、デバッグログ付き）
     │   ├── rationale.ts          # POST /deals/revise-rationale（フィードバック修正）
     │   ├── solution-qa.ts        # POST /deals/solution-qa（マルチターン Q&A）
     │   ├── templates.ts          # GET/POST/DELETE/PATCH /templates, POST /templates/detect
@@ -78,7 +78,7 @@ crm-service/
 | POST | `/kintone/list` | Kintone レコード一覧（API 未接続時モックフォールバック） |
 | POST | `/kintone/fetch` | Kintone レコード詳細 → SFData 形式に正規化 |
 | POST | `/deals/parse-file` | ファイルベース案件インポート（FormData: XLSX/CSV/TXT） |
-| POST | `/deals/analyze` | 商機分析（スコアリング + AI 根拠生成） |
+| POST | `/deals/analyze` | 商機分析（決定的スコアリング + AI 根拠生成）— rag-ui `analyzeDeal` tool から直接呼出 |
 | POST | `/deals/revise-rationale` | フィードバックで分析根拠修正 |
 | POST | `/deals/solution-qa` | マルチターン会話 Q&A（Gemini startChat） |
 | GET | `/templates` | 提案テンプレート一覧 |
@@ -103,11 +103,14 @@ crm-service/
 
 ## スコアリングアルゴリズム（lib/scoring.ts）
 
+rag-ui の `analyzeDeal` ツールから `/deals/analyze` 経由で呼出。スコアは決定的アルゴリズムで算出し、AI（Gemini）は定性的根拠（customerChallenges, serviceRecommendations, combinedSolution）のみ生成。旧方式の `generateObject` による全 AI スコアリングは廃止。
+
 - **受注確率**: stage_score×60% + SF_probability×20% + activity_bonus×15% + contact_bonus×10%
 - **活動スコア**: 7日以内+20, 14日+15, 30日+10, 60日+5, 以上+2 (上限100)
 - **提案準備度**: 説明+20, コンタクト+5×人数, 活動+20%, 予算+15, 期限+10, ネクストステップ+10, 業界+5
 - **エンゲージメント**: 活動×0.7 + コンタクト×3 → 高(≥70)/中(≥40)/低
 - **3 シナリオ**: 楽観(+0.20, ×1.10), 標準, 悲観(-0.25, ×0.75)
+- **Null 安全**: `data.contacts`, `data.activities`, `data.account` が欠落している案件に対応（一部 CRM データが不完全なケース）
 
 ## 提案書 PPTX 生成（routes/proposal-pptx.ts）
 

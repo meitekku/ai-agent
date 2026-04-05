@@ -93,6 +93,20 @@
 
 詳細: `docs/handover/skills-filesystem-refactor.md`
 
+## CRM 提案書ワークフロー実装（2026-04-05/06 実装済み）
+
+### 実装済み
+- [x] `built-in-skills/crm-proposal/SKILL.md` — CRM 分析 → KPI → 提案書生成の完全ワークフロー
+- [x] `analyzeDeal` を crm-service `/deals/analyze` に委譲（決定的スコアリング、AI は根拠のみ）
+- [x] `artifact-tool.ts` の `unesc()` — LLM JSON エスケープ修正（空白スライドの根本原因）
+- [x] `artifact-panel.tsx` — 完全 HTML ドキュメントの直接 `srcdoc` 渲染（白画面バグ修正）
+- [x] `artifact-panel.tsx` — HTML スライド artifact の PDF/PPTX エクスポートボタン
+- [x] `built-in-skills.ts` — `source_type` を SELECT に追加（内置スキル更新が実際に動作するよう修正）
+- [x] `crm-service/src/lib/scoring.ts` — contacts/activities/account の null 安全対応
+- [x] `app/api/chat/route.ts` — `stepCountIs(15)` → `stepCountIs(30)` に増加
+- [x] System prompt に CRM ワークフローブリッジ追加（analyzeDeal → loadSkill('crm-proposal')）
+- [x] `sessionData.data` 二重ネストバグ修正
+
 ## 関連ファイル
 
 | ファイル | 内容 |
@@ -106,5 +120,8 @@
 | `lib/built-in-skills.ts` | 起動時内置スキル自動同步 |
 | `components/artifact-panel.tsx` | サイドパネル（アニメーション + ファイル一覧 + `key={id}` で切替対応） |
 | `components/chat-message.tsx` | ArtifactCard + FileCard（多 tool グループ対応 + `output` fallback） |
-| `app/api/chat/route.ts` | streamText + CRM tools + artifact context injection + loadSkill |
+| `app/api/chat/route.ts` | streamText + CRM tools + artifact context injection + loadSkill + stepCountIs(30) |
+| `built-in-skills/crm-proposal/SKILL.md` | CRM 提案書ワークフロースキル |
 | `crm-service/src/routes/health.ts` | /capabilities エンドポイント |
+| `crm-service/src/routes/analyze.ts` | /deals/analyze（決定的スコアリング + Gemini 根拠生成） |
+| `crm-service/src/lib/scoring.ts` | スコアリングアルゴリズム（null 安全対応済み） |

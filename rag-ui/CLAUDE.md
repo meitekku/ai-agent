@@ -21,7 +21,7 @@
 ```
 Browser useChat → /api/chat Route Handler → isImageModel?
                                             → YES: generateText + responseModalities → 画像保存 → UIMessageStream
-                                            → NO:  Gemini/MLX streamText + stopWhen(15) + tool calling
+                                            → NO:  Gemini/MLX streamText + stopWhen(30) + tool calling
                                               → searchKnowledgeBase（LightRAG search-only）
                                               → webSearch / readPage（Tavily）or google_search（Gemini grounding）
                                               → artifact（create/update/rewrite → サイドパネル表示）
@@ -208,12 +208,13 @@ rag-ui/
 │   ├── embedding-client.ts # Embedding クライアント（Ollama/Gemini 切替）
 │   ├── semantic-cache.ts  # Valkey/Redis 查询缓存（TTL 1h）
 │   ├── artifact-db.ts     # PostgreSQL Artifact CRUD + バージョン管理（artifacts + artifact_versions テーブル）
-│   ├── artifact-tool.ts   # AI SDK artifact ツール（create/update/rewrite、writer 経由で流式推送）
+│   ├── artifact-tool.ts   # AI SDK artifact ツール（create/update/rewrite、writer 経由で流式推送）+ unesc() エスケープ修正
 │   ├── artifact-store.ts  # Zustand store（Artifact 状態管理、streaming 対応）
 │   ├── skills-db.ts       # PostgreSQL スキルCRUD + createSkillWithFiles（DB + ディスク一括作成）
 │   ├── skill-storage.ts   # スキルファイルディスク I/O（agentskills.io 準拠、data/skills/{id}/）
 │   ├── skill-zip-parser.ts # ZIP スキル解析（SKILL.md frontmatter + body + refs 構造化返却）
 │   ├── skill-registry.ts  # skills.sh レジストリ共有ヘルパー（GitHub SKILL.md 取得 + frontmatter 解析）
+│   ├── built-in-skills.ts # 起動時内置スキル自動同期（source_type = "built-in"）
 │   ├── file-storage.ts    # ファイルディスク I/O（保存/読込/パス解決）
 │   ├── chat-files-db.ts   # chat_files テーブル CRUD
 │   ├── file-cleanup.ts    # 孤立ファイル自動削除
@@ -384,10 +385,13 @@ streamText + createUIMessageStream
 
 | kind | 渲染方式 | ダウンロード |
 |------|---------|-------------|
-| `html` | WidgetRenderer（sandbox iframe + morphdom） | .html |
+| `html` | 完全な HTML ドキュメント（DOCTYPE/html/head 付き）は直接 iframe `srcdoc` 渲染、それ以外は WidgetRenderer（sandbox iframe + morphdom） | .html |
 | `code` | Streamdown 構文ハイライト（language パラメータ対応） | .py/.ts/.js 等 |
 | `markdown` | Streamdown（見出し・表・リスト・コードブロック） | .md |
 | `text` | Streamdown（Markdown として渲染） | .txt |
+
+- **HTML 白画面修正**: `isFullHtmlDocument()` 検出関数で完全な HTML ドキュメントを判定。WidgetRenderer の morphdom/postMessage 処理を経由せず直接 `srcdoc` で iframe にレンダリング（WidgetRenderer 経由だと白画面になるバグの修正）
+- **PDF/PPTX エクスポート**: HTML スライド artifact に PDF/PPTX エクスポートボタン追加（html2canvas → jsPDF / PptxGenJS）
 
 ### データフロー
 
@@ -429,9 +433,24 @@ streamText + createUIMessageStream
 CRM ツール（listDeals, fetchDealData, analyzeDeal, reviseRationale）はデータ取得・分析ツールとして agent loop 内で動作。分析結果は agent が artifact tool で提案書として出力。
 
 ```
-listDeals → ユーザーが選択 → fetchDealData → KB/Web 検索 → analyzeDeal → artifact create（提案書 HTML）
+listDeals → ユーザーが選択 → fetchDealData → KB/Web 検索 → analyzeDeal → loadSkill('crm-proposal') → show-widget KPI + artifact create（提案書 HTML スライド）
 ユーザーフィードバック → reviseRationale → artifact update/rewrite
 ```
+
+- **決定的スコアリング**: `analyzeDeal` は crm-service `/deals/analyze` に委譲。スコア（winProbability, dealHealthScore, proposalReadiness, activityScore）は `crm-service/src/lib/scoring.ts` の決定的アルゴリズムで算出。AI は定性的根拠（customerChallenges, serviceRecommendations, combinedSolution）のみ生成
+- **CRM 提案書ワークフロー**: analyzeDeal 完了後、system prompt のブリッジ指示で `loadSkill('crm-proposal')` を呼出 → KPI ダッシュボード（show-widget）表示 → HTML スライド提案書を artifact で生成
+- **`artifact-tool.ts` エスケープ修正**: `unesc()` 関数で LLM JSON 出力のエスケープ済み引用符（`\"` → `"`）を修正。create content, update oldStr/newStr, rewrite content に適用。空白スライド（JS 構文エラー）の根本原因修正
+- **System prompt ブリッジ**: 「analyzeDeal の結果が返されたら、loadSkill('crm-proposal') を呼んで提案書ワークフローの指示に従う」
+
+### 内置スキル（built-in-skills/）
+
+起動時に `lib/built-in-skills.ts` が `built-in-skills/` ディレクトリから自動同期（`source_type = "built-in"`）。
+
+| スキル | 説明 |
+|--------|------|
+| `frontend-design` | フロントエンドデザインガイドライン |
+| `html-slides` | HTML スライド生成ルール |
+| `crm-proposal` | CRM 分析 → KPI ダッシュボード → 提案書 HTML スライド生成の完全ワークフロー（フロントエンドデザインルール内包） |
 
 ## TODO
 

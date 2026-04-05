@@ -94,7 +94,7 @@ git push origin main   # → Orange Pi へ自動デプロイ
 | `valkeydata`    | /data                    | Valkey キャッシュ                                  |
 | `lightrag-data` | /app/data                | NetworkX グラフファイル                            |
 | `chat-files`    | /app/data/chat-files     | チャット添付ファイル（画像・PDF 等）               |
-| `skills-data`   | /app/data/skills         | スキルファイル（SKILL.md + 参照ファイル）          |
+| `skills-data`   | /app/data/skills         | スキルファイル（SKILL.md + 参照ファイル）+ 内置スキル（crm-proposal, html-slides, frontend-design） |
 
 ## リソース使用量
 
@@ -115,6 +115,7 @@ git push origin main   # → Orange Pi へ自動デプロイ
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
 - **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, skills, chat_conversations, chat_messages, chat_files, artifacts, artifact_versions, scheduled_tasks, task_executions, task_notifications, ui_config）は各サービス起動時に自動作成。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
+- **CRM 決定的スコアリング**: `analyzeDeal` ツールは crm-service `/deals/analyze` に委譲。スコア（winProbability 等）は `scoring.ts` の決定的アルゴリズムで算出、AI は定性的根拠のみ生成。
 
 ## スキルシステム（agentskills.io 準拠）
 

@@ -54,6 +54,10 @@ function getActivityScore(activities: { ActivityDate?: string }[]): number {
 
 export function analyzeData(data: SFData): Omit<AnalysisResult, "rationale"> {
   const opp = data.opportunity;
+  // Ensure arrays exist (some deals may lack contacts/activities)
+  if (!data.contacts) data.contacts = [];
+  if (!data.activities) data.activities = [];
+  if (!data.account) data.account = {} as SFData["account"];
   const stageScore = getStageScore(opp.StageName || "");
   const activityScore = getActivityScore(data.activities);
   const prob = opp.Probability ?? 0;
