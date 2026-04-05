@@ -1,5 +1,7 @@
 # Skills ファイルシステム化 + Chat Files 関連 — 記録
 
+> **⚠️ これは 2026-04-05 時点の歴史記録です。** 後続の変更（`built-in-skills.ts` の `source_type` 修正、`crm-proposal` 内置スキル追加等）は [`docs/todo/artifact-system-remaining.md`](../todo/artifact-system-remaining.md) を参照。
+
 **日付**: 2026-04-05
 **ブランチ**: `main`
 

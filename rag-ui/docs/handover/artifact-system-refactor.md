@@ -1,5 +1,7 @@
 # Artifact System Refactor — 完全記録
 
+> **⚠️ これは 2026-04-04 時点の歴史記録です。** 第 6 節「旧機能の再実装計画」に記載された項目の多くは **2026-04-05/06 に実装済み** です。現在の状態は [`docs/todo/artifact-system-remaining.md`](../todo/artifact-system-remaining.md) を参照してください。
+
 **日付**: 2026-04-04
 **ブランチ**: `feat/artifact-system`
 **旧コードバックアップ**: `backup/pre-artifact-refactor`（`origin` に push 済み、commit `fd45711`）
