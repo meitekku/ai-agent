@@ -20,7 +20,6 @@ import {
   Copy,
   Check,
   Files,
-  GripVertical,
   FileDown,
   Loader2,
 } from "lucide-react";
@@ -30,7 +29,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { useCallback, useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef } from "react";
 
 const math = createMathPlugin();
 const markdownPlugins = { cjk, code: codePlugin, math };
@@ -571,15 +570,6 @@ export function ArtifactPanel() {
 /** Wrapper with slide animation */
 export function AnimatedArtifactPanel() {
   const isOpen = useArtifactStore((s) => s.isOpen);
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
-
-  // Sync width from panel for animation target
-  useEffect(() => {
-    if (!isOpen) return;
-    const el = document.querySelector("[data-artifact-panel]");
-    if (el) setWidth(el.clientWidth);
-  }, [isOpen]);
-
   return (
     <AnimatePresence>
       {isOpen && (

@@ -187,6 +187,7 @@ export async function createOgImage({ title, accent = "root" }: OgConfig) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={LOGO_DATA_URI}
+              alt=""
               width={56}
               height={56}
               style={{ borderRadius: "14px" }}

@@ -460,9 +460,8 @@ export function AppSidebar({ initialOpen }: { initialOpen: boolean }) {
 
   // Before hydration use server value; after, use Zustand
   const [hydrated, setHydrated] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration sync
   useEffect(() => {
-    setHydrated(true);
+    setHydrated(true); // eslint-disable-line react-hooks/set-state-in-effect -- one-time hydration sync
   }, []);
   const isOpen = hydrated ? sidebarOpen : initialOpen;
 

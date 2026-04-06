@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveFile } from "@/lib/file-storage";
 import { insertChatFile } from "@/lib/chat-files-db";
-import { insertExecutionFile, listExecutionFiles, listExecutionFilesForTask } from "@/lib/scheduler-db";
+import { insertExecutionFile, listExecutionFiles } from "@/lib/scheduler-db";
 
 /**
  * GET /api/task-files?executionId=N   — list files for a specific execution

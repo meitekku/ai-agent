@@ -142,7 +142,7 @@ function getClientTime(): string {
   });
 }
 
-function generateTitle(_text: string): string {
+function generateTitle(): string {
   return "新しい会話";
 }
 
@@ -249,7 +249,7 @@ export function ChatPage({
         { signal: controller.signal },
       ).then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([latest, list]) => {
+      .then(([, list]) => {
         if (controller.signal.aborted) return;
         if (Array.isArray(list) && list.length > 0) {
           useArtifactStore.getState().setArtifactList(list);
@@ -437,15 +437,15 @@ export function ChatPage({
         }
       })
       .catch((e) => console.error("[chat-page] save failed:", e));
-  }, [status, messages, treeStore, queryClient]);
+  }, [status, messages, treeStore, queryClient, setChatTitle]);
 
   // Create conversation on first send
   const ensureConversation = useCallback(
-    async (firstText: string) => {
+    async () => {
       if (convIdRef.current) return convIdRef.current;
       const id = nanoid();
       convIdRef.current = id;
-      const title = generateTitle(firstText);
+      const title = generateTitle();
       setChatTitle(title);
 
       // Create in DB first, then update URL
@@ -471,12 +471,12 @@ export function ChatPage({
 
       return id;
     },
-    [queryClient, activeKb, chatModel, thinking],
+    [queryClient, activeKb, chatModel, thinking, setChatTitle],
   );
 
   const handleSend = useCallback(
     async (text: string, files?: FileUIPart[]) => {
-      await ensureConversation(text || "ファイル添付");
+      await ensureConversation();
 
       // Track parent for the new user message
       const currentLeaf = treeStore.activeLeafId;

@@ -10,13 +10,10 @@ import {
   UIMessage,
 } from "ai";
 import { z } from "zod";
-import { nanoid } from "nanoid";
 import {
   getChatModel,
   useGemini,
-  backendName,
   geminiGoogleSearch,
-  ALLOWED_GEMINI_MODELS,
   providerOptionsKey,
 } from "@/lib/ollama-provider";
 import {
@@ -32,7 +29,6 @@ import {
   TAVILY_API_KEY,
   CRM_SERVICE_URL,
   TASK_WORKER_URL,
-  GEMINI_MODEL,
 } from "@/lib/constants";
 import {
   getEnabledSkillSummaries,
@@ -1630,11 +1626,6 @@ export async function POST(req: Request) {
   try {
     const t1 = Date.now();
     t.prompt = t1 - t.start;
-
-    const selectedModel =
-      modelOverride && ALLOWED_GEMINI_MODELS.has(modelOverride)
-        ? modelOverride
-        : GEMINI_MODEL;
 
     // Convert to model messages, then resolve file URLs to binary data
     const modelMessages = await convertToModelMessages(messages);
