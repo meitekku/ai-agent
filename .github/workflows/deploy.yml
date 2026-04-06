@@ -45,10 +45,10 @@ jobs:
             docker-compose.yml init.sql \
             "$REMOTE:$REMOTE_DIR/"
 
-          # Write GCP Service Account JSON (printenv avoids shell quoting issues)
-          printenv GCP_SA_KEY > /tmp/gcp-sa.json
-          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
-          rm -f /tmp/gcp-sa.json
+          # Write GCP Service Account JSON (unique path to avoid race with EC2 runner)
+          printenv GCP_SA_KEY > /tmp/gcp-sa-opi.json
+          scp $SSH_OPTS /tmp/gcp-sa-opi.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
+          rm -f /tmp/gcp-sa-opi.json
 
           # Write .env on remote
           ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/.env << 'EOF'
@@ -127,10 +127,10 @@ jobs:
             docker-compose.yml init.sql \
             "$REMOTE:$REMOTE_DIR/"
 
-          # Write GCP Service Account JSON
-          printenv GCP_SA_KEY > /tmp/gcp-sa.json
-          scp $SSH_OPTS /tmp/gcp-sa.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
-          rm -f /tmp/gcp-sa.json
+          # Write GCP Service Account JSON (unique path to avoid race with Orange Pi runner)
+          printenv GCP_SA_KEY > /tmp/gcp-sa-ec2.json
+          scp $SSH_OPTS /tmp/gcp-sa-ec2.json "$REMOTE:$REMOTE_DIR/gcp-sa.json"
+          rm -f /tmp/gcp-sa-ec2.json
 
           # Write .env on remote
           ssh $SSH_OPTS "$REMOTE" "cat > $REMOTE_DIR/.env << 'EOF'

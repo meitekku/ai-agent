@@ -545,7 +545,7 @@ const ArtifactCard = memo(function ArtifactCard({
   return (
     <button
       onClick={handleClick}
-      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent/50 transition-colors cursor-pointer w-fit max-w-sm"
+      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent/50 transition-colors cursor-pointer w-full"
     >
       <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
         <FileTextIcon className="size-4 text-primary" />
@@ -784,7 +784,7 @@ const FileCard = memo(function FileCard({
       download={canPreview ? undefined : file.originalName}
       target={canPreview ? "_blank" : undefined}
       rel={canPreview ? "noopener" : undefined}
-      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer w-fit max-w-sm"
+      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer w-full"
     >
       <div className="flex size-10 items-center justify-center rounded-md bg-muted/60">
         <Icon className="size-5 text-muted-foreground" />
@@ -946,7 +946,7 @@ export const ChatMessage = memo(function ChatMessage({
   if (editing && message.role === "user") {
     return (
       <Message from="user" className="animate-fade-in-up">
-        <MessageContent>
+        <MessageContent className="!w-full">
           <div className="space-y-2">
             <textarea
               ref={editRef}
