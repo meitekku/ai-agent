@@ -317,9 +317,9 @@ export function ChatPage({
     } else {
       treeStore.clear();
       dbModelRef.current = "gemini-3-flash-preview";
-      dbThinkingRef.current = true;
+      dbThinkingRef.current = false;
       useChatSettingsStore.getState().setChatModel("gemini-3-flash-preview");
-      useChatSettingsStore.getState().setThinking(true);
+      useChatSettingsStore.getState().setThinking(false);
     }
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);
 
