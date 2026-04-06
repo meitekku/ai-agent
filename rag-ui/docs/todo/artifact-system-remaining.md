@@ -45,16 +45,16 @@
 
 ## 未対応項目
 
-### 3. Kintone 未接続時の応答 — 部分的に動作 (要 prompt 強化)
-- system prompt に「利用不可の CRM: Kintone — ツールを呼び出さないこと。別の CRM で代用してはいけない」を動的注入済み
-- `crm-service/src/routes/health.ts` に `/capabilities` エンドポイント追加済み
-- テスト結果: AI は「Kintone は接続されていません」と正しく回答するが、続けて「Salesforce であれば接続されており…確認されますか？」と代替を提案してしまう
-- **要対応**: prompt をさらに強化し、代替 CRM の提案も禁止する
+### 3. Kintone データ接続 — 対応済み (2026-04-06)
+- Kintone CSV エクスポートデータ（80 案件、~157 活動）を PostgreSQL に自動インポート（`crm-service/src/lib/import-kintone.ts`）
+- `/capabilities` が DB にデータがあれば `kintone: true` を返却 → Kintone ツールが自動登録
+- `/kintone/list` と `/kintone/fetch` は DB からデータ取得（Kintone API 凭証があれば live API 優先）
+- `scoring.ts` に Kintone ステータス（引き合い/初回訪問/提案/見積/契約）を追加
+- `queryDatabase` ツール description に kintone_deals/kintone_activities テーブル schema を追加
 
-### 5. Starter prompt の更新 — 未対応
-- トップ画面の「Kintone 商談デモ」ボタンが残っている
-- Kintone は未接続なのでこのボタンを押すと失敗する
-- **要対応**: ボタンを削除するか、Salesforce 版に変更するか、Kintone 接続時のみ表示する
+### 5. Starter prompt — 対応済み (2026-04-06)
+- 「Kintone 商談デモ」ボタンは Kintone データが DB にあるため正常動作
+- `/capabilities` が `kintone: true` を返すので Kintone ツールが登録され、prompt にも Kintone が含まれる
 
 ## 今回のセッションで修正した CRM 関連の変更
 

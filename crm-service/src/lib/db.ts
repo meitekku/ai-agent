@@ -55,5 +55,48 @@ export async function ensureCrmTables(): Promise<void> {
     )
   `);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS kintone_deals (
+      id SERIAL PRIMARY KEY,
+      record_number INTEGER NOT NULL UNIQUE,
+      company_name VARCHAR(200) NOT NULL DEFAULT '',
+      deal_name VARCHAR(500) NOT NULL DEFAULT '',
+      tel VARCHAR(50) DEFAULT '',
+      sales_rep VARCHAR(200) DEFAULT '',
+      expected_period VARCHAR(200) DEFAULT '',
+      industry VARCHAR(100) DEFAULT '',
+      customer_rank VARCHAR(100) DEFAULT '',
+      address TEXT DEFAULT '',
+      product VARCHAR(200) DEFAULT '',
+      created_by VARCHAR(200) DEFAULT '',
+      updated_by VARCHAR(200) DEFAULT '',
+      created_at_kintone TIMESTAMP,
+      updated_at_kintone TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS kintone_activities (
+      id SERIAL PRIMARY KEY,
+      deal_id INTEGER NOT NULL REFERENCES kintone_deals(id) ON DELETE CASCADE,
+      activity_date DATE,
+      is_new BOOLEAN DEFAULT FALSE,
+      is_existing BOOLEAN DEFAULT FALSE,
+      contact_department VARCHAR(500) DEFAULT '',
+      internal_members VARCHAR(500) DEFAULT '',
+      status VARCHAR(100) DEFAULT '',
+      activity_type VARCHAR(200) DEFAULT '',
+      notes TEXT DEFAULT '',
+      win_probability VARCHAR(50) DEFAULT '',
+      expected_period VARCHAR(200) DEFAULT '',
+      expected_amount BIGINT DEFAULT 0,
+      order_amount BIGINT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_kintone_activities_deal ON kintone_activities(deal_id)`);
+
   console.log("[db] CRM tables ensured");
 }

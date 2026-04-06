@@ -1031,7 +1031,7 @@ export async function POST(req: Request) {
 
   tools.queryDatabase = tool({
     description:
-      "PostgreSQLに対して読み取り専用SQLクエリを実行。10秒タイムアウト付きREAD ONLYトランザクションで実行。利用可能テーブル: chat_conversations, chat_messages, chat_files, skills, scheduled_tasks, task_executions 等。データの集計・統計・フィルタリングに使用。ドキュメント内容の検索にはsearchKnowledgeBaseを使うこと。",
+      "PostgreSQLに対して読み取り専用SQLクエリを実行。10秒タイムアウト付きREAD ONLYトランザクションで実行。利用可能テーブル: chat_conversations, chat_messages, chat_files, skills, scheduled_tasks, task_executions, kintone_deals(id, record_number=レコード番号, company_name=会社名, deal_name=案件名, sales_rep=営業担当者, industry=業界[金融/製造/システム開発/運輸物流/不動産/医療介護], customer_rank=顧客ランク[年商100億円以上/10億~100億/1億~10億/1億未満], product=販売品目[システム受託/生成AI伴走サービス/書きあげクン/金融システム開発/DX案件/WEBサイト制作/AIサポートデスク], expected_period=見込み時期, address=住所), kintone_activities(id, deal_id→kintone_deals.id, activity_date=活動日, status=ステータス[初回訪問/見積/提案/引き合い/契約/受注/失注], activity_type=活動内容[訪問/オンライン/メール/電話等], notes=詳細メモTEXT, win_probability=受注確度[30%等], expected_amount=見込額BIGINT, order_amount=受注金額BIGINT, contact_department=先方担当部署, internal_members=社内関係者) 等。データの集計・統計・フィルタリングに使用。ドキュメント内容の検索にはsearchKnowledgeBaseを使うこと。",
     inputSchema: z.object({
       sql: z
         .string()
@@ -1359,7 +1359,10 @@ export async function POST(req: Request) {
         );
         const t0 = Date.now();
         try {
-          const imageModel = getChatModel("gemini-3.1-flash-image-preview");
+          const IMAGE_MODELS = [
+            "gemini-3.1-flash-image-preview", // Nano Banana 2 (primary)
+            "gemini-2.5-flash-image",          // Nano Banana (fallback)
+          ];
           const genOpts = {
             providerOptions: {
               [providerOptionsKey]: {
@@ -1368,20 +1371,38 @@ export async function POST(req: Request) {
               },
             },
           };
-          const result =
-            lastUserModelMessages.length > 0
-              ? await generateText({
-                  model: imageModel,
-                  messages: lastUserModelMessages,
-                  ...genOpts,
-                })
-              : await generateText({
-                  model: imageModel,
-                  prompt: imagePrompt,
-                  ...genOpts,
-                });
+          let result: Awaited<ReturnType<typeof generateText>> | null = null;
+          for (const modelId of IMAGE_MODELS) {
+            try {
+              const imageModel = getChatModel(modelId);
+              result =
+                lastUserModelMessages.length > 0
+                  ? await generateText({
+                      model: imageModel,
+                      messages: lastUserModelMessages,
+                      ...genOpts,
+                    })
+                  : await generateText({
+                      model: imageModel,
+                      prompt: imagePrompt,
+                      ...genOpts,
+                    });
+              if (modelId !== IMAGE_MODELS[0]) {
+                console.log(`[chat] 🎨 generateImage: fallback to ${modelId} succeeded`);
+              }
+              break;
+            } catch (modelErr) {
+              const status = (modelErr as { status?: number }).status
+                ?? (modelErr as { statusCode?: number }).statusCode;
+              if (status === 429 && modelId !== IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
+                console.warn(`[chat] ⚠️ generateImage: ${modelId} rate limited (429), trying next model...`);
+                continue;
+              }
+              throw modelErr;
+            }
+          }
           const savedUrls: string[] = [];
-          for (const file of (result.files ?? []).slice(0, 1)) {
+          for (const file of (result!.files ?? []).slice(0, 1)) {
             const ext =
               file.mediaType === "image/png"
                 ? ".png"
@@ -1412,7 +1433,7 @@ export async function POST(req: Request) {
             success: true,
             images: savedUrls.map((url, i) => ({
               url,
-              mediaType: (result.files ?? [])[i]?.mediaType ?? "image/png",
+              mediaType: (result!.files ?? [])[i]?.mediaType ?? "image/png",
             })),
           };
         } catch (err) {

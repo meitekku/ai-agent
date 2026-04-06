@@ -48,11 +48,11 @@ crm-service/
 ├── package.json                  # hono, pg, @google/generative-ai, jsforce, xlsx, pptxgenjs
 ├── tsconfig.json
 └── src/
-    ├── index.ts                  # Hono app (port 8009) + route registration
+    ├── index.ts                  # Hono app (port 8009) + route registration + DB init + Kintone CSV auto-import
     ├── routes/
     │   ├── health.ts             # GET /health
     │   ├── salesforce.ts         # POST /sf/check, /sf/list, /sf/fetch
-    │   ├── kintone.ts            # POST /kintone/list, /kintone/fetch（モックフォールバック）
+    │   ├── kintone.ts            # POST /kintone/list, /kintone/fetch（DB フォールバック、Kintone API 優先）
     │   ├── parse-file.ts         # POST /deals/parse-file（XLSX/CSV/TXT）
     │   ├── analyze.ts            # POST /deals/analyze（決定的スコアリング + Gemini 根拠生成、デバッグログ付き）
     │   ├── rationale.ts          # POST /deals/revise-rationale（フィードバック修正）
@@ -61,10 +61,14 @@ crm-service/
     │   └── proposal-pptx.ts      # POST /proposal/generate-pptx, /generate-plan, /render-pptx, /revise-slide
     └── lib/
         ├── gemini.ts             # Gemini wrapper（AI Studio / Vertex AI デュアルモード）
-        ├── db.ts                 # pg Pool + ensureCrmTables()
-        ├── scoring.ts            # 商機評分アルゴリズム
+        ├── db.ts                 # pg Pool + ensureCrmTables()（kintone_deals/kintone_activities 含む）
+        ├── import-kintone.ts     # Kintone CSV 自動インポート（xlsx 解析、起動時に空テーブル検出で実行）
+        ├── scoring.ts            # 商機評分アルゴリズム（Kintone ステータス対応済み）
         ├── prompts.ts            # 全 AI プロンプト
         └── types.ts              # SFData, AnalysisResult, PresentationPlan, etc.
+
+data/
+└── kintone-deals.csv             # Kintone エクスポート CSV（80 案件、~157 活動）— Docker イメージに同梱
 ```
 
 ## API エンドポイント
@@ -75,8 +79,8 @@ crm-service/
 | POST | `/sf/check` | SF 利用可能オブジェクト一覧 |
 | POST | `/sf/list` | SF 商談一覧（Opportunity → Lead → Account フォールバック） |
 | POST | `/sf/fetch` | SF 商談詳細（12 種データ一括取得） |
-| POST | `/kintone/list` | Kintone レコード一覧（API 未接続時モックフォールバック） |
-| POST | `/kintone/fetch` | Kintone レコード詳細 → SFData 形式に正規化 |
+| POST | `/kintone/list` | Kintone レコード一覧（API 優先、未接続時は PostgreSQL フォールバック） |
+| POST | `/kintone/fetch` | Kintone レコード詳細 → SFData 形式に正規化（DB から LATERAL JOIN で取得） |
 | POST | `/deals/parse-file` | ファイルベース案件インポート（FormData: XLSX/CSV/TXT） |
 | POST | `/deals/analyze` | 商機分析（決定的スコアリング + AI 根拠生成）— rag-ui `analyzeDeal` tool から直接呼出 |
 | POST | `/deals/revise-rationale` | フィードバックで分析根拠修正 |
@@ -93,13 +97,15 @@ crm-service/
 
 ## DB スキーマ
 
-共用 PostgreSQL（lightrag DB）に 3 テーブル自動作成:
+共用 PostgreSQL（lightrag DB）に 5 テーブル自動作成:
 
 | テーブル | 用途 |
 |---------|------|
 | `proposal_templates` | 提案テンプレート（name UNIQUE, file_data BYTEA, service_name, content_text） |
 | `crm_deal_cache` | CRM データキャッシュ（source, external_id, deal_data JSONB, analysis JSONB） |
 | `proposal_history` | 提案書生成履歴（deal_data, analysis, pptx_plan JSONB） |
+| `kintone_deals` | Kintone 案件データ（record_number UNIQUE, company_name, deal_name, industry, customer_rank, product 等） |
+| `kintone_activities` | 案件活動履歴（deal_id FK CASCADE, activity_date, status, activity_type, notes, win_probability, expected_amount, order_amount） |
 
 ## スコアリングアルゴリズム（lib/scoring.ts）
 
@@ -160,19 +166,22 @@ docker compose --profile prod build crm-service
 curl http://localhost:8009/health
 ```
 
-## Kintone モックデータ
+## Kintone データ（PostgreSQL 自動インポート）
 
-Kintone API 未接続時は 5 件のサンプル商談を自動返却:
+Kintone CSV エクスポートデータを `data/kintone-deals.csv` に同梱。起動時に `importKintoneIfEmpty()` が `kintone_deals` テーブルの空チェック → 空なら CSV を自動インポート（幂等）。
 
-| ID | 会社名 | 案件名 | 金額 |
-|----|-------|--------|------|
-| KTN-1001 | セブン&アイ | 基幹システムDX化 | 3,600万 |
-| KTN-1002 | 大和ハウス | 社内FAQ AIチャットボット | 950万 |
-| KTN-1003 | ダイキン工業 | 製造現場ナレッジ継承AI | 2,800万 |
-| KTN-1004 | 野村證券 | 営業会議録AI自動化 | 1,400万 |
-| KTN-1005 | ヤマトHD | 物流最適化×AI分析基盤 | 4,500万 |
+- **80 案件**（レコード番号 20-99）、**~157 活動記録**
+- CSV 構造: 親子形式（`*` でレコード開始、後続行は同一案件の活動）
+- `xlsx` ライブラリで解析（多行引用フィールド対応）
+- Kintone API 凭証がある場合は live API 優先、失敗時 DB フォールバック
+- `/capabilities` は DB にデータがあれば `kintone: true` を返却（凭証不要）— 結果はモジュール変数にキャッシュ
 
-各商談に活動履歴・コンタクト情報付き（KTN-1005 はデータ不足テスト用）。
+| 項目 | 値 |
+|------|-----|
+| ステータス | 初回訪問, 見積, 提案, 引き合い, 契約, 受注, 失注 |
+| 販売品目 | システム受託, 生成AI伴走サービス, 書きあげクン, 金融システム開発, DX案件, WEBサイト制作, AIサポートデスク |
+| 業界 | 金融, システム開発, 製造, 運輸物流, 不動産, 医療/介護 |
+| 顧客ランク | 年商100億円以上, 10億~100億, 1億~10億, 1億未満 |
 
 ## 注意事項
 

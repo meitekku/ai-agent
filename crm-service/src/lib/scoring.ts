@@ -10,6 +10,8 @@ const STAGE_WIN_RATE: Record<string, number> = {
   "見込み": 0.10, "初期調査": 0.20, "ヒアリング": 0.30, "商談中": 0.35,
   "提案中": 0.50, "提案済み": 0.55, "見積提出": 0.65, "交渉中": 0.80,
   "受注": 1.00, "失注": 0.00,
+  // Kintone CSV statuses
+  "引き合い": 0.15, "初回訪問": 0.25, "提案": 0.50, "見積": 0.65, "契約": 0.85,
 };
 
 function getStageScore(stageName: string): number {

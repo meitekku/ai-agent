@@ -296,7 +296,7 @@ export function buildTools({
   // ---- queryDatabase ----------------------------------------------
   tools.queryDatabase = tool({
     description:
-      "Execute a READ-ONLY SQL query against the PostgreSQL database. The query runs inside a READ ONLY transaction with a 10-second timeout. Available tables include: scheduled_tasks, task_executions, task_notifications, chat_conversations, chat_messages, chat_files, slide_decks, slide_pages, skills, knowledge_bases, ingest_jobs. Use when: the task requires precise data retrieval, aggregation, filtering, or reporting from the database (e.g., 'how many tasks ran this week', 'list failed executions', 'chat message statistics'). Do not use when: the task is about searching document content (use searchKnowledgeBase) or the query would modify data (INSERT/UPDATE/DELETE are blocked).",
+      "Execute a READ-ONLY SQL query against the PostgreSQL database. The query runs inside a READ ONLY transaction with a 10-second timeout. Available tables include: scheduled_tasks, task_executions, task_notifications, chat_conversations, chat_messages, chat_files, skills, knowledge_bases, ingest_jobs, kintone_deals(id, record_number=レコード番号, company_name=会社名, deal_name=案件名, sales_rep=営業担当者, industry=業界, customer_rank=顧客ランク, product=販売品目, expected_period=見込み時期), kintone_activities(id, deal_id→kintone_deals.id, activity_date=活動日, status=ステータス[初回訪問/見積/提案/引き合い/契約/受注/失注], activity_type=活動内容, notes=詳細メモ, win_probability=受注確度, expected_amount=見込額, order_amount=受注金額). Use when: the task requires precise data retrieval, aggregation, filtering, or reporting from the database. Do not use when: the task is about searching document content (use searchKnowledgeBase) or the query would modify data (INSERT/UPDATE/DELETE are blocked).",
     inputSchema: z.object({
       sql: z
         .string()
@@ -593,24 +593,46 @@ async function sendEmail(
   }
 }
 
+const IMAGE_MODELS = [
+  "gemini-3.1-flash-image-preview", // Nano Banana 2 (primary)
+  "gemini-2.5-flash-image",          // Nano Banana (fallback)
+];
+
 async function runGenerateImage(
   prompt: string,
   executionId: number,
 ): Promise<string> {
   try {
-    const imageModel = getModel("gemini-3.1-flash-image-preview");
-    const result = await generateText({
-      model: imageModel,
-      prompt,
-      providerOptions: {
-        [providerOptionsKey]: {
-          responseModalities: ["TEXT", "IMAGE"],
-          personGeneration: "allow_adult",
-        },
-      },
-    });
+    let result: Awaited<ReturnType<typeof generateText>> | null = null;
+    for (const modelId of IMAGE_MODELS) {
+      try {
+        const imageModel = getModel(modelId);
+        result = await generateText({
+          model: imageModel,
+          prompt,
+          providerOptions: {
+            [providerOptionsKey]: {
+              responseModalities: ["TEXT", "IMAGE"],
+              personGeneration: "allow_adult",
+            },
+          },
+        });
+        if (modelId !== IMAGE_MODELS[0]) {
+          console.log(`[task-worker] 🎨 generateImage: fallback to ${modelId} succeeded`);
+        }
+        break;
+      } catch (modelErr) {
+        const status = (modelErr as { status?: number }).status
+          ?? (modelErr as { statusCode?: number }).statusCode;
+        if (status === 429 && modelId !== IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
+          console.warn(`[task-worker] ⚠️ generateImage: ${modelId} rate limited (429), trying next model...`);
+          continue;
+        }
+        throw modelErr;
+      }
+    }
 
-    const files = result.files ?? [];
+    const files = result!.files ?? [];
     if (files.length === 0) {
       return JSON.stringify({ error: "No image generated" });
     }

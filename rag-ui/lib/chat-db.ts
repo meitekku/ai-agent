@@ -200,6 +200,7 @@ export async function saveMessages(
   }[],
 ): Promise<void> {
   if (messages.length === 0) return;
+  console.log(`[chat-db] saveMessages called for conv=${conversationId}, msgs=${messages.length}`, new Error().stack);
   await ensureChatTables();
   const client = await getPool().connect();
   try {
@@ -242,6 +243,7 @@ export async function updateConversation(
     thinking?: boolean;
   },
 ): Promise<void> {
+  console.log(`[chat-db] updateConversation id=${id}, data=${JSON.stringify(data)}`, new Error().stack);
   await ensureChatTables();
   const fields: string[] = [];
   const values: unknown[] = [];

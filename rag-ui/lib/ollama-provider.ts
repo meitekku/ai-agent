@@ -43,6 +43,7 @@ export const ALLOWED_GEMINI_MODELS = new Set([
   "gemini-3-flash-preview",
   "gemini-3.1-pro-preview",
   "gemini-3.1-flash-image-preview", // Nano Banana 2 — used internally by generateImage tool
+  "gemini-2.5-flash-image", // Nano Banana — fallback for generateImage 429
 ]);
 
 /** Auto-select: Vertex AI > AI Studio > MLX. Accepts optional model override. */

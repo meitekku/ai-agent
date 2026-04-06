@@ -113,7 +113,8 @@ git push origin main   # → Orange Pi へ自動デプロイ
 ## ビルド時の注意
 
 - **rag-ui Dockerfile**: `ARG GEMINI_API_KEY=enabled`（ダミー値）を build 時に渡す。`next.config.ts` の `NEXT_PUBLIC_LLM_BACKEND` は build 時に評価されるため、ダミー値で "Gemini" に確定させる。実際の API Key は runtime の `environment` で注入。
-- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, skills, chat_conversations, chat_messages, chat_files, artifacts, artifact_versions, scheduled_tasks, task_executions, task_notifications, ui_config）は各サービス起動時に自動作成。
+- **init.sql**: `CREATE EXTENSION vector` のみ。アプリケーションテーブル（ingest*jobs, lightrag*\*, skills, chat_conversations, chat_messages, chat_files, artifacts, artifact_versions, scheduled_tasks, task_executions, task_notifications, ui_config, kintone_deals, kintone_activities）は各サービス起動時に自動作成。
+- **Kintone CSV 自動インポート**: crm-service 起動時に `kintone_deals` が空なら `data/kintone-deals.csv`（80 案件、~157 活動）を自動インポート。両環境（EC2/Orange Pi）で git push 後に自動反映。
 - **Embedding 768 次元**: Gemini gemini-embedding-001 は Matryoshka 対応でデフォルト 3072 → 768 に縮小。全新規デプロイのため互換性問題なし。
 - **CRM 決定的スコアリング**: `analyzeDeal` ツールは crm-service `/deals/analyze` に委譲。スコア（winProbability 等）は `scoring.ts` の決定的アルゴリズムで算出、AI は定性的根拠のみ生成。
 
