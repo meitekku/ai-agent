@@ -43,7 +43,7 @@ RAG（Retrieval-Augmented Generation）ナレッジベースチャットシス�
 | --------------- | ------------------------ | -------------------------------------------------------- |
 | **rag-ui**      | `oven/bun:1`             | Next.js 16 フロントエンド + API Routes                   |
 | **crm-service** | `oven/bun:1`             | CRM 連携 + 商機分析 + 提案書 PPTX 生成                   |
-| **task-worker** | `oven/bun:1`             | 定時タスク実行ワーカー（Gemini tool-loop + OpenSandbox） |
+| **task-worker** | `oven/bun:1`             | 定時タスク実行ワーカー（AI SDK tool-loop + OpenSandbox） |
 | **opensandbox** | `python:3.12-slim`       | Alibaba OpenSandbox コード実行サンドボックス             |
 | **lightrag**    | `python:3.12-slim`       | FastAPI バックエンド、PDF 入庫、知識グラフ検索           |
 | **postgres**    | `pgvector/pgvector:pg18` | ベクトル DB + メタデータ保存                             |
@@ -195,8 +195,13 @@ docker compose --profile prod up -d
 
 **フロントエンド (rag-ui)**
 
-- Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
-- shadcn/ui, Vercel AI SDK v6, Streamdown
+- Next.js 16 (App Router, React 19, TypeScript, Tailwind CSS v4)
+- shadcn + Base UI + Radix UI
+- Vercel AI SDK v6（@ai-sdk/google, @ai-sdk/google-vertex）
+- Streamdown（Markdown レンダリング + Mermaid / Math / CJK プラグイン）
+- Zustand（状態管理）、TanStack Query（サーバー状態）
+- Three.js + React Three Fiber（3D ナレッジグラフ可視化）、XY Flow（ノードグラフ）
+- Motion（アニメーション）、Shiki（シンタックスハイライト）
 
 **バックエンド (lightrag-service)**
 
@@ -207,20 +212,20 @@ docker compose --profile prod up -d
 **CRM サービス (crm-service)**
 
 - Bun + Hono
-- jsforce（Salesforce 連携）、xlsx（Excel パース）
-- pptxgenjs（PPTX 提案書生成）
-- Gemini API（商機分析根拠 + スライド計画 + スライド修正、maxTokens 16000 + 切断 JSON 自動修復）
+- @google/genai（Gemini API 直接クライアント — 商機分析根拠 + スライド計画 + スライド修正）
+- jsforce（Salesforce 連携）、xlsx（Excel パース）、pptxgenjs（PPTX 提案書生成）
 
 **タスクワーカー (task-worker)**
 
 - Bun + Hono
-- Gemini API tool-loop（KB 検索、Web 検索、CRM API、コード実行）
+- Vercel AI SDK v6（@ai-sdk/google, @ai-sdk/google-vertex）— tool-loop による自律タスク実行
+- Croner（cron スケジューリング）
 - Alibaba OpenSandbox（コンテナ隔離コード実行）
 - Resend + React Email（メール通知、オプション）
 
 **インフラ**
 
-- PostgreSQL 17 + pgvector
+- PostgreSQL 18 + pgvector（ベクトル DB + メタデータ）
 - Valkey 8（Redis 互換キャッシュ + タスクキュー）
 - Alibaba OpenSandbox（Docker ベースサンドボックス）
 

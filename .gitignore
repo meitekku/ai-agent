@@ -24,6 +24,7 @@ gcp-sa.json
 
 # Chat file uploads
 data/
+!crm-service/data/
 
 temp
 
