@@ -27,6 +27,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AppLogo } from "@/components/icons/app-logo";
 import { FleGrowthLogo } from "@/components/icons/flegrowth-logo";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -206,11 +207,16 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-13 shrink-0 items-center gap-1.5 px-4">
-        <FleGrowthLogo className="h-[18px] w-auto shrink-0 text-foreground" />
-        <span className="text-xs font-medium text-foreground/60 whitespace-nowrap">
-          Sales Assist
-        </span>
+      <div className="flex h-13 shrink-0 items-center gap-2.5 px-4">
+        <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
+          <AppLogo className="size-4 text-foreground" />
+        </div>
+        <div className="flex flex-col">
+          <FleGrowthLogo className="h-3 w-auto text-foreground" />
+          <span className="text-[11px] font-medium text-foreground/60">
+            Sales Assist
+          </span>
+        </div>
         {onClose && (
           <button
             onClick={onClose}
