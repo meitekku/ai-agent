@@ -106,7 +106,7 @@ export const DocumentsPage = memo(function DocumentsPage() {
                 ナレッジベース
               </h2>
               <p className="text-sm text-muted-foreground mt-0.5">
-                ナレッジベースを管理して PDF ドキュメントをアップロード
+                ナレッジベースを管理してドキュメント・画像をアップロード
               </p>
             </div>
             <Button

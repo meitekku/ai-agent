@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   FileTextIcon,
+  FileSpreadsheetIcon,
+  FileCodeIcon,
+  ImageIcon,
+  FileIcon,
+  PresentationIcon,
+  EyeIcon,
   TrashIcon,
   UploadIcon,
   Loader2Icon,
@@ -70,6 +76,7 @@ interface DocumentInfo {
   status?: string;
   error_msg?: string | null;
   file_id?: string | null;
+  original_name?: string | null;
   total_chunks?: number;
   processed_chunks?: number;
   phase?: string;
@@ -111,6 +118,32 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".gif",
   ".webp",
 ]);
+
+function getFileIcon(filename: string) {
+  const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".pdf":
+      return FileTextIcon;
+    case ".csv":
+    case ".xlsx":
+      return FileSpreadsheetIcon;
+    case ".docx":
+      return FileIcon;
+    case ".pptx":
+      return PresentationIcon;
+    case ".html":
+    case ".htm":
+      return FileCodeIcon;
+    case ".png":
+    case ".jpg":
+    case ".jpeg":
+    case ".gif":
+    case ".webp":
+      return ImageIcon;
+    default:
+      return FileTextIcon;
+  }
+}
 
 async function fetchDocuments(kb: string): Promise<DocumentInfo[]> {
   const res = await fetch(`/api/documents?kb=${encodeURIComponent(kb)}`);
@@ -262,7 +295,7 @@ export const KBDetailPage = memo(function KBDetailPage({
   const backendNames = new Set(documents.map((d) => d.name));
   const displayDocs: DocumentInfo[] = [
     ...uploadingNames
-      .filter((name) => !backendNames.has(name))
+      .filter((name) => !backendNames.has(name.replace(/\.[^.]+$/, "")))
       .map((name, i) => ({
         id: `uploading-${i}`,
         name,
@@ -345,11 +378,11 @@ export const KBDetailPage = memo(function KBDetailPage({
       }
       setError(null);
 
-      const names = supported.map((f) => f.name.replace(/\.[^.]+$/, ""));
+      const names = supported.map((f) => f.name);
       setUploadingNames((prev) => [...names, ...prev]);
 
       const tasks = supported.map((file) => async () => {
-        const name = file.name.replace(/\.[^.]+$/, "");
+        const name = file.name;
         const formData = new FormData();
         formData.append("file", file);
         try {
@@ -746,11 +779,14 @@ export const KBDetailPage = memo(function KBDetailPage({
                       {doc.id.startsWith("uploading-") ? (
                         <Loader2Icon className="size-4 animate-spin text-primary/70" />
                       ) : (
-                        <FileTextIcon className="size-4 text-primary/70" />
+                        (() => {
+                          const Icon = getFileIcon(doc.original_name || doc.name);
+                          return <Icon className="size-4 text-primary/70" />;
+                        })()
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium">{doc.name}</p>
+                      <p className="truncate text-sm font-medium">{doc.original_name || doc.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {doc.page_count > 0 && (
                           <span className="text-xs text-muted-foreground">
@@ -767,19 +803,35 @@ export const KBDetailPage = memo(function KBDetailPage({
                       </div>
                     </div>
                     {doc.file_id && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <a
-                            href={`/api/kb-files/${doc.file_id}?dl=1`}
-                            download
-                            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                            aria-label={`${doc.name} をダウンロード`}
-                          >
-                            <DownloadIcon className="size-3.5" />
-                          </a>
-                        </TooltipTrigger>
-                        <TooltipContent>ダウンロード</TooltipContent>
-                      </Tooltip>
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={`/api/kb-files/${doc.file_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              aria-label={`${doc.name} をプレビュー`}
+                            >
+                              <EyeIcon className="size-3.5" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>プレビュー</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={`/api/kb-files/${doc.file_id}?dl=1`}
+                              download
+                              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              aria-label={`${doc.name} をダウンロード`}
+                            >
+                              <DownloadIcon className="size-3.5" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>ダウンロード</TooltipContent>
+                        </Tooltip>
+                      </>
                     )}
                     {doc.status === "failed" && (
                       <Tooltip>

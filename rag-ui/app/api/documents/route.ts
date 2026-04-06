@@ -25,6 +25,7 @@ export async function GET(req: Request) {
       const enriched = docs.map((doc) => ({
         ...doc,
         file_id: fileMap[doc.id]?.id ?? null,
+        original_name: fileMap[doc.id]?.original_name ?? null,
       }));
       return Response.json({ documents: enriched });
     }
