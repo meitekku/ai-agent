@@ -9,7 +9,7 @@ const LOGO_DATA_URI = `data:image/svg+xml;base64,${Buffer.from(LOGO_SVG).toStrin
 // ─── Font ──────────────────────────────────────────────────────────
 
 const OG_CHARS = [
-  "FleGrowthStella",
+  "FleGrowthSalesAssist",
   "統合AIアシスタントチャットドキュメント管理スキルスケジューラログインシステムエラー",
 ].join("");
 
@@ -201,7 +201,7 @@ export async function createOgImage({ title, accent = "root" }: OgConfig) {
                 letterSpacing: "-0.02em",
               }}
             >
-              FleGrowth Stella
+              FleGrowth Sales Assist
             </div>
           </div>
 

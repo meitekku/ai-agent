@@ -9,18 +9,18 @@ const PW = process.env.PW;
 
 // ─── OG metadata for bot responses (no real page content exposed) ──
 
-const OG_SITE = "FleGrowth Stella";
+const OG_SITE = "FleGrowth Sales Assist";
 const OG_DESC =
   "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム";
 
 const OG_PAGES: Record<string, { title: string; alt: string }> = {
-  "/": { title: "統合 AI アシスタント", alt: "FleGrowth Stella — 統合 AI アシスタント" },
-  "/new": { title: "AI チャット", alt: "AI チャット — FleGrowth Stella" },
-  "/documents": { title: "ドキュメント管理", alt: "ドキュメント管理 — FleGrowth Stella" },
-  "/skills": { title: "スキル管理", alt: "スキル管理 — FleGrowth Stella" },
-  "/scheduler": { title: "スケジューラ", alt: "スケジューラ — FleGrowth Stella" },
-  "/gate": { title: "ログイン", alt: "ログイン — FleGrowth Stella" },
-  "/system-error": { title: "システムエラー", alt: "システムエラー — FleGrowth Stella" },
+  "/": { title: "統合 AI アシスタント", alt: "FleGrowth Sales Assist — 統合 AI アシスタント" },
+  "/new": { title: "AI チャット", alt: "AI チャット — FleGrowth Sales Assist" },
+  "/documents": { title: "ドキュメント管理", alt: "ドキュメント管理 — FleGrowth Sales Assist" },
+  "/skills": { title: "スキル管理", alt: "スキル管理 — FleGrowth Sales Assist" },
+  "/scheduler": { title: "スケジューラ", alt: "スケジューラ — FleGrowth Sales Assist" },
+  "/gate": { title: "ログイン", alt: "ログイン — FleGrowth Sales Assist" },
+  "/system-error": { title: "システムエラー", alt: "システムエラー — FleGrowth Sales Assist" },
 };
 
 function getOgPage(pathname: string) {

@@ -175,10 +175,10 @@ export function ChatPage({
   // Sync document.title
   useEffect(() => {
     document.title = chatTitle
-      ? `${chatTitle} | FleGrowth Stella`
-      : "FleGrowth Stella";
+      ? `${chatTitle} | FleGrowth Sales Assist`
+      : "FleGrowth Sales Assist";
     return () => {
-      document.title = "FleGrowth Stella";
+      document.title = "FleGrowth Sales Assist";
     };
   }, [chatTitle]);
 

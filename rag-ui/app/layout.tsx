@@ -25,8 +25,8 @@ export const metadata: Metadata = {
     process.env.APP_URL || "http://localhost:3000"
   ),
   title: {
-    default: "FleGrowth Stella",
-    template: "%s | FleGrowth Stella",
+    default: "FleGrowth Sales Assist",
+    template: "%s | FleGrowth Sales Assist",
   },
   description:
     "RAG ナレッジベース検索、CRM 商機分析、提案書スライド自動生成、画像認識・生成、ウェブ検索、Generative UI を統合した AI アシスタント。",
@@ -38,23 +38,23 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
-    title: "FleGrowth Stella — 統合 AI アシスタント",
+    title: "FleGrowth Sales Assist — 統合 AI アシスタント",
     description:
       "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム",
     type: "website",
     locale: "ja_JP",
-    siteName: "FleGrowth Stella",
+    siteName: "FleGrowth Sales Assist",
   },
   twitter: {
     card: "summary_large_image",
-    title: "FleGrowth Stella — 統合 AI アシスタント",
+    title: "FleGrowth Sales Assist — 統合 AI アシスタント",
     description:
       "RAG ナレッジベース、CRM 分析、提案書生成、画像生成、Generative UI を一つに統合した AI プラットフォーム",
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "FleGrowth Stella",
+    title: "FleGrowth Sales Assist",
   },
   other: {
     "mobile-web-app-capable": "yes",
