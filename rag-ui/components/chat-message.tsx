@@ -26,6 +26,7 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import { StepIndicator } from "@/components/step-indicator";
+import { Button } from "@/components/ui/button";
 import {
   CopyIcon,
   CheckIcon,
@@ -496,6 +497,19 @@ function groupParts(parts: UIMessage["parts"]): GroupedSegment[] {
 }
 
 // Clickable artifact card — shown when artifact tool completes
+const ARTIFACT_KIND_EXT: Record<string, string> = {
+  html: ".html",
+  code: ".txt",
+  text: ".txt",
+  markdown: ".md",
+};
+
+async function fetchArtifactData(artifactId: string) {
+  const res = await fetch(`/api/artifacts/${artifactId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 const ArtifactCard = memo(function ArtifactCard({
   result,
 }: {
@@ -515,9 +529,8 @@ const ArtifactCard = memo(function ArtifactCard({
       return;
     }
     try {
-      const res = await fetch(`/api/artifacts/${artifactId}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await fetchArtifactData(artifactId);
+      if (!data) return;
       useArtifactStore.getState().openArtifact({
         id: data.id,
         title: data.title,
@@ -530,6 +543,41 @@ const ArtifactCard = memo(function ArtifactCard({
       console.error("[ArtifactCard] fetch failed:", e);
     }
   }, [artifactId]);
+
+  const handleDownload = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!artifactId) return;
+      try {
+        const store = useArtifactStore.getState();
+        let content: string;
+        if (store.id === artifactId && store.content) {
+          content = store.content;
+        } else {
+          const data = await fetchArtifactData(artifactId);
+          if (!data) return;
+          content = data.content;
+        }
+        const ext = ARTIFACT_KIND_EXT[artifactKind ?? "text"] ?? ".txt";
+        const mime =
+          artifactKind === "html"
+            ? "text/html"
+            : artifactKind === "markdown"
+              ? "text/markdown"
+              : "text/plain";
+        const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${artifactTitle || "artifact"}${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error("[ArtifactCard] download failed:", e);
+      }
+    },
+    [artifactId, artifactKind, artifactTitle],
+  );
 
   if (!artifactId) return null;
 
@@ -550,7 +598,7 @@ const ArtifactCard = memo(function ArtifactCard({
       <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
         <FileTextIcon className="size-4 text-primary" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">
           {artifactTitle || "生成ファイル"}
         </div>
@@ -559,6 +607,15 @@ const ArtifactCard = memo(function ArtifactCard({
           {artifactVersion ? ` · v${artifactVersion}` : ""}
         </div>
       </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0 size-8 text-muted-foreground"
+        onClick={handleDownload}
+        title="ダウンロード"
+      >
+        <DownloadIcon className="size-4" />
+      </Button>
     </button>
   );
 });
