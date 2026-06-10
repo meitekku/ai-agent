@@ -22,7 +22,7 @@ app.get("/capabilities", async (c) => {
         kintoneDataCached = false;
       }
     }
-    kintone = kintoneDataCached;
+    kintone = kintoneDataCached ?? false;
   }
 
   return c.json({ salesforce: sf, kintone });

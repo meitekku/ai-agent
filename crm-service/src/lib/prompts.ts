@@ -235,28 +235,28 @@ export function buildPptxPrompt(data: SFData, analysis: AnalysisResult, template
   if (data.activities?.length > 0) {
     sections.push(`## 活動記録（${data.activities.length}件）\n  ${summarizeRecords(data.activities, ["Subject", "ActivityDate", "Status", "Type"], 15)}`);
   }
-  if (data.events?.length > 0) {
+  if (data.events && data.events.length > 0) {
     sections.push(`## 会議・訪問（${data.events.length}件）\n  ${summarizeRecords(data.events, ["Subject", "StartDateTime", "Location", "Type"], 10)}`);
   }
-  if (data.feedItems?.length > 0) {
+  if (data.feedItems && data.feedItems.length > 0) {
     sections.push(`## Chatter投稿・日報（${data.feedItems.length}件）\n  ${data.feedItems.slice(0, 10).map((f: R) => `[${f.CreatedDate || ""}] ${(f.Body || "").slice(0, 200)}`).join("\n  ")}`);
   }
-  if (data.notes?.length > 0) {
+  if (data.notes && data.notes.length > 0) {
     sections.push(`## メモ・ノート（${data.notes.length}件）\n  ${data.notes.slice(0, 8).map((n: R) => `[${n.CreatedDate || ""}] ${n.Title || ""}: ${(n.Body || "").slice(0, 150)}`).join("\n  ")}`);
   }
-  if (data.cases?.length > 0) {
+  if (data.cases && data.cases.length > 0) {
     sections.push(`## 問い合わせ履歴（${data.cases.length}件）\n  ${summarizeRecords(data.cases, ["Subject", "Status", "Priority", "CreatedDate"], 10)}`);
   }
-  if (data.contracts?.length > 0) {
+  if (data.contracts && data.contracts.length > 0) {
     sections.push(`## 契約情報（${data.contracts.length}件）\n  ${summarizeRecords(data.contracts, ["ContractNumber", "Status", "StartDate", "EndDate"], 5)}`);
   }
-  if (data.quotes?.length > 0) {
+  if (data.quotes && data.quotes.length > 0) {
     sections.push(`## 見積（${data.quotes.length}件）\n  ${data.quotes.slice(0, 5).map((q: R) => `${q.Name}: ${fmtAmount(q.TotalPrice)} (${q.Status})`).join("\n  ")}`);
   }
-  if (data.lineItems?.length > 0) {
+  if (data.lineItems && data.lineItems.length > 0) {
     sections.push(`## 商談製品（${data.lineItems.length}件）\n  ${data.lineItems.slice(0, 10).map((l: R) => `${l.Name}: ${l.Quantity}個 × ${fmtAmount(l.UnitPrice)} = ${fmtAmount(l.TotalPrice)}`).join("\n  ")}`);
   }
-  if (data.emails?.length > 0) {
+  if (data.emails && data.emails.length > 0) {
     sections.push(`## メール履歴（${data.emails.length}件）\n  ${data.emails.slice(0, 8).map((e: R) => `[${e.Date || ""}] ${e.Subject || ""}`).join("\n  ")}`);
   }
 

@@ -604,7 +604,7 @@ async function sendEmail(
   try {
     const resend = new Resend(RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
-      from: EMAIL_FROM,
+      from: EMAIL_FROM!,
       to,
       subject,
       react: AiEmail({ subject, body, appUrl: process.env.APP_URL }),

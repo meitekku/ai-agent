@@ -76,11 +76,11 @@ function parseCsv(filePath: string): DealGroup[] {
   const buf = readFileSync(filePath);
   const wb = XLSX.read(buf, { type: "buffer", raw: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: "",
     blankrows: false,
-  }) as unknown[][];
+  });
 
   if (rows.length < 2) return [];
 

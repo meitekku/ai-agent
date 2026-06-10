@@ -120,7 +120,7 @@ async function fetchFromDb(recordId: string) {
   const activities = actRes.rows;
 
   // Latest activity with status
-  const latestWithStatus = activities.findLast((a) => a.status);
+  const latestWithStatus = activities.findLast((a: Record<string, unknown>) => a.status);
   const latestAmount = latestWithStatus
     ? (Number(latestWithStatus.order_amount) > 0 ? Number(latestWithStatus.order_amount) : Number(latestWithStatus.expected_amount))
     : 0;
