@@ -4,7 +4,7 @@ const USE_VERTEX_AI =
   (process.env.USE_VERTEX_AI || "").toLowerCase() === "true";
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || "";
 const GCP_LOCATION = process.env.GCP_LOCATION || "global";
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 let client: GoogleGenAI | null = null;
 

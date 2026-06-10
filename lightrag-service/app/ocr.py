@@ -44,7 +44,7 @@ async def _ocr_pdf_gemini(file_bytes: bytes, filename: str) -> list[dict]:
             img_bytes = pix.tobytes("png")
 
             resp = await client.aio.models.generate_content(
-                model=config.GEMINI_MODEL,
+                model=config.GEMINI_OCR_MODEL,
                 contents=[
                     types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
                     "このページの内容をMarkdown形式で正確に書き起こしてください。表はMarkdownテーブルに変換してください。画像の説明は不要です。テキストのみを出力してください。",

@@ -32,9 +32,9 @@ export const GEMINI_MODELS: ModelOption[] = [
     description: "最安・高速",
   },
   {
-    id: "gemini-3-flash-preview",
-    label: "3 Flash",
-    description: "最新世代（Preview）",
+    id: "gemini-3.5-flash",
+    label: "3.5 Flash",
+    description: "最新世代",
   },
   { id: "gemini-3.1-pro-preview", label: "3.1 Pro", description: "最上位" },
 ];
@@ -90,7 +90,7 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
   setService: (service) => set({ service }),
 
   // Model selection
-  chatModel: "gemini-3-flash-preview",
+  chatModel: "gemini-3.5-flash",
   setChatModel: (model) => set({ chatModel: model }),
 
   // Active KB

@@ -308,7 +308,7 @@ export function ChatPage({
       // Restore model / thinking from conversation — record the DB values
       // so the persist effect knows not to write them back
       const restoredModel =
-        initialData.conversation.chat_model || "gemini-3-flash-preview";
+        initialData.conversation.chat_model || "gemini-3.5-flash";
       const restoredThinking = initialData.conversation.thinking ?? false;
       dbModelRef.current = restoredModel;
       dbThinkingRef.current = restoredThinking;
@@ -316,9 +316,9 @@ export function ChatPage({
       useChatSettingsStore.getState().setThinking(restoredThinking);
     } else {
       treeStore.clear();
-      dbModelRef.current = "gemini-3-flash-preview";
+      dbModelRef.current = "gemini-3.5-flash";
       dbThinkingRef.current = false;
-      useChatSettingsStore.getState().setChatModel("gemini-3-flash-preview");
+      useChatSettingsStore.getState().setChatModel("gemini-3.5-flash");
       useChatSettingsStore.getState().setThinking(false);
     }
   }, [initialConvId, initialData, treeStore, setMessages, setActiveKb]);

@@ -417,7 +417,7 @@ async def _extract_image(
 
     client = genai.Client(api_key=config.GEMINI_API_KEY)
     resp = await client.aio.models.generate_content(
-        model=config.GEMINI_MODEL,
+        model=config.GEMINI_OCR_MODEL,
         contents=[
             types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
             "この画像の内容をMarkdown形式で正確に書き起こしてください。表はMarkdownテーブルに変換してください。テキストのみを出力してください。",

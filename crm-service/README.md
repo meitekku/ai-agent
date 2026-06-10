@@ -52,7 +52,7 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 | 変数 | 必須 | 説明 |
 |------|------|------|
 | `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
-| `GEMINI_MODEL` | No | デフォルト `gemini-3-flash-preview` |
+| `GEMINI_MODEL` | No | デフォルト `gemini-3.5-flash` |
 | `USE_VERTEX_AI` | No | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
 | `GCP_PROJECT_ID` | Vertex 時 | GCP プロジェクト ID |
 | `GCP_LOCATION` | No | デフォルト `global` |

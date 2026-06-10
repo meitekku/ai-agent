@@ -125,8 +125,8 @@ pm2 delete lightrag-service && pm2 start ~/Desktop/ai/ecosystem.config.js --only
 | `OLLAMA_URL`             | http://localhost:11434               | Ollama 地址（Embedding 専用）                               |
 | `REDIS_URL`              | redis://localhost:6379               | Valkey 缓存地址                                             |
 | `GEMINI_API_KEY`         | (空)                                 | Gemini API Key（設定時→Gemini、未設定→MLX フォールバック）  |
-| `GEMINI_MODEL`           | gemini-3-flash-preview               | Gemini LLM 模型（デフォルト、チャット別にユーザーが変更可） |
-| `GEMINI_EMBEDDING_MODEL` | text-embedding-004                   | Gemini Embedding 模型                                       |
+| `GEMINI_MODEL`           | gemini-3.5-flash                     | Gemini LLM 模型（デフォルト、チャット別にユーザーが変更可） |
+| `GEMINI_EMBEDDING_MODEL` | gemini-embedding-001                 | Gemini Embedding 模型（768次元 Matryoshka）                |
 | `EMBEDDING_PROVIDER`     | local                                | Embedding 提供者（`local` / `gemini`）                      |
 | `DATABASE_URL`           | postgresql://localhost:5432/lightrag | PostgreSQL 接続 URL（チャット履歴・Artifact 保存用）        |
 | `SKILLS_DIR`             | data/skills                          | スキルファイル保存ディレクトリ（Docker: /app/data/skills）  |
@@ -349,7 +349,7 @@ button, badge, card, input, textarea, dropdown-menu, label, separator, select, a
 - MLX server 必须加 `--chat-template-args '{"enable_thinking":false}'`，否则 content 为空
 - `next.config.ts` 不使用 rewrites，所有 API 通过 Route Handler 处理
 - PDF 上传流程: rag-ui → LightRAG /ingest → glm-ocr (:8000) OCR → Markdown → 知识图谱
-- 语义缓存的 embedding 可通过 `EMBEDDING_PROVIDER=gemini` 切换为 Gemini text-embedding-004
+- 语义缓存的 embedding 可通过 `EMBEDDING_PROVIDER=gemini` 切换为 Gemini gemini-embedding-001
 - 文档削除会调用 LightRAG `adelete_by_doc_id()` 彻底清理知識グラフ（chunks、entities、relations、graph、vectors）
 - Embedding 模型: Ollama qwen3-embedding:8b（4096次元、MTEB 多语言排行榜第一、日语対応）
 

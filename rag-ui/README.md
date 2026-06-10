@@ -19,7 +19,7 @@ Next.js ベースの RAG チャットインターフェース。ナレッジベ�
 - **フレームワーク**: Next.js 16 (App Router, TypeScript, Tailwind CSS v4)
 - **UI**: shadcn/ui + AI Elements
 - **AI**: Vercel AI SDK v6 (`ToolLoopAgent`, `generateObject`, `useChat`)
-- **LLM**: Gemini API（gemini-3-flash-preview、チャット別にユーザー変更可）
+- **LLM**: Gemini API（gemini-3.5-flash、チャット別にユーザー変更可）
 - **検索**: LightRAG（知識グラフ + ベクトル検索）
 - **キャッシュ**: Valkey（Redis 互換、セマンティックキャッシュ）
 - **DB**: PostgreSQL（チャット履歴、スライド、スキル、UI 設定）
@@ -43,7 +43,7 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 | 変数 | デフォルト | 説明 |
 |------|----------|------|
 | `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
-| `GEMINI_MODEL` | `gemini-3-flash-preview` | デフォルト LLM モデル（チャット別変更可） |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | デフォルト LLM モデル（チャット別変更可） |
 | `USE_VERTEX_AI` | `false` | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
 | `GCP_PROJECT_ID` | — | GCP プロジェクト ID（Vertex AI 時必須） |
 | `GCP_LOCATION` | `global` | GCP リージョン（Gemini 3.x は `global` のみ） |

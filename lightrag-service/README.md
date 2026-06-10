@@ -70,7 +70,10 @@ Docker Compose で設定済み（`docker-compose.yml` 参照）。
 |------|----------|------|
 | `LLM_PROVIDER` | gemini | LLM バックエンド（`local` / `mlx` / `gemini`） |
 | `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
-| `GEMINI_MODEL` | gemini-2.5-flash | Gemini LLM モデル |
+| `GEMINI_MODEL` | gemini-3.5-flash | Gemini チャット/生成 LLM モデル |
+| `GEMINI_OCR_MODEL` | gemini-2.5-flash | OCR / ドキュメント抽出用モデル（GA・当面維持） |
+| `GEMINI_IMAGE_MODEL` | gemini-3.1-flash-image | 画像生成モデル |
+| `GEMINI_ALLOWED_MODELS` | — | 許可モデル（カンマ区切り。空なら未制限） |
 | `USE_VERTEX_AI` | `false` | `true` で Vertex AI 経由に切替（GCP credit 使用可） |
 | `GCP_PROJECT_ID` | — | GCP プロジェクト ID（Vertex AI 時必須） |
 | `GCP_LOCATION` | `global` | GCP リージョン（Gemini 3.x は `global` のみ） |

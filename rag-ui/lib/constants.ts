@@ -15,10 +15,20 @@ export const EMBEDDING_MODEL =
 
 // Gemini (if API key set → Gemini, otherwise → MLX fallback)
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 export const GEMINI_EMBEDDING_MODEL =
-  process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004";
+  process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001";
 export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || "local";
+
+// Embedding output dimensionality (Matryoshka — gemini-embedding-001 supports 768/1536/3072)
+export const EMBEDDING_DIM = Number(process.env.EMBEDDING_DIM || "768");
+
+// Image generation model (Gemini native image output). Fallback handled in chat route.
+export const GEMINI_IMAGE_MODEL =
+  process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
+
+// Allowed Gemini model IDs (whitelist). Comma-separated env, falls back to default set.
+export const GEMINI_ALLOWED_MODELS = process.env.GEMINI_ALLOWED_MODELS || "";
 
 // Tavily web search (optional — enables webSearch tool in chat)
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";

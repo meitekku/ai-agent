@@ -4,7 +4,7 @@ import pg from "pg";
 import { Resend } from "resend";
 import { executeCode } from "./sandbox";
 import { AiEmail } from "./emails/ai-email";
-import { getModel, providerOptionsKey } from "./ai-provider";
+import { getModel, providerOptionsKey, IMAGE_MODELS } from "./ai-provider";
 import {
   type SkillSummary,
   getSkillByName,
@@ -219,7 +219,7 @@ export function buildTools({
 
   // ---- generateImage (Nano Banana native via generateText + responseModalities) --
   try {
-    getModel("gemini-3.1-flash-image-preview"); // check availability
+    getModel(IMAGE_MODELS[0]); // check availability (primary image model)
     tools.generateImage = tool({
       description:
         "Generate an image from a text prompt using Gemini Nano Banana. The image is automatically uploaded and made available as a downloadable file. Use when: the task requires creating an illustration, diagram image, chart visual, or any custom image. Write the prompt in English for best quality. Do not use when: the image can be generated via executeCode (e.g., matplotlib charts) — prefer executeCode for data-driven visuals.",
@@ -593,10 +593,8 @@ async function sendEmail(
   }
 }
 
-const IMAGE_MODELS = [
-  "gemini-3.1-flash-image-preview", // Nano Banana 2 (primary)
-  "gemini-2.5-flash-image",          // Nano Banana (fallback)
-];
+// IMAGE_MODELS is centralized in ai-provider.ts (env GEMINI_IMAGE_MODEL,
+// default gemini-3.1-flash-image → fallback gemini-2.5-flash-image).
 
 async function runGenerateImage(
   prompt: string,

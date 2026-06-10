@@ -135,16 +135,16 @@ docker compose --profile prod up -d --build
 
 | 機能           | モデル                                         | タイミング                                           |
 | -------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| チャット回答   | gemini-3-flash-preview（ユーザー選択可）       | クエリごと（キャッシュミス時）                       |
+| チャット回答   | gemini-3.5-flash（ユーザー選択可）             | クエリごと（キャッシュミス時）                       |
 | PDF OCR        | gemini-2.5-flash (Vision)                      | アップロード時（ページ数分）                         |
 | 実体抽出       | gemini-2.5-flash                               | アップロード時（チャンク数分）                       |
 | Embedding      | gemini-embedding-001                           | アップロード時 + クエリ時                            |
-| スライド生成   | gemini-3-flash-preview（チャットモデルに連動） | スライド作成時                                       |
-| 商機分析根拠   | gemini-3-flash-preview（チャットモデルに連動） | 商談分析時                                           |
-| 提案書スライド | gemini-3-flash-preview（チャットモデルに連動） | 提案書生成時（plan 生成 + 各ページ並行レンダリング） |
-| Widget 生成    | gemini-3-flash-preview（チャットモデルに連動） | show-widget コードフェンス出力時                     |
-| 画像生成       | gemini-2.0-flash-exp                           | ユーザー依頼時                                       |
-| 定時タスク実行 | gemini-3-flash-preview                         | スケジュール実行時（tool-loop）                      |
+| スライド生成   | gemini-3.5-flash（チャットモデルに連動）       | スライド作成時                                       |
+| 商機分析根拠   | gemini-3.5-flash（チャットモデルに連動）       | 商談分析時                                           |
+| 提案書スライド | gemini-3.5-flash（チャットモデルに連動）       | 提案書生成時（plan 生成 + 各ページ並行レンダリング） |
+| Widget 生成    | gemini-3.5-flash（チャットモデルに連動）       | show-widget コードフェンス出力時                     |
+| 画像生成       | gemini-3.1-flash-image                         | ユーザー依頼時                                       |
+| 定時タスク実行 | gemini-3.5-flash                               | スケジュール実行時（tool-loop）                      |
 
 > **注意**: Gemini API の無料枠にはレート制限があります（特に Embedding: 100 req/min）。大きな PDF のアップロード時はスロットリングされる場合があります。速率制限機能が組み込まれているため処理は継続しますが、入庫速度は遅くなります。
 

@@ -2,8 +2,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_USER: raguser
-      POSTGRES_PASSWORD: ragpass
+      POSTGRES_USER: ${PG_USER:-raguser}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-ragpass}
       POSTGRES_DB: lightrag
     ports:
       - "${PG_PORT:-127.0.0.1:5433}:5432"
@@ -11,7 +11,7 @@ services:
       - pgdata:/var/lib/postgresql
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U raguser -d lightrag"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-raguser} -d lightrag"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -36,15 +36,18 @@ services:
     environment:
       LLM_PROVIDER: gemini
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       EMBEDDING_PROVIDER: gemini
-      GEMINI_EMBEDDING_MODEL: gemini-embedding-001
-      EMBEDDING_DIM: "768"
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
       OCR_PROVIDER: gemini
+      GEMINI_OCR_MODEL: ${GEMINI_OCR_MODEL:-gemini-2.5-flash}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-gemini-3.1-flash-image}
+      GEMINI_ALLOWED_MODELS: ${GEMINI_ALLOWED_MODELS:-}
       PG_HOST: postgres
       PG_PORT: "5432"
-      PG_USER: raguser
-      PG_PASSWORD: ragpass
+      PG_USER: ${PG_USER:-raguser}
+      PG_PASSWORD: ${PG_PASSWORD:-ragpass}
       PG_DATABASE: lightrag
       # Vertex AI (set USE_VERTEX_AI=true in .env to use GCP credit)
       USE_VERTEX_AI: ${USE_VERTEX_AI:-false}
@@ -72,8 +75,10 @@ services:
     profiles: ["prod"]
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: gemini-3-flash-preview
-      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-gemini-3.1-flash-image}
+      GEMINI_ALLOWED_MODELS: ${GEMINI_ALLOWED_MODELS:-}
+      DATABASE_URL: postgresql://${PG_USER:-raguser}:${PG_PASSWORD:-ragpass}@postgres:5432/lightrag
       SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
       SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:-}
       SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:-}
@@ -123,8 +128,10 @@ services:
     profiles: ["prod"]
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: gemini-3-flash-preview
-      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-gemini-3.1-flash-image}
+      GEMINI_ALLOWED_MODELS: ${GEMINI_ALLOWED_MODELS:-}
+      DATABASE_URL: postgresql://${PG_USER:-raguser}:${PG_PASSWORD:-ragpass}@postgres:5432/lightrag
       REDIS_URL: redis://valkey:6379
       LIGHTRAG_URL: http://lightrag:8007
       CRM_SERVICE_URL: http://crm-service:8009
@@ -166,12 +173,16 @@ services:
       LIGHTRAG_URL: http://lightrag:8007
       REDIS_URL: redis://valkey:6379
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: gemini-3-flash-preview
-      GEMINI_EMBEDDING_MODEL: gemini-embedding-001
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_OCR_MODEL: ${GEMINI_OCR_MODEL:-gemini-2.5-flash}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-gemini-3.1-flash-image}
+      GEMINI_ALLOWED_MODELS: ${GEMINI_ALLOWED_MODELS:-}
       EMBEDDING_PROVIDER: gemini
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       PW: ${PW:-}
-      DATABASE_URL: postgresql://raguser:ragpass@postgres:5432/lightrag
+      DATABASE_URL: postgresql://${PG_USER:-raguser}:${PG_PASSWORD:-ragpass}@postgres:5432/lightrag
       CHAT_FILES_DIR: /app/data/chat-files
       KB_FILES_DIR: /app/data/kb-files
       SKILLS_DIR: /app/data/skills

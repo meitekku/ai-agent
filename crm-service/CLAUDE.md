@@ -139,7 +139,7 @@ Gemini の出力が長い場合、JSON が途中で切れることがある。`g
 | 変数 | 必須 | 説明 |
 |------|------|------|
 | `GEMINI_API_KEY` | AI Studio 時 | Gemini API Key（Vertex AI 使用時は不要） |
-| `GEMINI_MODEL` | No | デフォルト `gemini-3-flash-preview`（リクエスト body の `model` フィールドで上書き可） |
+| `GEMINI_MODEL` | No | デフォルト `gemini-3.5-flash`（リクエスト body の `model` フィールドで上書き可） |
 | `USE_VERTEX_AI` | No | `true` で Vertex AI 経由に切替（GCP Free Trial credit 使用可） |
 | `GCP_PROJECT_ID` | Vertex 時 | GCP プロジェクト ID |
 | `GCP_LOCATION` | No | GCP リージョン（デフォルト `global`） |

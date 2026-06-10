@@ -102,7 +102,8 @@ googleSearchTool             // gemini.tools.googleSearch({}) — AI Studio の�
 | `USE_VERTEX_AI` | `true` で Vertex AI 使用（GCP Free Trial credit 対応）|
 | `GCP_PROJECT_ID` | Vertex AI GCP プロジェクト ID |
 | `GCP_LOCATION` | GCP リージョン（デフォルト `global`）|
-| `GEMINI_MODEL` | デフォルトモデル（デフォルト `gemini-3-flash-preview`）|
+| `GEMINI_MODEL` | デフォルトモデル（デフォルト `gemini-3.5-flash`）|
+| `GEMINI_IMAGE_MODEL` | 画像生成モデル（デフォルト `gemini-3.1-flash-image`、fallback `gemini-2.5-flash-image`）|
 | `DATABASE_URL` | PostgreSQL 接続 URL |
 | `REDIS_URL` | Valkey 接続 URL |
 | `LIGHTRAG_URL` | LightRAG サービス URL（KB 検索・一覧取得）|

@@ -3,10 +3,18 @@ import {
   GEMINI_API_KEY,
   GEMINI_EMBEDDING_MODEL,
   EMBEDDING_PROVIDER,
+  EMBEDDING_DIM,
   USE_VERTEX_AI,
   GCP_PROJECT_ID,
   GCP_LOCATION,
 } from "./constants";
+
+/**
+ * gemini-embedding-001 supports Matryoshka output dimensionality.
+ * text-embedding-004 (legacy) does not accept outputDimensionality, so only
+ * send the parameter for models that support it.
+ */
+const SUPPORTS_OUTPUT_DIM = GEMINI_EMBEDDING_MODEL.startsWith("gemini-embedding");
 
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "qwen3-embedding:8b";
 
@@ -47,6 +55,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
           },
           body: JSON.stringify({
             instances: [{ content: text }],
+            ...(SUPPORTS_OUTPUT_DIM
+              ? { parameters: { outputDimensionality: EMBEDDING_DIM } }
+              : {}),
           }),
           signal: AbortSignal.timeout(10_000),
         },
@@ -73,6 +84,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: { parts: [{ text }] },
+          ...(SUPPORTS_OUTPUT_DIM
+            ? { outputDimensionality: EMBEDDING_DIM }
+            : {}),
         }),
         signal: AbortSignal.timeout(10_000),
       },

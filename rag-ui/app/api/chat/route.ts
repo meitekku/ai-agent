@@ -29,6 +29,7 @@ import {
   TAVILY_API_KEY,
   CRM_SERVICE_URL,
   TASK_WORKER_URL,
+  GEMINI_IMAGE_MODEL,
 } from "@/lib/constants";
 import {
   getEnabledSkillSummaries,
@@ -1360,8 +1361,8 @@ export async function POST(req: Request) {
         const t0 = Date.now();
         try {
           const IMAGE_MODELS = [
-            "gemini-3.1-flash-image-preview", // Nano Banana 2 (primary)
-            "gemini-2.5-flash-image",          // Nano Banana (fallback)
+            GEMINI_IMAGE_MODEL,        // primary (default gemini-3.1-flash-image, Nano Banana 2)
+            "gemini-2.5-flash-image",  // Nano Banana (fallback)
           ];
           const genOpts = {
             providerOptions: {
@@ -1484,7 +1485,7 @@ export async function POST(req: Request) {
           .string()
           .optional()
           .describe(
-            "使用するGeminiモデル名。省略時はデフォルト(gemini-3-flash-preview)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'",
+            "使用するGeminiモデル名。省略時はデフォルト(gemini-3.5-flash)。例: 'gemini-2.5-flash', 'gemini-2.5-pro'",
           ),
         description: z
           .string()

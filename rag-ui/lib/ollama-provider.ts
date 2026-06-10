@@ -4,6 +4,7 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import {
   GEMINI_API_KEY,
   GEMINI_MODEL,
+  GEMINI_ALLOWED_MODELS,
   MLX_URL,
   MLX_MODEL,
   USE_VERTEX_AI,
@@ -35,16 +36,29 @@ export const providerOptionsKey: "vertex" | "google" = USE_VERTEX_AI
   ? "vertex"
   : "google";
 
-/** Allowed Gemini model IDs (whitelist to prevent abuse) */
-export const ALLOWED_GEMINI_MODELS = new Set([
+/** Default allowed Gemini model IDs (used when GEMINI_ALLOWED_MODELS env is unset) */
+const DEFAULT_ALLOWED_GEMINI_MODELS = [
+  "gemini-3.5-flash",
   "gemini-2.5-flash",
   "gemini-2.5-pro",
   "gemini-2.5-flash-lite",
-  "gemini-3-flash-preview",
   "gemini-3.1-pro-preview",
-  "gemini-3.1-flash-image-preview", // Nano Banana 2 — used internally by generateImage tool
+  "gemini-3.1-flash-image", // Nano Banana 2 — used internally by generateImage tool
   "gemini-2.5-flash-image", // Nano Banana — fallback for generateImage 429
-]);
+];
+
+/**
+ * Allowed Gemini model IDs (whitelist to prevent abuse).
+ * Built from GEMINI_ALLOWED_MODELS env (comma-separated) when set,
+ * otherwise falls back to the default set above.
+ */
+export const ALLOWED_GEMINI_MODELS = new Set(
+  GEMINI_ALLOWED_MODELS
+    ? GEMINI_ALLOWED_MODELS.split(",")
+        .map((m) => m.trim())
+        .filter(Boolean)
+    : DEFAULT_ALLOWED_GEMINI_MODELS,
+);
 
 /** Auto-select: Vertex AI > AI Studio > MLX. Accepts optional model override. */
 export function getChatModel(modelOverride?: string | null) {
