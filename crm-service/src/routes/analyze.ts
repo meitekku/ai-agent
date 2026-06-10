@@ -1,10 +1,18 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { analyzeData } from "../lib/scoring";
 import { generateText } from "../lib/gemini";
 import { buildRationalePrompt } from "../lib/prompts";
 import type { AnalysisRationale, SFData, R, ProposalJudgment } from "../lib/types";
 
 const app = new Hono();
+
+const analyzeBodySchema = z.object({
+  data: z.object({ opportunity: z.unknown() }).passthrough(),
+  availableTemplateServices: z.array(z.string()).optional(),
+  additionalContext: z.string().optional(),
+  model: z.string().optional(),
+}).passthrough();
 
 async function generateRationale(data: SFData, availableTemplateServices: string[], additionalContext?: string, model?: string, scores?: { winProbability: number; dealHealthScore: number; proposalReadiness: number }): Promise<AnalysisRationale> {
   const fallback: AnalysisRationale = {
@@ -54,8 +62,14 @@ async function generateRationale(data: SFData, availableTemplateServices: string
 
 app.post("/deals/analyze", async (c) => {
   try {
-    const body = await c.req.json();
-    const { data, availableTemplateServices, additionalContext, model } = body;
+    const raw = await c.req.json().catch(() => null);
+    const parsed = analyzeBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: "リクエストボディが不正です", details: parsed.error.issues }, 400);
+    }
+    const { data, availableTemplateServices, additionalContext, model } = parsed.data as unknown as {
+      data: SFData; availableTemplateServices?: string[]; additionalContext?: string; model?: string;
+    };
     if (!data?.opportunity) {
       console.error("[analyze] Missing opportunity. data keys:", data ? Object.keys(data) : "null");
       return c.json({ error: "商談データが不足しています" }, 400);

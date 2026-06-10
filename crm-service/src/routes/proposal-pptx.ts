@@ -1,11 +1,35 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import pptxgen from "pptxgenjs";
 import { generateText } from "../lib/gemini";
 import { buildPptxPrompt, buildSlideRevisionPrompt } from "../lib/prompts";
 import { getPool } from "../lib/db";
-import type { PresentationPlan, SlideDefinition, R } from "../lib/types";
+import type { PresentationPlan, SlideDefinition, SFData, AnalysisResult, R } from "../lib/types";
 
 const app = new Hono();
+
+const pptxGenBodySchema = z.object({
+  data: z.object({}).passthrough(),
+  analysis: z.object({}).passthrough(),
+  additionalContext: z.string().optional(),
+  model: z.string().optional(),
+}).passthrough();
+
+const planSchema = z.object({
+  slides: z.array(z.unknown()).min(1),
+}).passthrough();
+
+const renderBodySchema = z.object({
+  plan: planSchema,
+  title: z.string().optional(),
+}).passthrough();
+
+const reviseSlideBodySchema = z.object({
+  plan: planSchema,
+  slideIndex: z.number().int().min(0),
+  instruction: z.string().min(1),
+  model: z.string().optional(),
+}).passthrough();
 
 async function fetchTemplateContent(): Promise<string> {
   try {
@@ -147,8 +171,10 @@ async function renderPPTX(plan: PresentationPlan, title: string): Promise<Buffer
 
 app.post("/proposal/generate-pptx", async (c) => {
   try {
-    const { data, analysis, additionalContext, model } = await c.req.json();
-    if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
+    const raw = await c.req.json().catch(() => null);
+    const parsed = pptxGenBodySchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: "データまたは分析結果が不足しています", details: parsed.error.issues }, 400);
+    const { data, analysis, additionalContext, model } = parsed.data as unknown as { data: SFData; analysis: AnalysisResult; additionalContext?: string; model?: string };
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const templateContent = await fetchTemplateContent();
@@ -194,8 +220,10 @@ app.post("/proposal/generate-pptx", async (c) => {
 /** Generate plan JSON only (no PPTX rendering) */
 app.post("/proposal/generate-plan", async (c) => {
   try {
-    const { data, analysis, additionalContext, model } = await c.req.json();
-    if (!data || !analysis) return c.json({ error: "データまたは分析結果が不足しています" }, 400);
+    const raw = await c.req.json().catch(() => null);
+    const parsed = pptxGenBodySchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: "データまたは分析結果が不足しています", details: parsed.error.issues }, 400);
+    const { data, analysis, additionalContext, model } = parsed.data as unknown as { data: SFData; analysis: AnalysisResult; additionalContext?: string; model?: string };
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const templateContent = await fetchTemplateContent();
@@ -233,8 +261,10 @@ app.post("/proposal/generate-plan", async (c) => {
 /** Render PPTX from plan JSON (no AI needed) */
 app.post("/proposal/render-pptx", async (c) => {
   try {
-    const { plan, title } = await c.req.json();
-    if (!plan?.slides?.length) return c.json({ error: "plan が不足しています" }, 400);
+    const raw = await c.req.json().catch(() => null);
+    const parsed = renderBodySchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: "plan が不足しています", details: parsed.error.issues }, 400);
+    const { plan, title } = parsed.data as unknown as { plan: PresentationPlan; title?: string };
 
     const pptxTitle = title || "提案書";
     const pptxBuffer = await renderPPTX(plan as PresentationPlan, pptxTitle);
@@ -257,12 +287,13 @@ app.post("/proposal/render-pptx", async (c) => {
 /** Revise a single slide within a plan */
 app.post("/proposal/revise-slide", async (c) => {
   try {
-    const { plan, slideIndex, instruction, model } = await c.req.json();
-    if (!plan?.slides?.length) return c.json({ error: "plan が不足しています" }, 400);
-    if (typeof slideIndex !== "number" || slideIndex < 0 || slideIndex >= plan.slides.length) {
+    const raw = await c.req.json().catch(() => null);
+    const parsed = reviseSlideBodySchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: "リクエストボディが不正です", details: parsed.error.issues }, 400);
+    const { plan, slideIndex, instruction, model } = parsed.data as unknown as { plan: PresentationPlan; slideIndex: number; instruction: string; model?: string };
+    if (slideIndex >= plan.slides.length) {
       return c.json({ error: `slideIndex が範囲外です (0-${plan.slides.length - 1})` }, 400);
     }
-    if (!instruction) return c.json({ error: "instruction が必要です" }, 400);
     if (!process.env.GEMINI_API_KEY) return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
 
     const prompt = buildSlideRevisionPrompt(plan as PresentationPlan, slideIndex, instruction);

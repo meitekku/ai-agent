@@ -1,9 +1,20 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { generateChat } from "../lib/gemini";
 import { SOLUTION_QA_SYSTEM_PROMPT } from "../lib/prompts";
 import type { R } from "../lib/types";
 
 const app = new Hono();
+
+const qaBodySchema = z.object({
+  messages: z.array(z.object({
+    role: z.string(),
+    content: z.string(),
+  }).passthrough()).min(1, "メッセージが必要です"),
+  sfData: z.unknown().optional(),
+  dealInput: z.unknown().optional(),
+  model: z.string().optional(),
+}).passthrough();
 
 function buildContextPrompt(sfData: R | null, dealInput: R | null): string {
   const parts: string[] = [];
@@ -36,10 +47,15 @@ function buildContextPrompt(sfData: R | null, dealInput: R | null): string {
 
 app.post("/deals/solution-qa", async (c) => {
   try {
-    const { messages, sfData, dealInput, model } = await c.req.json();
-    if (!messages || messages.length === 0) {
-      return c.json({ error: "メッセージが必要です" }, 400);
+    const raw = await c.req.json().catch(() => null);
+    const parsed = qaBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: "リクエストボディが不正です", details: parsed.error.issues }, 400);
     }
+    const { messages, sfData, dealInput, model } = parsed.data as unknown as {
+      messages: { role: "user" | "assistant"; content: string }[];
+      sfData?: R; dealInput?: R; model?: string;
+    };
     if (!process.env.GEMINI_API_KEY) {
       return c.json({ error: "Gemini APIキーが設定されていません" }, 400);
     }

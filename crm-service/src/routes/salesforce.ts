@@ -4,6 +4,13 @@ import type { R } from "../lib/types";
 
 const app = new Hono();
 
+/** Salesforce record IDs are 15 (case-sensitive) or 18 (case-insensitive) alphanumeric chars. */
+const SF_ID_RE = /^[a-zA-Z0-9]{15}$|^[a-zA-Z0-9]{18}$/;
+
+function isValidSfId(id: unknown): id is string {
+  return typeof id === "string" && SF_ID_RE.test(id);
+}
+
 const ALL_OBJECTS = [
   "Opportunity", "Account", "Contact", "Lead",
   "Task", "Event", "Note", "ContentNote",
@@ -53,10 +60,17 @@ async function checkAvailable(conn: InstanceType<typeof jsforce.Connection>): Pr
 }
 
 async function gatherFullData(conn: InstanceType<typeof jsforce.Connection>, available: Set<string>, primaryId: string, objType: string) {
+  // primaryId is validated by the caller (/sf/fetch). Defense in depth: re-check before any SOQL interpolation.
+  if (!isValidSfId(primaryId)) {
+    throw new Error("不正なレコードID形式です");
+  }
+
   let primaryRecord: R = {};
   try { primaryRecord = await conn.sobject(objType).retrieve(primaryId) as R; } catch { /* */ }
 
-  const accountId: string = primaryRecord.AccountId || (objType === "Account" ? primaryId : "");
+  // AccountId comes from the retrieved record (Salesforce-controlled); validate before interpolating into SOQL.
+  const rawAccountId: string = primaryRecord.AccountId || (objType === "Account" ? primaryId : "");
+  const accountId: string = isValidSfId(rawAccountId) ? rawAccountId : "";
 
   let account: R = {};
   if (accountId && available.has("Account")) {
@@ -209,6 +223,7 @@ app.post("/sf/fetch", async (c) => {
   try {
     const { authMode, credentials, opportunityId, objectType: reqObjectType } = await c.req.json();
     if (!opportunityId) return c.json({ error: "IDが必要です" }, 400);
+    if (!isValidSfId(opportunityId)) return c.json({ error: "不正なID形式です（15桁または18桁の英数字）" }, 400);
     const conn = authMode === "password" ? await createConnection(credentials) : await createConnectionWithApiKey();
     const objType = reqObjectType || "Opportunity";
     const available = await checkAvailable(conn);

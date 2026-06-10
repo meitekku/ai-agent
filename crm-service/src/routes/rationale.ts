@@ -1,9 +1,18 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { generateText } from "../lib/gemini";
 import { buildRevisionPrompt } from "../lib/prompts";
 import type { AnalysisResult, AnalysisRationale, R } from "../lib/types";
 
 const app = new Hono();
+
+const reviseBodySchema = z.object({
+  currentRationale: z.unknown().optional(),
+  currentAnalysis: z.unknown().optional(),
+  feedback: z.string().min(1, "フィードバック内容が必要です"),
+  additionalContext: z.string().optional(),
+  model: z.string().optional(),
+}).passthrough();
 
 app.post("/deals/rationale", async (c) => {
   // Same as /deals/analyze rationale generation, but standalone
@@ -12,7 +21,15 @@ app.post("/deals/rationale", async (c) => {
 
 app.post("/deals/revise-rationale", async (c) => {
   try {
-    const { currentRationale, currentAnalysis, feedback, additionalContext, model } = await c.req.json();
+    const raw = await c.req.json().catch(() => null);
+    const parsed = reviseBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: "リクエストボディが不正です", details: parsed.error.issues }, 400);
+    }
+    const { currentRationale, currentAnalysis, feedback, additionalContext, model } = parsed.data as unknown as {
+      currentRationale?: AnalysisRationale; currentAnalysis?: AnalysisResult;
+      feedback: string; additionalContext?: string; model?: string;
+    };
 
     if ((!currentRationale && !currentAnalysis) || !feedback?.trim()) {
       return c.json({ error: "フィードバック内容が必要です" }, 400);
@@ -31,7 +48,7 @@ app.post("/deals/revise-rationale", async (c) => {
         pessimistic: { label: "", probability: 0, expectedRevenue: 0, timeline: "", conditions: [] },
       },
       keyDrivers: [], riskFactors: [], recommendedActions: [],
-      rationale: currentRationale,
+      rationale: currentRationale as AnalysisRationale,
     };
     if (currentRationale && !analysis.rationale) {
       analysis.rationale = currentRationale;
