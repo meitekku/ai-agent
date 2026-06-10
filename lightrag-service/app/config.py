@@ -53,3 +53,27 @@ ENABLE_SAFETY_OFF = os.getenv("ENABLE_SAFETY_OFF", "").lower() in ("true", "1", 
 CSV_GROUPING_ENABLED = os.getenv("CSV_GROUPING_ENABLED", "").lower() in ("true", "1", "yes")
 # Override OCR prompt (empty => use built-in default).
 OCR_PROMPT = os.getenv("OCR_PROMPT", "")
+
+# --- Search-quality SOTA features (all opt-in; defaults preserve current behavior) ---
+
+# [1] Reranker: Gemini Flash listwise LlmRanker applied after retrieval.
+# When false (default), retrieval is passed through unchanged (current behavior).
+RERANK_ENABLED = os.getenv("RERANK_ENABLED", "").lower() in ("true", "1", "yes")
+# Lightweight Gemini model used for reranking (same family as OCR model).
+RERANK_MODEL = os.getenv("RERANK_MODEL", "gemini-2.5-flash")
+# Number of chunks kept after reranking (final breadth fed to the answer LLM).
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "8"))
+# Number of chunks retrieved before reranking (wider net, then narrowed).
+RETRIEVE_TOP_K = int(os.getenv("RETRIEVE_TOP_K", "20"))
+
+# [3] Contextual Retrieval: prepend breadcrumb + Gemini-generated context summary
+# to each chunk before embedding (Anthropic-style contextual retrieval).
+# When false (default), chunks are embedded as-is (current behavior).
+CONTEXTUAL_RETRIEVAL_ENABLED = os.getenv("CONTEXTUAL_RETRIEVAL_ENABLED", "").lower() in ("true", "1", "yes")
+# Gemini model used to generate the per-chunk context summary.
+CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", "gemini-2.5-flash")
+
+# [4] Chunking config (parent-child intent: child ~256 / parent ~1024 tokens).
+# Defaults preserve LightRAG's current built-in values (1200 / 100).
+CHUNK_TOKEN_SIZE = int(os.getenv("CHUNK_TOKEN_SIZE", "1200"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))

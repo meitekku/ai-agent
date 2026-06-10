@@ -30,7 +30,10 @@ import {
   CRM_SERVICE_URL,
   TASK_WORKER_URL,
   GEMINI_IMAGE_MODEL,
+  RERANK_ENABLED,
+  ADAPTIVE_RAG_ENABLED,
 } from "@/lib/constants";
+import { routeQuery, type RagRoute } from "@/lib/rag-router";
 import {
   getEnabledSkillSummaries,
   getSkillByName,
@@ -420,6 +423,18 @@ export async function POST(req: Request) {
 
   const t = { start: Date.now(), prompt: 0, stream: 0 };
 
+  // [2] Adaptive RAG router (opt-in via ADAPTIVE_RAG_ENABLED). A lightweight
+  // Gemini Flash classifier picks a preferred LightRAG query mode + a
+  // system-prompt hint. Disabled or on any failure => undefined mode and empty
+  // hint, preserving the current always-search-via-tool behavior.
+  let routeMode: "local" | "hybrid" | "mix" | undefined;
+  let routeSearchHint = "";
+  if (ADAPTIVE_RAG_ENABLED) {
+    const route: RagRoute = await routeQuery(messages);
+    routeMode = route.mode;
+    routeSearchHint = route.searchHint;
+  }
+
   // Auto-discovery: when no KB is manually selected, fetch all KBs
   let kbList: KnowledgeBase[] = [];
   let autoDiscovery = false;
@@ -477,7 +492,16 @@ export async function POST(req: Request) {
         console.log(`[chat] 🔍 searchKnowledgeBase: "${query}" kb=${kb}`);
         const t0 = Date.now();
         try {
-          const searchRes = await searchOnly(query, { topK: 8, service, kb });
+          // When RERANK_ENABLED, omit topK so the client widens to RETRIEVE_TOP_K
+          // and requests server-side rerank (final breadth = RERANK_TOP_K).
+          // Otherwise keep the original topK: 8 (current behavior).
+          // routeMode (adaptive router) overrides query mode when set.
+          const searchRes = await searchOnly(query, {
+            ...(RERANK_ENABLED ? {} : { topK: 8 }),
+            service,
+            kb,
+            ...(routeMode ? { mode: routeMode } : {}),
+          });
           const elapsed = Date.now() - t0;
           console.log(
             `[chat] 🔍 search: ${elapsed}ms →`,
@@ -544,9 +568,10 @@ export async function POST(req: Request) {
         const t0 = Date.now();
         try {
           const searchRes = await searchOnly(query, {
-            topK: 8,
+            ...(RERANK_ENABLED ? {} : { topK: 8 }),
             service,
             kb: selectedKb,
+            ...(routeMode ? { mode: routeMode } : {}),
           });
           const elapsed = Date.now() - t0;
           console.log(
@@ -1666,6 +1691,9 @@ export async function POST(req: Request) {
     // Inject widget guidelines + skills prompt (replaces ToolLoopAgent's prepareCall)
     systemPrompt += "\n\n" + WIDGET_SYSTEM_PROMPT;
     systemPrompt += buildSkillsPrompt(skillSummaries);
+
+    // [2] Adaptive RAG router hint (empty unless ADAPTIVE_RAG_ENABLED).
+    if (routeSearchHint) systemPrompt += "\n\n" + routeSearchHint;
 
     // Artifact context injection — let the LLM see current artifact content
     if (chatId) {

@@ -1,4 +1,9 @@
-import { LIGHTRAG_URL, QUERY_SERVICE_URL } from "./constants";
+import {
+  LIGHTRAG_URL,
+  QUERY_SERVICE_URL,
+  RERANK_ENABLED,
+  RETRIEVE_TOP_K,
+} from "./constants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -150,19 +155,48 @@ export async function deleteKB(slug: string): Promise<void> {
 
 export async function searchOnly(
   question: string,
-  options?: { topK?: number; service?: "lightrag" | "pageindex"; kb?: string },
+  options?: {
+    topK?: number;
+    service?: "lightrag" | "pageindex";
+    kb?: string;
+    /**
+     * Per-request query mode. Passed through to the backend QueryRequest.
+     * undefined => backend default ("hybrid"). Only "local"|"global"|"hybrid"|"mix"
+     * are honored server-side; any other value falls back to "hybrid".
+     */
+    mode?: "local" | "global" | "hybrid" | "mix";
+    /**
+     * Per-request rerank override. undefined => follow server config.RERANK_ENABLED.
+     * true => force two-stage rerank for this request; false => force off.
+     */
+    rerank?: boolean;
+  },
 ): Promise<SearchResponse> {
   const baseUrl =
     options?.service === "pageindex" ? QUERY_SERVICE_URL : LIGHTRAG_URL;
   const kb = options?.kb;
   const url = `${baseUrl}/query/search-only${kb ? `?kb=${encodeURIComponent(kb)}` : ""}`;
+
+  // Resolve effective rerank flag: explicit option wins, else the rag-ui-side
+  // RERANK_ENABLED feature flag (default false => fully backward compatible).
+  const rerankOn = options?.rerank ?? (RERANK_ENABLED || undefined);
+
+  // When rerank is effectively on and the caller did not pin a top_k, widen the
+  // retrieval net to RETRIEVE_TOP_K so the server reranker has more candidates.
+  // The server overrides top_k to RETRIEVE_TOP_K itself when rerank is active,
+  // but sending it keeps the wire body explicit. Default path is unchanged.
+  const topK =
+    options?.topK ?? (rerankOn ? RETRIEVE_TOP_K : 5);
+
+  // Build body. Only include mode/rerank when set so legacy bodies stay identical.
+  const body: Record<string, unknown> = { question, top_k: topK };
+  if (options?.mode) body.mode = options.mode;
+  if (rerankOn !== undefined) body.rerank = rerankOn;
+
   const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      question,
-      top_k: options?.topK ?? 5,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw buildError("Search failed", res.status, await res.text());
   return res.json();

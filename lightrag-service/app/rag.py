@@ -152,6 +152,198 @@ async def _embed_gemini(texts: list[str]) -> np.ndarray:
 _embed = _embed_gemini if config.EMBEDDING_PROVIDER == "gemini" else _embed_ollama
 
 
+# --- [1] Gemini Flash listwise reranker (LlmRanker) ---
+# LightRAG (>=1.4) calls rerank_model_func(query, documents, top_n=None, **kwargs)
+# and expects a reordered list of the same dicts (optionally annotated with
+# "relevance_score"). We implement a listwise LLM ranker with Gemini Flash so no
+# extra provider/dependency is introduced. Gemini client (_get_gemini_client) is
+# reused, so AI Studio / Vertex AI both work transparently.
+
+_RERANK_PROMPT = (
+    "You are a search-result reranker. Given a user query and a numbered list of "
+    "candidate passages, rank the passages by how well they answer the query, most "
+    "relevant first. Respond with ONLY a JSON array of the passage numbers in ranked "
+    "order, e.g. [3,1,2]. Do not include any other text."
+)
+
+
+def _doc_text(doc) -> str:
+    """Extract the rankable text from a LightRAG rerank document (dict or str)."""
+    if isinstance(doc, dict):
+        return doc.get("content") or doc.get("text") or ""
+    return str(doc)
+
+
+async def _gemini_rerank(query: str, documents: list, top_n: int | None = None, **kwargs) -> list:
+    """Listwise rerank `documents` against `query` using Gemini Flash.
+
+    Returns documents reordered by relevance (best first), truncated to top_n.
+    On any failure it falls back to the original order (never raises into the
+    query path), so enabling rerank can only re-order, never break retrieval.
+    """
+    if not documents:
+        return documents
+
+    limit = top_n or config.RERANK_TOP_K
+    try:
+        import json as _json
+        from google.genai import types
+
+        # Build the numbered candidate list (truncate each passage to keep prompt small)
+        listing = "\n\n".join(
+            f"[{i}] {_doc_text(d)[:1500]}" for i, d in enumerate(documents)
+        )
+        prompt = f"Query: {query}\n\nPassages:\n{listing}"
+
+        client = _get_gemini_client()
+        resp = await client.aio.models.generate_content(
+            model=config.RERANK_MODEL,
+            contents=[
+                types.Content(role="user", parts=[types.Part.from_text(text=prompt)]),
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=_RERANK_PROMPT,
+                thinking_config=types.ThinkingConfig(thinking_budget=0, include_thoughts=False),
+                response_mime_type="application/json",
+            ),
+        )
+        raw = (resp.text or "").strip()
+        order = _json.loads(raw)
+
+        seen: set[int] = set()
+        ranked: list = []
+        for idx in order:
+            if isinstance(idx, int) and 0 <= idx < len(documents) and idx not in seen:
+                d = documents[idx]
+                if isinstance(d, dict):
+                    rank = len(ranked)
+                    d = {**d, "relevance_score": 1.0 - rank / max(len(documents), 1)}
+                ranked.append(d)
+                seen.add(idx)
+        # Append any passages the model omitted, preserving original order
+        for i, d in enumerate(documents):
+            if i not in seen:
+                ranked.append(d)
+        return ranked[:limit]
+    except Exception as e:  # noqa: BLE001 - rerank must never break the query path
+        print(f"[rag] Gemini rerank failed, falling back to original order: {e}")
+        return documents[:limit]
+
+
+# --- [3] Contextual Retrieval ---
+# Split the document along Markdown headings, build a heading breadcrumb for each
+# segment, and ask Gemini Flash for a 50-100 token situating summary that references
+# the WHOLE document. The breadcrumb + summary are prepended to each segment before
+# it is handed to LightRAG for chunking/embedding. The full document is sent to
+# Gemini at most once per segment but the document text itself is reused (one read),
+# and identical segment bodies are cached within a single call.
+
+_CONTEXT_PROMPT = (
+    "You are given a whole document and one chunk taken from it. Write a short "
+    "(50-100 token) standalone context sentence that situates the chunk within the "
+    "document so it can be retrieved on its own. Mention the section/topic and any "
+    "entities the chunk refers to only by pronoun. Output ONLY the context sentence, "
+    "no preamble, in the same language as the document."
+)
+
+import re as _re
+
+_HEADING_RE = _re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def _segment_markdown(markdown: str) -> list[tuple[str, str]]:
+    """Split markdown into (breadcrumb, body) segments by heading boundaries.
+
+    breadcrumb is the chain of enclosing headings joined by ' > '. The text
+    before the first heading (if any) is emitted with an empty breadcrumb.
+    """
+    lines = markdown.splitlines()
+    segments: list[tuple[str, str]] = []
+    stack: list[tuple[int, str]] = []  # (level, title)
+    buf: list[str] = []
+    crumb = ""
+
+    def _flush():
+        body = "\n".join(buf).strip()
+        if body:
+            segments.append((crumb, body))
+
+    for line in lines:
+        m = _HEADING_RE.match(line)
+        if m:
+            _flush()
+            buf = []
+            level = len(m.group(1))
+            title = m.group(2).strip()
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            stack.append((level, title))
+            crumb = " > ".join(t for _, t in stack)
+            buf.append(line)
+        else:
+            buf.append(line)
+    _flush()
+    return segments
+
+
+async def contextualize_markdown(markdown: str, doc_name: str) -> str:
+    """Prepend breadcrumb + Gemini-generated context summary to each segment.
+
+    Returns the original markdown unchanged on any failure or when the document is
+    trivially short, so enabling the flag can only enrich, never drop, content.
+    """
+    if not config.CONTEXTUAL_RETRIEVAL_ENABLED:
+        return markdown
+    try:
+        from google.genai import types
+
+        segments = _segment_markdown(markdown)
+        if len(segments) <= 1:
+            return markdown
+
+        client = _get_gemini_client()
+        # Cap the whole-document context sent to Gemini to keep token cost bounded.
+        doc_context = markdown[:24000]
+        cache: dict[str, str] = {}
+        sem = asyncio.Semaphore(4)
+
+        async def _context_for(body: str) -> str:
+            if body in cache:
+                return cache[body]
+            prompt = (
+                f"<document name=\"{doc_name}\">\n{doc_context}\n</document>\n\n"
+                f"<chunk>\n{body[:3000]}\n</chunk>"
+            )
+            async with sem:
+                resp = await client.aio.models.generate_content(
+                    model=config.CONTEXT_MODEL,
+                    contents=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
+                    config=types.GenerateContentConfig(
+                        system_instruction=_CONTEXT_PROMPT,
+                        thinking_config=types.ThinkingConfig(thinking_budget=0, include_thoughts=False),
+                    ),
+                )
+            ctx = (resp.text or "").strip()
+            cache[body] = ctx
+            return ctx
+
+        contexts = await asyncio.gather(*[_context_for(body) for _, body in segments])
+
+        out_parts: list[str] = []
+        for (crumb, body), ctx in zip(segments, contexts):
+            prefix_lines = []
+            if crumb:
+                prefix_lines.append(f"[context] {crumb}")
+            if ctx:
+                prefix_lines.append(ctx)
+            prefix = "\n".join(prefix_lines)
+            out_parts.append(f"{prefix}\n\n{body}" if prefix else body)
+        return "\n\n".join(out_parts)
+    except Exception as e:  # noqa: BLE001 - contextualization must never break ingest
+        print(f"[rag] Contextual retrieval failed, using raw markdown: {e}")
+        return markdown
+
+
 async def get_rag(kb_slug: str) -> LightRAG:
     """Get or create a LightRAG instance for the given KB slug (LRU cached)."""
     async with _lock:
@@ -169,6 +361,10 @@ async def get_rag(kb_slug: str) -> LightRAG:
     working_dir = os.path.join(BASE_DATA_DIR, kb_slug)
     os.makedirs(working_dir, exist_ok=True)
 
+    # [1] Reranker: only attach the func when the feature flag is on, so the
+    # default constructor shape (and behavior) is byte-for-byte unchanged.
+    rerank_kwargs = {"rerank_model_func": _gemini_rerank} if config.RERANK_ENABLED else {}
+
     rag = LightRAG(
         working_dir=working_dir,
         llm_model_func=_llm_func,
@@ -179,6 +375,10 @@ async def get_rag(kb_slug: str) -> LightRAG:
             max_token_size=8192,
             func=_embed,
         ),
+        # [4] Chunking config (env-driven; defaults equal LightRAG's built-ins).
+        chunk_token_size=config.CHUNK_TOKEN_SIZE,
+        chunk_overlap_token_size=config.CHUNK_OVERLAP,
+        **rerank_kwargs,
         kv_storage="PGKVStorage",
         vector_storage="PGVectorStorage",
         graph_storage="NetworkXStorage",

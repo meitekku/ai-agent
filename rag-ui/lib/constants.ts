@@ -30,6 +30,32 @@ export const GEMINI_IMAGE_MODEL =
 // Allowed Gemini model IDs (whitelist). Comma-separated env, falls back to default set.
 export const GEMINI_ALLOWED_MODELS = process.env.GEMINI_ALLOWED_MODELS || "";
 
+// --- Search-quality SOTA features (all opt-in; defaults preserve current behavior) ---
+
+// [1] Two-stage rerank. Mirrors lightrag config.RERANK_ENABLED. When true, the
+// rag-ui search client requests server-side rerank (rerank=true) and widens the
+// retrieval net to RETRIEVE_TOP_K. Default false => identical to current behavior.
+export const RERANK_ENABLED =
+  (process.env.RERANK_ENABLED || "").toLowerCase() === "true" ||
+  process.env.RERANK_ENABLED === "1";
+// Candidate breadth retrieved before reranking (mirrors lightrag RETRIEVE_TOP_K).
+export const RETRIEVE_TOP_K = Number(process.env.RETRIEVE_TOP_K || "20");
+
+// [2] Adaptive RAG router. When true, a lightweight Gemini Flash classifier routes
+// each query to: direct vector search / iterative hybrid|mix / skip-search.
+// Default false => current always-search-via-tool behavior is unchanged.
+export const ADAPTIVE_RAG_ENABLED =
+  (process.env.ADAPTIVE_RAG_ENABLED || "").toLowerCase() === "true" ||
+  process.env.ADAPTIVE_RAG_ENABLED === "1";
+// Lightweight Gemini model used as the router classifier.
+export const ROUTER_MODEL = process.env.ROUTER_MODEL || "gemini-2.5-flash";
+
+// [3] Semantic cache backend: "redis" (default, JS cosine scan) or "pgvector"
+// (pgvector <=> nearest-neighbor search against a per-KB table).
+export const SEMANTIC_CACHE_BACKEND = (
+  process.env.SEMANTIC_CACHE_BACKEND || "redis"
+).toLowerCase();
+
 // Tavily web search (optional — enables webSearch tool in chat)
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 

@@ -15,6 +15,21 @@ import { guessMimeType } from "./mime";
 const LIGHTRAG_URL = process.env.LIGHTRAG_URL || "http://lightrag:8007";
 const CRM_SERVICE_URL = process.env.CRM_SERVICE_URL || "http://crm-service:8009";
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
+
+// ── Search-quality feature flags (opt-in; defaults preserve current behavior) ──
+// When true, KB queries ask the LightRAG server to rerank (Gemini Flash listwise)
+// the retrieved candidates. Default false => server falls back to its own
+// config.RERANK_ENABLED (also false by default), i.e. unchanged behavior.
+const RERANK_ENABLED =
+  (process.env.RERANK_ENABLED || "").toLowerCase() === "true" ||
+  process.env.RERANK_ENABLED === "1" ||
+  (process.env.RERANK_ENABLED || "").toLowerCase() === "yes";
+// top_k sent on rerank-on requests. The server overrides this with RETRIEVE_TOP_K
+// anyway, so this only affects the request shape. Default 8 (current value).
+const KB_SEARCH_TOP_K = Number(process.env.KB_SEARCH_TOP_K) || 8;
+// Minimum doc_count for a KB to surface in auto-discovery. Default 1 => keep any
+// KB with at least one doc, identical to the previous `doc_count > 0` filter.
+const KB_DISCOVERY_THRESHOLD = Number(process.env.KB_DISCOVERY_THRESHOLD) || 1;
 const RAG_UI_URL = process.env.RAG_UI_URL || "http://rag-ui:3000";
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const EMAIL_FROM = process.env.EMAIL_FROM;
@@ -49,7 +64,7 @@ export async function listKBs(): Promise<KBInfo[]> {
     if (!res.ok) return [];
     const data = await res.json();
     const kbs: KBInfo[] = data.knowledge_bases ?? data ?? [];
-    return kbs.filter((k) => k.doc_count > 0);
+    return kbs.filter((k) => k.doc_count >= KB_DISCOVERY_THRESHOLD);
   } catch {
     return [];
   }
@@ -414,16 +429,28 @@ async function searchKnowledgeBase(
   kb?: string,
 ): Promise<string> {
   const url = `${LIGHTRAG_URL}/query/search-only${kb ? `?kb=${encodeURIComponent(kb)}` : ""}`;
+
+  // Backward-compatible request body. When RERANK_ENABLED is off (default), this
+  // is byte-for-byte the previous body: mode=hybrid, top_k=8, no rerank field,
+  // so the server's _build_query_param yields the original QueryParam.
+  // When on, we force this request to rerank: the server retrieves RETRIEVE_TOP_K
+  // candidates, Gemini Flash reranks them, and narrows to RERANK_TOP_K. On a
+  // rerank failure the server falls back to retrieval order (never errors).
+  const body: Record<string, unknown> = {
+    question: query,
+    ll_keywords: [query],
+    mode: "hybrid",
+    top_k: KB_SEARCH_TOP_K,
+    only_need_context: true,
+  };
+  if (RERANK_ENABLED) {
+    body.rerank = true;
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      question: query,
-      ll_keywords: [query],
-      mode: "hybrid",
-      top_k: 8,
-      only_need_context: true,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok)
     return JSON.stringify({ error: `KB search failed: ${res.status}` });

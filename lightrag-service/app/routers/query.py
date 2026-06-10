@@ -1,5 +1,6 @@
 import json
 import inspect
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query as QParam
 from fastapi.responses import StreamingResponse
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from lightrag import QueryParam
 
 from ..rag import get_rag
+from .. import config
 from .. import db
 
 router = APIRouter()
@@ -17,6 +19,38 @@ class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
     stream: bool = False
+    # [2] Query-mode selection. None => current default behavior ("hybrid").
+    mode: Optional[str] = None
+    # [2] Per-request rerank override. None => fall back to config.RERANK_ENABLED.
+    rerank: Optional[bool] = None
+
+
+_VALID_MODES = {"local", "global", "hybrid", "mix"}
+
+
+def _build_query_param(req: "QueryRequest", **extra) -> QueryParam:
+    """Build a QueryParam from the request, fully backward compatible.
+
+    - mode: defaults to "hybrid" (unchanged) when not supplied or invalid.
+    - rerank: defaults to config.RERANK_ENABLED when not supplied.
+    - When rerank is active, retrieve RETRIEVE_TOP_K candidates and let the
+      reranker narrow to RERANK_TOP_K (chunk_top_k); otherwise honor req.top_k.
+    """
+    mode = req.mode if req.mode in _VALID_MODES else "hybrid"
+    rerank_on = config.RERANK_ENABLED if req.rerank is None else bool(req.rerank)
+
+    # Default path (rerank off): identical to the original QueryParam(mode, top_k).
+    params: dict = {"mode": mode, "top_k": req.top_k}
+    if rerank_on:
+        # Retrieve a wider net, then let the reranker narrow to RERANK_TOP_K.
+        params["enable_rerank"] = True
+        params["top_k"] = config.RETRIEVE_TOP_K
+        params["chunk_top_k"] = config.RERANK_TOP_K
+    elif config.RERANK_ENABLED and req.rerank is False:
+        # Instance was built with a rerank_model_func; honor an explicit opt-out.
+        params["enable_rerank"] = False
+    params.update(extra)
+    return QueryParam(**params)
 
 
 @router.post("/query/search-only")
@@ -30,10 +64,9 @@ async def search_only(req: QueryRequest, kb: str = QParam(..., description="KB s
 
     result = await rag.aquery_llm(
         req.question,
-        param=QueryParam(
-            mode="hybrid",
+        param=_build_query_param(
+            req,
             only_need_context=True,
-            top_k=req.top_k,
             ll_keywords=[req.question],
         ),
     )
@@ -105,7 +138,7 @@ async def query(req: QueryRequest, kb: str = QParam(..., description="KB slug"))
 
     if req.stream:
         return StreamingResponse(
-            _stream_response(rag, req.question, req.top_k, sources),
+            _stream_response(rag, req, sources),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -116,7 +149,7 @@ async def query(req: QueryRequest, kb: str = QParam(..., description="KB slug"))
     # 非流式
     answer = await rag.aquery(
         req.question,
-        param=QueryParam(mode="hybrid", top_k=req.top_k),
+        param=_build_query_param(req),
     )
 
     return {
@@ -125,15 +158,15 @@ async def query(req: QueryRequest, kb: str = QParam(..., description="KB slug"))
     }
 
 
-async def _stream_response(rag, question: str, top_k: int, sources: list):
+async def _stream_response(rag, req: "QueryRequest", sources: list):
     """SSE 流式输出，格式与 query-service :8006 一致。"""
     # 先发送来源
     yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
 
     # 流式生成答案
     resp = await rag.aquery(
-        question,
-        param=QueryParam(mode="hybrid", top_k=top_k, stream=True),
+        req.question,
+        param=_build_query_param(req, stream=True),
     )
 
     if inspect.isasyncgen(resp):

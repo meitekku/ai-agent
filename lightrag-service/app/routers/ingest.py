@@ -5,7 +5,7 @@ import uuid
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 
-from ..rag import get_rag
+from ..rag import get_rag, contextualize_markdown
 from ..extract import extract_text
 from .. import db
 
@@ -95,6 +95,10 @@ async def _ingest_background(doc_id: str, doc_name: str, file_bytes: bytes, file
         print(f"[ingest] Extracting text: {filename}")
         markdown, page_count = await extract_text(file_bytes, filename)
         print(f"[ingest] Extraction done: {page_count} pages")
+
+        # [3] Contextual Retrieval (no-op unless CONTEXTUAL_RETRIEVAL_ENABLED).
+        # Prepends breadcrumb + Gemini context summary per segment before chunking.
+        markdown = await contextualize_markdown(markdown, doc_name)
 
         # Check if job was deleted during extraction
         job = await db.get_job(doc_id)
