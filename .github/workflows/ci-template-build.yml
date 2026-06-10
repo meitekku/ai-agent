@@ -1,0 +1,86 @@
+name: CI (template build verify)
+
+# Build/type-check gate for the generic RAG template branch.
+# Runs on GitHub-hosted runners only. Does NOT deploy anywhere.
+# Purpose: catch compile/type/import errors introduced during modernization,
+# since the dev machine cannot run Docker/Python/Node locally.
+
+on:
+  push:
+    branches: [template]
+  workflow_dispatch:
+
+jobs:
+  rag-ui:
+    name: rag-ui (Next.js type-check + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        working-directory: rag-ui
+        run: bun install --frozen-lockfile
+      - name: Type-check (tsc --noEmit)
+        working-directory: rag-ui
+        run: bunx tsc --noEmit
+      - name: Next build
+        working-directory: rag-ui
+        env:
+          GEMINI_API_KEY: enabled
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: bun run build
+
+  crm-service:
+    name: crm-service (type-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        working-directory: crm-service
+        run: bun install --frozen-lockfile
+      - name: Type-check (tsc --noEmit)
+        working-directory: crm-service
+        run: bunx tsc --noEmit
+
+  task-worker:
+    name: task-worker (type-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        working-directory: task-worker
+        run: bun install --frozen-lockfile
+      - name: Type-check (tsc --noEmit)
+        working-directory: task-worker
+        run: bunx tsc --noEmit
+
+  lightrag-service:
+    name: lightrag-service (uv sync + import check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync deps (frozen)
+        working-directory: lightrag-service
+        run: uv sync --frozen
+      - name: Byte-compile all modules
+        working-directory: lightrag-service
+        run: uv run python -m compileall -q app
+      - name: Import smoke test (catches wiring/syntax errors)
+        working-directory: lightrag-service
+        env:
+          LLM_PROVIDER: gemini
+          EMBEDDING_PROVIDER: gemini
+          GEMINI_API_KEY: dummy-for-import-check
+        run: uv run python -c "import app.main; import app.rag; import app.routers.query; import app.routers.ingest; print('import OK')"
